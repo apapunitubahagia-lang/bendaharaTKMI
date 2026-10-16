@@ -1,5 +1,5 @@
 const fs = require('fs');
-const OUTDIR = 'C:/Users/HP/OneDrive/Desktop/Bendahara/MASTER_API_REFACTOR/';
+const OUTDIR = require('./paths').OUT;
 const SC = __dirname + '/';
 const SRC = OUTDIR + 'Bendahara_V2.html';
 if (!fs.existsSync(SC + 'before_central.html')) fs.copyFileSync(SRC, SC + 'before_central.html'); // backup pass sebelumnya

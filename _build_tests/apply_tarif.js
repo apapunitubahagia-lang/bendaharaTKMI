@@ -1,6 +1,6 @@
 /* apply_tarif.js - tahap KEDUA build: dijalankan SETELAH apply_central.js. Idempoten terhadap output apply_central (selalu mulai dari output segar). */
 const fs = require('fs');
-const OUT = 'C:/Users/HP/OneDrive/Desktop/Bendahara/MASTER_API_REFACTOR/';
+const OUT = require('./paths').OUT;
 const rd = f => fs.readFileSync(OUT + f, 'utf8').replace(/\r\n/g, '\n');
 const P = OUT + 'Bendahara_V2.html';
 let t = fs.readFileSync(P, 'utf8'); const crlf = t.includes('\r\n'); t = t.replace(/\r\n/g, '\n');

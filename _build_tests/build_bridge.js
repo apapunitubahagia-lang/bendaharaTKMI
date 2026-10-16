@@ -1,6 +1,6 @@
 const fs = require('fs');
-const G = 'C:/Users/HP/OneDrive/Desktop/Bendahara/SISTEM_KINERJA_SEKOLAH/03_BENDAHARA_SEKOLAH/GAS_Migration/ServerBridge.js';
-const OUT = 'C:/Users/HP/OneDrive/Desktop/Bendahara/MASTER_API_REFACTOR/';
+const G = require('./paths').G + 'ServerBridge.js';
+const OUT = require('./paths').OUT;
 let sb = fs.readFileSync(G, 'utf8');
 const anchor = "getSettings: function () { return callServer('getSettings', []); }";
 if (!sb.includes(anchor)) throw new Error('anchor ServerBridge');

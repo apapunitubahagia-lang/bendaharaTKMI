@@ -1,7 +1,7 @@
 const fs = require('fs'), vm = require('vm'), crypto = require('crypto');
-const G = 'C:/Users/HP/OneDrive/Desktop/Bendahara/SISTEM_KINERJA_SEKOLAH/03_BENDAHARA_SEKOLAH/GAS_Migration/';
-const AB = 'C:/Users/HP/OneDrive/Desktop/Bendahara/SISTEM_KINERJA_SEKOLAH/03_BENDAHARA_SEKOLAH/AUTH_CENTRAL_BUILD/';
-const OUT = 'C:/Users/HP/OneDrive/Desktop/Bendahara/MASTER_API_REFACTOR/';
+const G = require('./paths').G;
+const AB = require('./paths').AB;
+const OUT = require('./paths').OUT;
 const rd = f => fs.readFileSync(f, 'utf8');
 const SERVER_FILES = ['TransactionEngine.gs', 'AuthCentral.gs', 'MasterDataRead.gs', 'CreateDatabaseStructure.gs', 'Code.gs', 'OperationalAPI.gs', 'RecordEngine.gs', 'AdminAPI.gs', 'BuktiDrive.gs', 'ObligationEngine.gs', 'FinanceEngine.gs', 'TarifPlan.gs', 'AllocationGuard.gs'];
 function srcOf(f) { return f === 'AuthCentral.gs' ? rd(AB + f) : f === 'CreateDatabaseStructure.gs' ? rd(G + f) : rd(OUT + f); }

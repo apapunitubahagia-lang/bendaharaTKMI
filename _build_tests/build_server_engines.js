@@ -1,7 +1,7 @@
 const fs = require('fs');
-const OUT = 'C:/Users/HP/OneDrive/Desktop/Bendahara/MASTER_API_REFACTOR/';
-const G = 'C:/Users/HP/OneDrive/Desktop/Bendahara/SISTEM_KINERJA_SEKOLAH/03_BENDAHARA_SEKOLAH/GAS_Migration/';
-const AB = 'C:/Users/HP/OneDrive/Desktop/Bendahara/SISTEM_KINERJA_SEKOLAH/03_BENDAHARA_SEKOLAH/AUTH_CENTRAL_BUILD/';
+const OUT = require('./paths').OUT;
+const G = require('./paths').G;
+const AB = require('./paths').AB;
 const html = fs.readFileSync(OUT + 'Bendahara_V2.html', 'utf8').replace(/\r/g, '');
 const js = html.match(/\n<script>\n([\s\S]*?)\n<\/script>/)[1];
 

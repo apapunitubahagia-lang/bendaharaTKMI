@@ -1,0 +1,4 @@
+OK 73 perubahan -> D:/biaya TK MI/BENDAHARA_V2_REPO/Bendahara_V2.html
+apply_tarif OK: 24 perubahan
+OK: ObligationEngine.gs (22 fungsi diekstrak verbatim), FinanceEngine.gs, TransactionEngine.gs (patch aditif), MasterDataRead.gs
+ServerBridge: 28 method op* ditambahkan
