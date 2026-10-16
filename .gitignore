@@ -1,0 +1,9 @@
+# hasil sementara tes
+_build_tests/chk_*.js
+_build_tests/c2_inline.js
+_build_tests/*.tmp
+# rahasia / kredensial (jangan pernah di-commit)
+.clasprc.json
+*.pem
+*.key
+.env
