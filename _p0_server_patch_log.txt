@@ -1,0 +1,51 @@
+1. header P0
+2. replace fn readAllRows_
+3. replace fn findRowIndexById_
+4. replace fn findIdempotentResult_
+5. replace fn recordIdempotentResult_
+6. replace fn deleteIdempotencyByClientRequestId_
+7. replace fn writeTransactionRow_
+8. replace fn writeAllocationRow_
+9. replace fn writeMutasiRow_
+10. replace fn activeAllocationRows_
+11. replace fn readTrxRows_
+12. replace fn auditPush_
+13. engineErrCode_ pada 17 jalur galat
+14. engineErrCode_ def
+15. engineAllocStatusFor_/setTrxStatusCell_
+16. status dihitung saat create
+17. status dihitung saat createAllocation
+18. rollback status (audit)
+19. rollback status (idempotensi)
+20. replace fn updateTransaction
+21. rename createIncome -> createIncome_ (5x)
+22. rename createExpense -> createExpense_ (3x)
+23. rename createTransaction -> createTransaction_ (3x)
+24. rename createAllocation -> createAllocation_ (7x)
+25. rename createBankMutation -> createBankMutation_ (7x)
+26. rename updateTransaction -> updateTransaction_ (6x)
+27. rename getTransactions -> getTransactions_ (1x)
+28. rename getTransaction -> getTransaction_ (3x)
+29. rename getStudentPosition -> getStudentPosition_ (3x)
+30. rename healthCheck -> healthCheck_ (2x)
+31. rename testConcurrentWriteDoor -> testConcurrentWriteDoor_ (10x)
+32. rename runFinancialSafetyTests -> runFinancialSafetyTests_ (2x)
+33. rename regressionCheck -> regressionCheck_ (3x)
+34. oblLoadContext_ mk
+35. opObligations err
+36. snapshot err
+37. FCC mk
+38. FCC err
+39. replace fn tpReadSheet_
+40. tarif plan err
+41. replace fn readMasterRows_
+42. replace fn getStudents
+43. replace fn getGuardians
+44. replace fn getComponents
+45. replace fn getTariffs
+46. replace fn getAccounts
+47. replace fn getIncomeCategories
+48. replace fn getExpenseCategories
+49. replace fn getSubcategories
+50. replace fn getAcademicYears
+51. replace fn getSettings

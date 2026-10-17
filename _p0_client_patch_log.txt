@@ -1,0 +1,29 @@
+1. lsSet melempar galat
+2. toast: menunggu konfirmasi
+3. postTransaksi: wajib server
+4. postTransaksi: tunggu konfirmasi
+5. createAlokasi: wajib server
+6. createAlokasi: tunggu konfirmasi
+7. centralPatchTransaksi: tunggu konfirmasi
+8. arsip: tunggu konfirmasi (2x)
+9. overlay ditolak disembunyikan
+10. alokasi gagal tidak dihitung
+11. allTransaksi tanpa baris belum terkonfirmasi
+12. sync: penghitung hasil
+13. sync: catat sukses transaksi
+14. sync: catat gagal
+15. sync: catat sukses alokasi
+16. sync: catat hasil patch
+17. sync: catat hasil arsip
+18. sync: laporkan hasil
+19. helper hasil sinkron & alasan
+20. panel sukses penerimaan
+21. audit UI ber-id
+22. master: wajib server (15 titik)
+23. koleksi: wajib server setelah boot
+24. blob: wajib server setelah boot
+25. bootstrapCentralAuth: tanda boot
+26. replace fn kpiIndukSummary
+27. kpiRow: data tidak tersedia
+28. snapshot KPI ditolak bila data tidak tersedia
+29. pdSnapKpi: galat ditampilkan

@@ -1,0 +1,65 @@
+REMOVE debug block (TEST_SETTINGS_* + diag Promise.all) @7144-7227
+ADD MasterAPI + delegasi masterSiswaRead/masterKomponenRead @7102-7115
+REWRITE komentar 15b @7085-7099
+tarifFor accessor @769
+tahun ajaran accessor @530
+subkategori accessor @5943
+subkategori accessor (kategori) @5941
+kategori pengeluaran read dropdown @3486
+kategori pengeluaran read default @3475
+kategori penerimaan read @3338
+kategori pengeluaran read @5128
+kategori pengeluaran read @3046
+akun read dropdown @3520
+akun read dropdown @3489
+akun read dropdown @3340
+akun read default @3478
+akun read default @3331
+akunList -> MasterAPI.accounts @675
+komponen read (form tagihan) @5987
+komponen read (form keringanan) @5812
+komponen read @5154
+komponen read @5142
+komponen read @2999
+komponen read accessor @752
+komponen read accessor @745
+komponen read accessor @744
+GUARD submitSiswaForm idx<0 @5749
+siswa read (export master) @5735
+siswa read (export laporan) @5258
+siswa read @6379
+siswa read @6360
+siswa read @5995
+siswa read @5737
+siswa read @5489
+siswa read @5164
+siswa read @4646
+siswa read @4638
+siswa read @4609
+siswa read @4433
+siswa read @4230
+siswa read @4212
+siswa read @4069
+siswa read @4044
+siswa read @3699
+siswa read @3652
+siswa read @3377
+siswa read @3346
+siswa read @3282
+siswa read @3012
+siswa read @2922
+siswa read @2660
+siswa read @2533
+siswa read @2498
+siswa read @2480
+siswa read @2462
+siswa read @2231
+siswa read @2230
+siswa read @1920
+siswa read @1022
+siswa read @918
+siswa read @880
+siswa read @861
+siswa read @839
+RESTORE Store.loadSiswa local-only @337-342
+REMOVE debug MAIN APP START @161-161

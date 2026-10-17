@@ -1,0 +1,73 @@
+1. INSERT blok 15c + 15d + FCC core
+2. badge: suffix status operasional/antrean
+3. REWRITE loadCentralMasterData (Promise, refresh aman, muat operasional)
+4. allTransaksi
+5. transaksiById
+6. alokasiForTransaksi
+7. alokasiForTagihan
+8. alokasiTerbayar
+9. renderProfilSiswa alokasi
+10. renderProfilSiswa riwayat
+11. tarifUsedInHistory
+12. komponenUsedInHistory
+13. postTransaksi: tandai antre sinkron
+14. postTransaksi: BridgeClient lama off saat central aktif
+15. postTransaksi: jadwalkan sinkron
+16. createAlokasi: resolve id terpetakan
+17. createAlokasi: tandai antre sinkron
+18. createAlokasi: jadwalkan sinkron
+19. createAlokasi: BridgeClient lama off saat central aktif
+20. createAlokasi: siswaId otomatis hanya utk baris lokal
+21. REWRITE updateTransaksiStatus
+22. REWRITE editNominalTransaksi
+23. guard/central archiveTransaksi
+24. guard/central hapusAlokasi
+25. pwSubmit: edit transaksi server = patch + arsip alokasi lama + alokasi baru
+26. REWRITE useSiswaCandidate
+27. REWRITE submitIdentifikasi
+28. oneClickComplete: patch via helper sentral
+29. guard/central submitSiswaForm
+30. openTarifForm: baca MasterAPI
+31. renderPengaturanTarif: baca MasterAPI
+32. guard/central submitTarif
+33. guard/central hapusAtauNonaktifkanTarif
+34. renderPengaturanTahunAjaran: baca MasterAPI
+35. guard/central submitTahunAjaranForm
+36. guard/central toggleTahunAjaranStatus
+37. openKomponenForm: baca MasterAPI
+38. guard/central submitKomponen
+39. guard/central hapusAtauNonaktifkanKomponen
+40. renderPengaturanAkun: baca MasterAPI
+41. openAkunForm: baca MasterAPI
+42. guard/central submitAkun
+43. guard/central hapusAtauNonaktifkanAkun
+44. renderPengaturanKategori: baca MasterAPI
+45. openKategoriForm: baca MasterAPI
+46. guard/central submitKategoriForm
+47. guard/central hapusAtauNonaktifkanKategori
+48. openSubkategoriForm: kategori MasterAPI
+49. openSubkategoriForm: sub MasterAPI
+50. guard/central submitSubkategoriForm
+51. guard/central hapusAtauNonaktifkanSubkategori
+52. label: bukan Surplus saat data tidak lengkap
+53. MasterAPI overlay antrean: fromServer('students', normSiswa)
+54. MasterAPI overlay antrean: fromServer('components', normKomponen)
+55. MasterAPI overlay antrean: fromServer('tariffs', normTarif)
+56. MasterAPI overlay antrean: fromServer('accounts', normAkun)
+57. MasterAPI overlay antrean: fromServer('incomeCategories', normKategori)
+58. MasterAPI overlay antrean: fromServer('expenseCategories', normKategori)
+59. MasterAPI overlay antrean: fromServer('subcategories', normSub)
+60. MasterAPI overlay antrean: fromServer('academicYears', normTA)
+61. auditTrailPush: mirror ke server
+62. commitSiswaRow: antre ke server
+63. updateSiswaRow: antre ke server
+64. submitBukti: transaksi server lewat helper sentral
+65. renderDokumen: tautan Drive
+66. laporan: tab kontrol
+67. laporan: label kontrol
+68. laporan: fnMap kontrol
+69. pengaturan: panel Pusat Data
+70. guard/central doBackupImport
+71. guard/central openResetMigrationDataConfirm
+72. guard/central resetMigrationData
+73. doBackupExport: catat waktu backup

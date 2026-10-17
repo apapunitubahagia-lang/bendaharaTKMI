@@ -1,0 +1,29 @@
+PASS S0 pra-migrasi: pembayaran historis + 1 pembayaran engine tercatat (pre-kondisi)
+PASS S1 migrasi aditif: untuk SEMUA 27 sheet header lama utuh (urutan sama), tidak ada baris dihapus/ditimpa (13_AUDIT_LOG hanya bertambah: catatan SCHEMA_ADD_COLUMNS), isi sel lama identik; kolom baru hanya di ujung
+PASS S2 kolom yang ditambahkan = rencana: 09_KOMITMEN +rabId; 02/04/08 memuat kolom tarif; 07_AKUN & 10_BUKTI.fileRef TIDAK ditambah; 13_AUDIT_LOG/15_SETTINGS tidak disentuh
+PASS S3 pembayaran/alokasi/saldo historis TIDAK berubah akibat kolom baru: posisi siswa, seluruh kewajiban (netto/terbayar/sisa), saldo kas FCC identik; bentuk daftar transaksi aktif identik
+PASS S4 penerapan skema ULANG idempoten: tidak ada kolom/baris baru, hasil "tidak ada yang perlu ditambah"
+PASS S5 rencana tarif: penerapan pertama sukses; penerapan ULANG tidak mengubah apa pun (seluruh isi sheet identik)
+PASS S6 setelah rencana tarif: transaksi & alokasi historis identik byte-per-byte pada kolom lama (tidak ada baris hilang/berubah)
+PASS S6b pembayaran historis tetap terhitung pada kewajiban yang dibekukan (mi3a: lump terbayar 1.800.000)
+PASS K1 rabId tersimpan di kolom rabId (ujung header); kolom live lama (tanggal, uraian, nominal, status, jatuhTempo) terisi benar; nominal numerik
+PASS K2 rabId terbaca kembali lewat opReadSheet (nama header live, bukan posisi)
+PASS K3 perhitungan komitmen (server FCC): RAB "ATK Kertas" punya komitmen COMMITTED 90.000 dan EXPECTED 30.000 terpisah; committed.total memuat 90.000; RAB tidak lagi dianggap "tanpa realisasi/komitmen"
+PASS K4 klien membaca komitmen dari server dengan rabId; komitmenForRab = 90.000 (COMMITTED+INCURRED saja)
+PASS K5 submitObligasi (UI) dengan RAB terpilih: tersimpan ke server dengan rabId (tidak tertahan), komitmenForRab = 115.000, FCC klien = FCC server
+PASS K6 komitmen tanpa RAB (rabId null) tetap tersimpan dan terbaca (kolom kosong -> null)
+PASS K7 sebelum migrasi: komitmen berkait RAB ditahan (blocked, pesan migrasi), tidak ditulis diam-diam, tetap tampil lokal; setelah migrasi + sinkron tertulis
+PASS K7b setelah migrasi aditif + sinkron: komitmen tertulis dengan rabId, antrean kosong
+PASS A1 transaksi arsip tidak ada di daftar aktif (getTransactions/opGetTransactions); baris tetap ada; includeArchived:true menampilkannya dengan archivedAt+alasan
+PASS A2 bentuk baris transaksi AKTIF tidak berubah (tanpa field arsip); getTransaction(id arsip) mengembalikan baris dengan archivedAt (baca riwayat tetap bisa)
+PASS A3 laporan: penerimaan arsip tidak ikut FCC (income -250.000, kas -250.000); alokasinya ikut diarsipkan dan tidak dihitung pada kewajiban (mi5a Juli terbayar 0)
+PASS A4 transaksi arsip TIDAK bisa diubah lewat opUpdateTransaction (TRANSACTION_ARCHIVED); sheet dan audit tidak berubah
+PASS A5 alokasi BARU ke transaksi arsip ditolak (TRANSACTION_ARCHIVED); tidak ada alokasi tertulis
+PASS A6 arsip ulang idempoten (0 diarsipkan lagi), tidak ada baris baru; transaksi aktif lain tetap bisa diubah (regresi jalur aktif)
+PASS A7 transaksi aktif tetap menerima alokasi (regresi jalur aktif): terbayar 150.000
+PASS A8 pertahanan: transaksi ditandai arsip tanpa mengarsipkan alokasinya (edit manual) - alokasi tidak terhitung pada kewajiban dan transaksi hilang dari daftar aktif
+PASS A9 klien: transaksi arsip tidak muncul di allTransaksi/penerimaanList; transaksi server aktif tetap tampil
+PASS A10 patch antrean klien ke transaksi yang sudah diarsipkan ditolak server (TRANSACTION_ARCHIVED), ditandai gagal (tidak diulang), status di sheet tidak berubah
+PASS A11 sebelum migrasi (tanpa kolom arsip): getTransactions mengembalikan semua baris dengan 23 field persis seperti sebelumnya; updateTransaction transaksi biasa tetap berfungsi
+
+PASS=27 FAIL=0
