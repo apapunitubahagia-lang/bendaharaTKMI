@@ -11,7 +11,9 @@
  *   Kolom arsip ditambah ADITIF lewat opSchemaApply (AdminAPI.gs), tidak pernah otomatis.
  * - Header dibaca dari sheet LIVE; field di luar header ditolak (UNKNOWN_FIELD), tidak dibuang diam-diam.
  * - Satu pembacaan sheet + satu penulisan massal per batch; audit massal (format sama dengan auditPush_).
- * - [P1] Setiap operasi diperiksa RecordGuard.gs (periode tertutup, integritas bukti/LPJ/komitmen/mutasi,
+ * - [P1-POLICY] Status periode TIDAK menolak operasi; operasi pada periode bertanda/terlapor menambah baris audit
+ *   PERIODE_DITANDAI di append audit yang sama (atomik dengan perubahan) dan res.periodeDitandai.
+ * - [P1] Setiap operasi diperiksa RecordGuard.gs (integritas bukti/LPJ/komitmen/mutasi,
  *   rekonsiliasi lewat API khusus) dan deteksi konflik: op.expect = nilai field yang dilihat klien sebelum
  *   mengubah; bila nilai server sudah berbeda -> CONFLICT, baris tidak diubah. Baris terarsip tidak dapat di-upsert.
  *
@@ -99,7 +101,12 @@ function opRecordBatchLocked_(g, cfg, key, ops) {
   var guard = function (res, op, curObj, nextObj) {
     var f;
     try { f = rgCheckOp_(rg, op, curObj, nextObj); } catch (ge) { f = { code: ge.code || 'GUARD_FAILED', message: String(ge.message || ge) }; }
-    if (!f) return false;
+    if (!f) {
+      // [P1-POLICY] lolos validasi -> operasi pasti diterapkan; penanda periode ikut audit batch yang sama
+      var fl = rgPeriodFlags_(rg, curObj, nextObj);
+      if (fl.length) { res.periodeDitandai = fl; audits.push(['PERIODE_DITANDAI', null, plMarkAfter_(fl, 'RECORD_' + op.toUpperCase() + ':' + key), res.id]); }
+      return false;
+    }
     res.code = f.code; res.message = f.message; cnt.failed++; return true;
   };
   var hasExpect = function (o) { return o.expect && typeof o.expect === 'object' && !Array.isArray(o.expect); };
@@ -222,17 +229,21 @@ function opArchiveTransaction(id, reason) {
       if (!t) return errResult_('SCHEMA_MISMATCH', 'Sheet transaksi tidak ditemukan', null);
       var exists = t.rows.some(function (r) { return String(r[t.live.indexOf('id')]) === id; });
       if (!exists) return errResult_('NOT_FOUND', 'Transaksi tidak ditemukan', 'id', id);
-      var tRaw = getTransactionRaw_(id); // [P1-A] reversal pada periode tertutup ditolak
-      var plT = plGuard_([tRaw && tRaw.tanggal], 'arsip transaksi'); if (plT) return plT;
+      var tRaw = getTransactionRaw_(id); // [P1-POLICY] periode bertanda tidak menolak reversal; ditandai di audit
+      var flT = plFlags_([tRaw && tRaw.tanggal]);
       var r1 = opArchiveRowsLocked_(g, SHT_TRANSAKSI, function (o) { return String(o.id) === id; }, reason, 'ARCHIVE_TRANSACTION', id);
       if (r1.err) return r1.err;
       var r2 = opArchiveRowsLocked_(g, SHT_ALOKASI, function (o) { return String(o.transaksiId) === id; }, reason, 'ARCHIVE_ALLOCATION', id);
       if (r2.err) { opArchiveUndo_([r1]); return r2.err; } // [P0-B] transaksi tidak boleh terarsip tanpa alokasinya
-      try { opAuditBulk_(r1.audits.concat(r2.audits), g.identity.email); } catch (e) {
+      var auT = r1.audits.concat(r2.audits);
+      if (r1.ids.length && flT.length) auT.push(['PERIODE_DITANDAI', null, plMarkAfter_(flT, 'ARCHIVE_TRANSACTION'), id]);
+      try { opAuditBulk_(auT, g.identity.email); } catch (e) {
         try { opArchiveUndo_([r1, r2]); } catch (re) { return errResult_('ROLLBACK_FAILED', 'Audit gagal DAN pemulihan arsip gagal: ' + re.message, null, id); }
         return errResult_('AUDIT_FAILED', 'Audit gagal ditulis; arsip transaksi dibatalkan', null, id);
       }
-      return okResult_(r1.ids.length ? 'Transaksi diarsipkan (reversal, data tidak dihapus)' : 'Transaksi sudah diarsipkan sebelumnya', { id: id, transaksiDiarsipkan: r1.ids.length, alokasiDiarsipkan: r2.ids.length });
+      var outT = okResult_(r1.ids.length ? 'Transaksi diarsipkan (reversal, data tidak dihapus)' : 'Transaksi sudah diarsipkan sebelumnya', { id: id, transaksiDiarsipkan: r1.ids.length, alokasiDiarsipkan: r2.ids.length });
+      if (r1.ids.length && flT.length) outT.data.periodeDitandai = flT;
+      return outT;
     });
   } catch (e) { return sgErr_(e, 'WRITE_FAILED', 'Gagal mengarsipkan transaksi'); }
 }
@@ -242,8 +253,8 @@ function opArchiveAllocation(id, reason) {
   if (!id) return errResult_('VALIDATION_ERROR', 'id wajib diisi', 'id');
   try {
     return withLock_(function () {
-      var al = activeAllocationRows_().filter(function (a) { return String(a.id) === id; })[0]; // [P1-A]
-      if (al) { var tA = getTransactionRaw_(String(al.transaksiId)); var plA = plGuard_([tA && tA.tanggal], 'arsip alokasi'); if (plA) return plA; }
+      var al = activeAllocationRows_().filter(function (a) { return String(a.id) === id; })[0]; // [P1-POLICY] penanda, bukan penolakan
+      var tA = al ? getTransactionRaw_(String(al.transaksiId)) : null, flA = plFlags_([tA && tA.tanggal]);
       var r = opArchiveRowsLocked_(g, SHT_ALOKASI, function (o) { return String(o.id) === id; }, reason, 'ARCHIVE_ALLOCATION', id);
       if (r.err) return r.err;
       // [P0-B] status alokasi transaksi induk dihitung ulang di server
@@ -253,11 +264,14 @@ function opArchiveAllocation(id, reason) {
       }
       var audits = r.audits.slice();
       if (st) audits.push(['STATUS_ALOKASI_DIHITUNG', { id: st.id, status: st.sebelum }, { id: st.id, status: st.sesudah }, st.id]);
+      if (r.ids.length && flA.length) audits.push(['PERIODE_DITANDAI', null, plMarkAfter_(flA, 'ARCHIVE_ALLOCATION'), id]);
       try { opAuditBulk_(audits, g.identity.email); } catch (e) {
         try { opArchiveUndo_([r]); if (st) setTrxStatusCell_(st.id, st.sebelum); } catch (re) { return errResult_('ROLLBACK_FAILED', 'Audit gagal DAN pemulihan arsip gagal: ' + re.message, null, id); }
         return errResult_('AUDIT_FAILED', 'Audit gagal ditulis; arsip alokasi dibatalkan', null, id);
       }
-      return okResult_(r.ids.length ? 'Alokasi diarsipkan (reversal, data tidak dihapus)' : 'Alokasi tidak ditemukan atau sudah diarsipkan', { id: id, diarsipkan: r.ids.length, statusTransaksi: st ? st.sesudah : null });
+      var outA = okResult_(r.ids.length ? 'Alokasi diarsipkan (reversal, data tidak dihapus)' : 'Alokasi tidak ditemukan atau sudah diarsipkan', { id: id, diarsipkan: r.ids.length, statusTransaksi: st ? st.sesudah : null });
+      if (r.ids.length && flA.length) outA.data.periodeDitandai = flA;
+      return outA;
     });
   } catch (e) { return sgErr_(e, 'WRITE_FAILED', 'Gagal mengarsipkan alokasi'); }
 }
@@ -300,7 +314,7 @@ function opSettingsUpsert(items) {
     if (!it || !OP_SETTING_KEY_RE_.test(opStr_(it.key))) return errResult_('VALIDATION_ERROR', 'key setting tidak valid', 'key');
     if (typeof it.value !== 'string') return errResult_('VALIDATION_ERROR', 'value harus string (objek di-JSON-kan klien)', 'value');
     if (it.value.length > 45000) return errResult_('VALUE_TOO_LARGE', 'value melebihi batas satu sel (45000)', 'value');
-    if (opStr_(it.key).indexOf(PL_BLOB_PREFIX_) === 0 || opStr_(it.key).indexOf(PL_STATUS_PREFIX_) === 0) return errResult_('PERIOD_LOCK_API_REQUIRED', 'Status closing periode hanya dapat diubah lewat Tutup/Buka Kembali Periode (opClosePeriod/opReopenPeriod)', 'key'); // [P1-A]
+    if (opStr_(it.key).indexOf(PL_BLOB_PREFIX_) === 0 || opStr_(it.key).indexOf(PL_STATUS_PREFIX_) === 0) return errResult_('PERIOD_STATUS_API_REQUIRED', 'Status periode hanya dapat diubah lewat Tutup/Buka Kembali Periode (opClosePeriod/opReopenPeriod) agar beraudit', 'key'); // [P1-POLICY] perlindungan metadata, bukan penguncian
   }
   try {
     return withLock_(function () {

@@ -1,10 +1,13 @@
 header
 RESULT_TYPE_SHEET
 engineAuditBatch_
-create: period lock
+create: penanda periode
 create: steps 6-7 (idempotency -> audit batch)
-alloc: period lock
+alloc: penanda periode
 alloc: idempotency -> audit batch
-mutasi: period lock
+mutasi: penanda periode
 mutasi: idempotency -> audit batch
+create: respons penanda
+alloc: respons penanda
+mutasi: respons penanda
 replace fn updateTransaction_

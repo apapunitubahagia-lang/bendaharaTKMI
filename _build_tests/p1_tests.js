@@ -15,7 +15,12 @@ const rows = (srv, n) => srv.sheets[n].slice(1);
 const col = (srv, n, h) => srv.sheets[n][0].map(x => String(x).trim()).indexOf(h);
 const cnt = (srv, n) => srv.sheets[n].length - 1;
 const cell = (srv, n, id, h) => { const r = rows(srv, n).find(x => x[col(srv, n, 'id')] === id); return r ? r[col(srv, n, h)] : undefined; };
-const audits = srv => rows(srv, '13_AUDIT_LOG').map(r => ({ aksi: r[col(srv, '13_AUDIT_LOG', 'aksi')], refId: r[col(srv, '13_AUDIT_LOG', 'refId')], after: r[col(srv, '13_AUDIT_LOG', 'after')], sumber: r[col(srv, '13_AUDIT_LOG', 'sumber')] }));
+const audits = srv => rows(srv, '13_AUDIT_LOG').map(r => ({ aksi: r[col(srv, '13_AUDIT_LOG', 'aksi')], refId: r[col(srv, '13_AUDIT_LOG', 'refId')], after: r[col(srv, '13_AUDIT_LOG', 'after')], sumber: r[col(srv, '13_AUDIT_LOG', 'sumber')], ts: r[col(srv, '13_AUDIT_LOG', 'timestamp')] }));
+/* [P1-POLICY] baris penanda periode untuk refId; atomik = timestamp sama dengan baris audit utama (satu append) */
+const marks = (srv, refId) => audits(srv).filter(x => x.aksi === 'PERIODE_DITANDAI' && x.refId === refId);
+const markedWith = (srv, refId, mainAksi, periode) => { const m = marks(srv, refId), main = audits(srv).filter(x => x.aksi === mainAksi && x.refId === refId);
+  return m.length === 1 && main.length >= 1 && main.some(x => x.ts === m[0].ts) && JSON.parse(m[0].after).periode.some(f => f.periode === periode) && /google:bendahara@x.id/.test(m[0].sumber); };
+const flagOf = (data, periode) => !!(data && data.periodeDitandai && data.periodeDitandai.some(f => f.periode === periode));
 const safe = f => { try { return f(); } catch (e) { return { ok: false, code: 'EXCEPTION', message: String(e && e.message || e) }; } };
 const J = o => JSON.stringify(o);
 const short = r => J(r && { ok: r.ok, code: r.code, message: r.message && String(r.message).slice(0, 120), w: r.auditWarning }).slice(0, 220);
@@ -37,10 +42,11 @@ async function bootClient(srv, opts) {
 const sync = async c => { await c.sb.centralRunSync(true); await tick(10); await c.sb.centralRunSync(true); await tick(10); };
 
 (async () => {
-  // ================= P1-A: PENGUNCIAN PERIODE (server) =================
+  // ================= P1-A -> P1-POLICY: STATUS PERIODE = PENANDA ADMINISTRATIF (bukan hard lock) =================
+  // Ekspektasi P1L-01..14 direvisi 17-10-2026: semula PERIOD_LOCKED, kini diterima + penanda audit atomik.
   { const srv = makeServer(); setClosed(srv, ['Oktober 2026']);
     const r = safe(() => srv.sb.opCreateExpense(exp({ tanggal: '2026-10-11' })));
-    rec('P1L-01', 'TC-CRUD-05 / GAP-015', r.ok === false && r.code === 'PERIOD_LOCKED' && cnt(srv, '05_TRANSAKSI') === 2, short(r)); }
+    rec('P1L-01', 'TC-CRUD-05 (direvisi) / GAP-015', r.ok === true && cnt(srv, '05_TRANSAKSI') === 3 && cell(srv, '05_TRANSAKSI', r.data.id, 'tanggal') === '2026-10-11' && flagOf(r.data, 'Oktober 2026') && markedWith(srv, r.data.id, 'CREATE_TRANSACTION', 'Oktober 2026'), short(r)); }
   { const srv = makeServer(); setClosed(srv, ['September 2026']);
     const r = safe(() => srv.sb.opCreateExpense(exp({ tanggal: '2026-10-11' })));
     rec('P1L-02', 'TC-CRUD-05 / GAP-015', r.ok === true && cnt(srv, '05_TRANSAKSI') === 3, 'periode terbuka tetap dapat ditulis: ' + short(r)); }
@@ -48,23 +54,25 @@ const sync = async c => { await c.sb.centralRunSync(true); await tick(10); await
     const a = safe(() => srv.sb.opUpdateTransaction({ id: 'imp_trx_2', catatan: 'ubah di periode tertutup' }));
     const ok2 = safe(() => srv.sb.opCreateExpense(exp({ tanggal: '2026-10-11', clientRequestId: 'mv1' })));
     const b = ok2.ok ? safe(() => srv.sb.opUpdateTransaction({ id: ok2.data.id, tanggal: '2026-09-30' })) : { ok: false, code: 'SETUP' };
-    rec('P1L-03', 'TC-CRUD-05 / GAP-015', a.code === 'PERIOD_LOCKED' && b.code === 'PERIOD_LOCKED' && cell(srv, '05_TRANSAKSI', 'imp_trx_2', 'catatan') === '', J({ a: a.code, b: b.code })); }
+    rec('P1L-03', 'TC-CRUD-05 (direvisi) / GAP-015', a.ok && b.ok && cell(srv, '05_TRANSAKSI', 'imp_trx_2', 'catatan') === 'ubah di periode tertutup' && cell(srv, '05_TRANSAKSI', ok2.data.id, 'tanggal') === '2026-09-30'
+      && markedWith(srv, 'imp_trx_2', 'UPDATE_TRANSACTION', 'September 2026') && markedWith(srv, ok2.data.id, 'UPDATE_TRANSACTION', 'September 2026'), J({ a: a.code, b: b.code })); }
   { const srv = makeServer(); setClosed(srv, ['September 2026']);
     srv.sheets['06_ALOKASI'] = [srv.sheets['06_ALOKASI'][0]]; // imp_trx_1 belum teralokasi
     const r = safe(() => srv.sb.opCreateAllocation({ transaksiId: 'imp_trx_1', siswaId: 's1', komponenId: 'kmp_spp', periode: 'September 2026', nominal: 1000, clientRequestId: 'al1' }));
-    rec('P1L-04', 'TC-CRUD-05 / GAP-015', r.ok === false && r.code === 'PERIOD_LOCKED' && cnt(srv, '06_ALOKASI') === 0, short(r)); }
+    rec('P1L-04', 'TC-CRUD-05 (direvisi) / GAP-015', r.ok === true && cnt(srv, '06_ALOKASI') === 1 && flagOf(r.data, 'September 2026') && markedWith(srv, r.data.id, 'CREATE_ALLOCATION', 'September 2026'), short(r)); }
   { const srv = makeServer(); applyArchiveCols(srv); setClosed(srv, ['September 2026']);
     const r = safe(() => srv.sb.opArchiveTransaction('imp_trx_2', 'uji'));
-    rec('P1L-05', 'TC-CRUD-05 / GAP-015', r.ok === false && r.code === 'PERIOD_LOCKED' && (cell(srv, '05_TRANSAKSI', 'imp_trx_2', 'archivedAt') || '') === '', short(r)); }
+    rec('P1L-05', 'TC-CRUD-05 (direvisi) / GAP-015', r.ok === true && (cell(srv, '05_TRANSAKSI', 'imp_trx_2', 'archivedAt') || '') !== '' && flagOf(r.data, 'September 2026') && markedWith(srv, 'imp_trx_2', 'ARCHIVE_TRANSACTION', 'September 2026'), short(r)); }
   { const srv = makeServer(); setClosed(srv, ['September 2026']);
     const m = safe(() => srv.sb.opRecordBatch('mutasiBank', [{ op: 'upsert', id: 'mut_uji_1', row: { tanggal: '2026-09-15', nominal: 5000, keterangan: 'x', status: 'BELUM_DIPROSES' } }]));
     const mr = m.ok ? m.data.results[0] : m;
     const k = safe(() => srv.sb.opRecordBatch('rekonsiliasi', [{ op: 'upsert', id: 'rk_uji_1', row: { akunId: 'akun_kas1', periode: 'September 2026', saldoSistem: 1, saldoAktual: 1, selisih: 0, status: 'SELESAI' } }]));
     const kr = k.ok ? k.data.results[0] : k;
-    rec('P1L-06', 'TC-CRUD-05 / GAP-015', mr.code === 'PERIOD_LOCKED' && kr.code !== 'CREATED' && cnt(srv, '11_MUTASI_BANK') === 0 && cnt(srv, '16_REKONSILIASI') === 0, J({ mutasi: mr.code, rekon: kr.code })); }
+    // mutasi diterima + ditandai; rekonsiliasi rekaan tetap DITOLAK oleh aturan integritas (bukan oleh status periode)
+    rec('P1L-06', 'TC-CRUD-05 (direvisi) / GAP-015 / GAP-014', mr.code === 'CREATED' && flagOf(mr, 'September 2026') && markedWith(srv, 'mut_uji_1', 'RECORD_CREATE:mutasiBank', 'September 2026') && kr.code === 'USE_DEDICATED_API' && cnt(srv, '11_MUTASI_BANK') === 1 && cnt(srv, '16_REKONSILIASI') === 0, J({ mutasi: mr.code, rekon: kr.code })); }
   { const srv = makeServer(); setClosed(srv, ['September 2026']);
     const r = safe(() => srv.sb.opSettingsUpsert([{ key: 'blob.periodClosing.0', value: '[]' }]));
-    rec('P1L-07', 'GAP-015 (reopen beralasan)', r.ok === false && r.code === 'PERIOD_LOCK_API_REQUIRED' && rows(srv, '15_SETTINGS').some(x => x[0] === 'blob.periodClosing.0' && /CLOSED/.test(x[1])), 'reopen lewat setting generik: ' + short(r)); }
+    rec('P1L-07', 'GAP-015 (status hanya lewat API)', r.ok === false && r.code === 'PERIOD_STATUS_API_REQUIRED' && rows(srv, '15_SETTINGS').some(x => x[0] === 'blob.periodClosing.0' && /CLOSED/.test(x[1])), 'reopen lewat setting generik: ' + short(r)); }
   { const srv = makeServer();
     const a = safe(() => srv.sb.opClosePeriod('September 2026'));
     const again = safe(() => srv.sb.opClosePeriod('September 2026'));
@@ -72,7 +80,7 @@ const sync = async c => { await c.sb.centralRunSync(true); await tick(10); await
     const st = safe(() => srv.sb.opPeriodLockStatus());
     const w = safe(() => srv.sb.opCreateExpense(exp({ tanggal: '2026-09-20' })));
     const au = audits(srv).filter(x => x.aksi === 'CLOSING_PERIODE');
-    rec('P1L-08', 'GAP-015 (reopen beralasan)', a.ok === true && again.ok === true && again.data && again.data.unchanged === true && den.code === 'ROLE_NOT_ALLOWED' && st.ok && st.data.closed.indexOf('September 2026') !== -1 && w.code === 'PERIOD_LOCKED' && au.length === 1 && /google:bendahara@x.id/.test(au[0].sumber),
+    rec('P1L-08', 'GAP-015 (reopen beralasan)', a.ok === true && again.ok === true && again.data && again.data.unchanged === true && den.code === 'ROLE_NOT_ALLOWED' && st.ok && st.data.closed.indexOf('September 2026') !== -1 && w.ok === true && flagOf(w.data, 'September 2026') && au.length === 1 && /google:bendahara@x.id/.test(au[0].sumber),
       J({ a: a.code, again: again.data && again.data.unchanged, den: den.code, w: w.code, audit: au.length })); }
   { const srv = makeServer(); setClosed(srv, ['September 2026']);
     const noReason = safe(() => srv.sb.opReopenPeriod('September 2026', ''));
@@ -83,7 +91,7 @@ const sync = async c => { await c.sb.centralRunSync(true); await tick(10); await
   { const srv = makeServer(); setClosed(srv, ['September 2026']);
     const r = safe(() => srv.sb.opRecordBatch('lpj', [{ op: 'upsert', id: 'lpj_uji_lock', row: { tanggal: '2026-09-05', unit: 'MI', kategori: 'ATK', nominal: 1000, transaksiId: 'imp_trx_2', status: 'REALIZATION' } }]));
     const rr = r.ok ? r.data.results[0] : r;
-    rec('P1L-10', 'TC-CRUD-05 / GAP-015', rr.code === 'PERIOD_LOCKED' && cnt(srv, '19_LPJ') === 0, 'LPJ periode tertutup: ' + J(rr.code)); }
+    rec('P1L-10', 'TC-CRUD-05 (direvisi) / GAP-015', rr.code === 'CREATED' && cnt(srv, '19_LPJ') === 1 && markedWith(srv, 'lpj_uji_lock', 'RECORD_CREATE:lpj', 'September 2026'), 'LPJ periode bertanda: ' + J(rr.code)); }
   { // klien: Tutup Periode lewat server (bukan blob lokal / setting generik)
     const srv = makeServer(); const c = await bootClient(srv);
     safe(() => c.sb.closePeriode('September 2026')); await sync(c);
@@ -259,14 +267,15 @@ const sync = async c => { await c.sb.centralRunSync(true); await tick(10); await
     const ro = safe(() => srv.sb.opReopenPeriod('Juli 2026', 'Koreksi transaksi Juli yang salah input'));
     const c = safe(() => srv.sb.opCreateIncome({ tanggal: '2026-07-15', unit: 'MI', nominal: 1000, akunId: 'akun_kas1', metode: 'Tunai', sumber: 'Pembayaran Siswa', clientRequestId: 'fin2' }));
     const raw = rows(srv, '15_SETTINGS').find(x => x[0] === 'periodeStatus.2026-07');
-    rec('P1L-13', 'TC-CRUD-05 / GAP-015', a.code === 'PERIOD_LOCKED' && b.ok && g.code === 'PERIOD_LOCK_API_REQUIRED' && st.ok && st.data.closed.indexOf('Juli 2026') !== -1 && ro.ok && c.ok && raw && raw[1] === 'TERKUNCI',
-      J({ juli: a.code, okt: b.code, generik: g.code, status: st.data && st.data.closed, reopen: ro.code, setelahReopen: c.code, dataAsli: raw && raw[1] })); }
-  { // GAP-015: kewajiban (tagihan beku) pada periode TERKUNCI tidak dapat ditulis lewat jalur generik
+    const fa = a.ok && a.data.periodeDitandai && a.data.periodeDitandai[0];
+    rec('P1L-13', 'TC-CRUD-05 (direvisi) / GAP-015', a.ok && cell(srv, '05_TRANSAKSI', a.data.id, 'tanggal') === '2026-07-15' && fa && fa.status === 'TERKUNCI' && b.ok && !b.data.periodeDitandai && g.code === 'PERIOD_STATUS_API_REQUIRED' && st.ok && st.data.closed.indexOf('Juli 2026') !== -1 && ro.ok && c.ok && !c.data.periodeDitandai && raw && raw[1] === 'TERKUNCI',
+      J({ juli: [a.code, fa], okt: b.code, generik: g.code, status: st.data && st.data.closed, reopen: ro.code, setelahReopen: c.code, dataAsli: raw && raw[1] })); }
+  { // GAP-015 (direvisi): kewajiban (tagihan beku) pada periode bertanda tetap dapat ditulis; ditandai di audit
     const srv = makeServer(); setClosed(srv, ['September 2026']);
     const r = safe(() => srv.sb.opRecordBatch('kewajiban', [{ op: 'upsert', id: 'kw_uji_1', row: { siswaId: 's1', komponenId: 'kmp_spp', periode: 'September 2026', bruto: 200000, potongan: '[]', netto: 200000, tagihanId: 'kw_uji_1' } },
       { op: 'upsert', id: 'kw_uji_2', row: { siswaId: 's1', komponenId: 'kmp_spp', periode: 'Oktober 2026', bruto: 200000, potongan: '[]', netto: 200000, tagihanId: 'kw_uji_2' } }]));
     const res = r.ok ? r.data.results.map(x => x.code) : [r.code];
-    rec('P1L-14', 'GAP-015', res[0] === 'PERIOD_LOCKED' && res[1] === 'CREATED' && cnt(srv, '04_KEWAJIBAN') === 1, J(res)); }
+    rec('P1L-14', 'GAP-015 (direvisi)', res[0] === 'CREATED' && res[1] === 'CREATED' && cnt(srv, '04_KEWAJIBAN') === 2 && marks(srv, 'kw_uji_1').length === 1 && marks(srv, 'kw_uji_2').length === 0, J(res)); }
   { // TC-CRUD-04 / GAP-014: rekonsiliasi dengan akunId tak dikenal -> VALIDATION_ERROR (generik maupun API khusus)
     const srv = makeServer();
     const r = safe(() => srv.sb.opRecordUpsert('rekonsiliasi', { id: 'rk_x', akunId: 'tidak_ada', periode: 'Oktober 2026', saldoAktual: 1 }));
@@ -306,6 +315,71 @@ const sync = async c => { await c.sb.centralRunSync(true); await tick(10); await
     const pend = JSON.parse(c2.store.draBendaharaV2_central_pending_anggaran || '{}');
     rec('P1C-06', 'TC-FAIL-07 / GAP-026', Number(cell(srv, '08_ANGGARAN', 'ang_1', 'nominal')) === 1100000 && pend.ang_1 && pend.ang_1.blocked === true && /CONFLICT/.test(pend.ang_1.error || ''),
       J({ server: cell(srv, '08_ANGGARAN', 'ang_1', 'nominal'), klien2: pend.ang_1 && [pend.ang_1.blocked, pend.ang_1.error] })); }
+
+  // ================= P1-POLICY: kebijakan 17-10-2026 (tiga jenis tanggal, rekonsiliasi = batas saldo) =================
+  const juliTerkunci = srv => srv.sheets['15_SETTINGS'].push(['periodeStatus.2026-07', 'TERKUNCI', ''], ['periodeStatus.2026-08', 'TERKUNCI', ''], ['periodeStatus.2026-09', 'TERKUNCI', '']);
+  const oblOf = (srv, sid) => { const o = safe(() => srv.sb.opObligations({ siswaId: sid })); return o.ok ? o.data.rows : null; };
+  { // 1. penerimaan terlambat dicatat pada tanggal AKTUAL; kewajiban Juli dilunasi lewat alokasi eksplisit
+    const srv = makeServer(); juliTerkunci(srv);
+    const r = safe(() => srv.sb.opCreateIncome({ tanggal: '2026-10-20', unit: 'MI', nominal: 200000, akunId: 'akun_kas1', metode: 'Tunai', sumber: 'Pembayaran Siswa', siswaId: 's2', clientRequestId: 'late1',
+      allocations: [{ siswaId: 's2', komponenId: 'kmp_spp', periode: 'Juli 2026', nominal: 200000 }] }));
+    const ob = (oblOf(srv, 's2') || []).find(o => o.periode === 'Juli 2026');
+    const al = rows(srv, '06_ALOKASI').find(x => x[col(srv, '06_ALOKASI', 'transaksiId')] === (r.data && r.data.id));
+    rec('P1P-01', 'Kebijakan A.1 / A.2', r.ok && cell(srv, '05_TRANSAKSI', r.data.id, 'tanggal') === '2026-10-20' && !!al && al[col(srv, '06_ALOKASI', 'periode')] === 'Juli 2026' && ob && ob.sisa === 0 && !r.data.periodeDitandai,
+      J({ r: r.code, tanggal: r.ok && cell(srv, '05_TRANSAKSI', r.data.id, 'tanggal'), periodeKewajiban: al && al[col(srv, '06_ALOKASI', 'periode')], sisaJuli: ob && ob.sisa })); }
+  { // 2+3. kewajiban yang belum dibayar tetap terlihat; transaksi baru tanpa alokasi TIDAK mengubah kewajiban lama
+    const srv = makeServer(); juliTerkunci(srv);
+    const before = J(oblOf(srv, 's2'));
+    const r1 = safe(() => srv.sb.opCreateIncome({ tanggal: '2026-10-21', unit: 'MI', nominal: 200000, akunId: 'akun_kas1', metode: 'Tunai', sumber: 'Pembayaran Siswa', siswaId: 's2', clientRequestId: 'noalk1' }));
+    const r2 = safe(() => srv.sb.opCreateExpense(exp({ tanggal: '2026-10-21', clientRequestId: 'noalk2' })));
+    const after = oblOf(srv, 's2'), ag = (after || []).find(o => o.periode === 'Agustus 2026');
+    rec('P1P-02', 'Kebijakan A.1 (kewajiban tetap belum dibayar)', r1.ok && r2.ok && ag && ag.sisa === 200000 && ag.status === 'BELUM BAYAR', J({ agustus: ag && [ag.sisa, ag.status] }));
+    rec('P1P-03', 'Kebijakan A.2 (tanpa pelunasan otomatis)', r1.ok && before === J(after) && cell(srv, '05_TRANSAKSI', r1.data.id, 'status') === 'TERIDENTIFIKASI', J({ identik: before === J(after), status: r1.ok && cell(srv, '05_TRANSAKSI', r1.data.id, 'status') })); }
+  { // 4. koreksi historis (nominal transaksi September TERKUNCI) diterima dan tertelusur: before/after + penanda, satu append
+    const srv = makeServer(); juliTerkunci(srv);
+    const r = safe(() => srv.sb.opUpdateTransaction({ id: 'imp_trx_2', nominal: 60000, catatan: 'koreksi nota' }));
+    const up = audits(srv).find(x => x.aksi === 'UPDATE_TRANSACTION' && x.refId === 'imp_trx_2');
+    const upAfter = up ? JSON.parse(up.after) : {};
+    rec('P1P-04', 'Kebijakan A.1 (koreksi beraudit)', r.ok && cell(srv, '05_TRANSAKSI', 'imp_trx_2', 'nominal') === 60000 && cell(srv, '05_TRANSAKSI', 'imp_trx_2', 'tanggal') === '2026-09-05' && upAfter.nominal === 60000
+      && markedWith(srv, 'imp_trx_2', 'UPDATE_TRANSACTION', 'September 2026'), J({ r: r.code, marks: marks(srv, 'imp_trx_2').length })); }
+  { // 5. pembekuan kewajiban (opObligationSnapshot) untuk periode TERKUNCI tidak lagi terblokir
+    const srv = makeServer(); applyArchiveCols(srv); juliTerkunci(srv);
+    const r = safe(() => srv.sb.opObligationSnapshot('Juli 2026', {}));
+    const kw = rows(srv, '04_KEWAJIBAN');
+    rec('P1P-05', 'Kebijakan A.1 / GAP-021', r.ok && kw.length >= 2 && kw.every(x => x[col(srv, '04_KEWAJIBAN', 'periode')] === 'Juli 2026') && kw.every(x => marks(srv, x[0]).length === 1), J({ r: [r.code, r.message], baris: kw.length })); }
+  { // 6. operasi tidak berwenang tetap ditolak walau status periode bukan lagi penghalang
+    const srv = makeServer(); juliTerkunci(srv);
+    srv.state.email = 'auditor@x.id'; const a = safe(() => srv.sb.opCreateExpense(exp({ tanggal: '2026-09-10' }))); const a2 = safe(() => srv.sb.opUpdateTransaction({ id: 'imp_trx_2', catatan: 'x' }));
+    srv.state.email = 'asing@x.id'; const b = safe(() => srv.sb.opCreateIncome({ tanggal: '2026-07-10', unit: 'MI', nominal: 1, akunId: 'akun_kas1', metode: 'Tunai', clientRequestId: 'z' }));
+    rec('P1P-06', 'Kebijakan A.1 / TC-AUTH-01 / TC-AUTH-02', a.code === 'ROLE_NOT_ALLOWED' && a2.code === 'ROLE_NOT_ALLOWED' && b.ok === false && b.code === 'USER_NOT_FOUND' && cnt(srv, '05_TRANSAKSI') === 2 && cell(srv, '05_TRANSAKSI', 'imp_trx_2', 'catatan') === '', J({ auditor: [a.code, a2.code], asing: b.code })); }
+  { // 7-9. batas saldo rekonsiliasi: hanya transaksi <= tanggalBatas; transaksi sesudahnya tidak mengubah saldo periode sebelumnya;
+    //      saldoSistemTerkini - saldoSistem = jumlah bersih transaksi sesudah batas. Status TERKUNCI tidak menolak rekonsiliasi.
+    const srv = makeServer(); juliTerkunci(srv);
+    const k1 = safe(() => srv.sb.opReconcileAccount({ akunId: 'akun_kas1', periode: 'September 2026', saldoAktual: 150000, clientRequestId: 'rkp1' }));
+    const e1 = safe(() => srv.sb.opCreateIncome({ tanggal: '2026-10-02', unit: 'MI', nominal: 30000, akunId: 'akun_kas1', metode: 'Tunai', sumber: 'Pembayaran Siswa', clientRequestId: 'post1' }));
+    const e2 = safe(() => srv.sb.opCreateExpense(exp({ tanggal: '2026-10-03', nominal: 5000, clientRequestId: 'post2' })));
+    const k2 = safe(() => srv.sb.opReconcileAccount({ akunId: 'akun_kas1', periode: 'September 2026', saldoAktual: 150000, clientRequestId: 'rkp2' }));
+    const rp = safe(() => srv.sb.opReconcileAccount({ akunId: 'akun_kas1', periode: 'September 2026', saldoAktual: 150000, clientRequestId: 'rkp1' }));
+    const stored = rows(srv, '16_REKONSILIASI').find(x => x[0] === 'gas_rekon_rkp1');
+    const au = audits(srv).find(x => x.aksi === 'REKONSILIASI' && x.refId === 'gas_rekon_rkp2'), auA = au ? JSON.parse(au.after) : {};
+    const hdr = srv.sheets['16_REKONSILIASI'][0];
+    rec('P1P-07', 'TC-REK-03 / Kebijakan A.3', k1.ok && k1.data.saldoSistem === 150000 && k1.data.tanggalBatas === '2026-09-30' && k1.data.status === 'SELESAI' && flagOf(k1.data, 'September 2026'), J({ k1: k1.ok && [k1.data.saldoSistem, k1.data.tanggalBatas, k1.data.saldoSistemTerkini] }));
+    rec('P1P-08', 'TC-REK-03 / Kebijakan A.3', e1.ok && e2.ok && stored && stored[col(srv, '16_REKONSILIASI', 'saldoSistem')] === 150000 && k2.ok && k2.data.saldoSistem === 150000 && rp.ok && rp.data.saldoSistem === 150000 && /replay/.test(rp.message), J({ tersimpan: stored && stored[col(srv, '16_REKONSILIASI', 'saldoSistem')], k2: k2.ok && k2.data.saldoSistem }));
+    rec('P1P-09', 'Kebijakan A.3 (saldo terkini terpisah)', k1.ok && k1.data.saldoSistemTerkini === 150000 && k2.data.saldoSistemTerkini === 175000 && k2.data.saldoSistemTerkini - k2.data.saldoSistem === 30000 - 5000 && rp.data.saldoSistemTerkini === 175000
+      && auA.tanggalBatas === '2026-09-30' && auA.saldoSistemTerkini === 175000 && hdr.indexOf('tanggalBatas') === -1 && hdr.indexOf('saldoSistemTerkini') === -1, J({ terkini: [k1.data && k1.data.saldoSistemTerkini, k2.data && k2.data.saldoSistemTerkini], kolom: hdr.length })); }
+  { // 5 (keputusan). pencatatan + penanda + audit tidak parsial: audit gagal -> transaksi, idempotensi, penanda semuanya batal
+    const srv = makeServer(); juliTerkunci(srv); srv.state.failSetValuesOn = '13_AUDIT_LOG';
+    const r = safe(() => srv.sb.opCreateExpense(exp({ tanggal: '2026-09-10', clientRequestId: 'atom1' })));
+    const sesudahGagal = { trx: cnt(srv, '05_TRANSAKSI'), audit: cnt(srv, '13_AUDIT_LOG'), idem: rows(srv, '24_IDEMPOTENCY_LOG').filter(x => x[0] === 'atom1').length };
+    const r2 = safe(() => srv.sb.opCreateExpense(exp({ tanggal: '2026-09-10', clientRequestId: 'atom1' }))); // ulang dengan clientRequestId sama
+    rec('P1P-10', 'Keputusan 5 / TC-FAIL-03 / GAP-013', r.ok === false && sesudahGagal.trx === 2 && sesudahGagal.audit === 0 && sesudahGagal.idem === 0
+      && r2.ok && cnt(srv, '05_TRANSAKSI') === 3 && marks(srv, r2.data.id).length === 1 && markedWith(srv, r2.data.id, 'CREATE_TRANSACTION', 'September 2026') && audits(srv).filter(x => x.aksi === 'CREATE_TRANSACTION').length === 1,
+      J({ gagal: r.code, sesudahGagal, ulang: r2.code, audit: audits(srv).map(x => x.aksi) })); }
+
+  { // 5 (keputusan), jalur record: audit batch gagal -> baris mutasi dan penanda periode sama-sama batal
+    const srv = makeServer(); juliTerkunci(srv); srv.state.failSetValuesOn = '13_AUDIT_LOG';
+    const r = safe(() => srv.sb.opRecordBatch('mutasiBank', [{ op: 'upsert', id: 'mut_atom', row: { tanggal: '2026-09-15', nominal: 5000, keterangan: 'x', status: 'BELUM_DIPROSES' } }]));
+    rec('P1P-11', 'Keputusan 5 / TC-FAIL-03', r.ok === false && r.code === 'AUDIT_FAILED' && cnt(srv, '11_MUTASI_BANK') === 0 && cnt(srv, '13_AUDIT_LOG') === 0, J({ r: r.code, mutasi: cnt(srv, '11_MUTASI_BANK'), audit: cnt(srv, '13_AUDIT_LOG') })); }
 
   // ================= OTORISASI API P1 (pelajaran P0-C: tidak ada jalur tulis tanpa gerbang) =================
   { const srv = makeServer(); setClosed(srv, ['September 2026']);

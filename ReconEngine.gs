@@ -6,12 +6,19 @@
  *                      Selisih != 0 wajib catatan (aturan klien dipertahankan). Status: SELESAI bila selisih 0,
  *                      selain itu PERLU_PENJELASAN. Idempoten lewat clientRequestId (id baris deterministik).
  *                      saldoSistem/selisih/status kiriman klien DIABAIKAN. Saldo awal TIDAK diubah.
+ *                      [P1-POLICY] Definisi saldo (dipisah tegas):
+ *                        saldo bank per tanggal batas   = saldoAktual (rekening koran, input bendahara)
+ *                        saldo sistem per tanggal batas = saldoSistem (transaksi sah dengan tanggal <= tanggalBatas)
+ *                        selisih rekonsiliasi           = saldoAktual - saldoSistem
+ *                        saldo sistem terkini           = rumus sama TANPA batas tanggal (dihitung saat itu, TIDAK disimpan)
+ *                      tanggalBatas = hari terakhir periode (batas akhir bulan; tanpa kolom baru di 16_REKONSILIASI).
+ *                      Batas ini hanya untuk perhitungan saldo, BUKAN penguncian: status periode tidak menolak.
  * opMatchMutasi      : mencocokkan baris 11_MUTASI_BANK ke transaksi yang sudah ada. Syarat: mutasi aktif dan
  *                      BELUM_DIPROSES, transaksi aktif, nominal sama (selisih < 1), transaksi belum dicocokkan ke
- *                      mutasi lain, periode mutasi terbuka. Tidak pernah membuat transaksi baru.
+ *                      mutasi lain. Tidak pernah membuat transaksi baru. [P1-POLICY] status periode = penanda di audit.
  *
  * DEPENDENSI: TransactionEngine.gs (readTrxRows_, withLock_, errResult_, okResult_), SchemaGuard.gs,
- *             PeriodLock.gs (plGuard_, plIsPeriodLabel_, plPeriodEnd_), RecordEngine.gs (opAuditBulk_, opRestoreRows_),
+ *             PeriodLock.gs (plFlags_, plMarkAfter_, plIsPeriodLabel_, plPeriodEnd_), RecordEngine.gs (opAuditBulk_, opRestoreRows_),
  *             OperationalAPI.gs (opGate_, opStr_, opJsonSafe_, OP_WRITE_ROLES_).
  * STATUS: sandbox lokal saja. BELUM dijalankan di Apps Script sungguhan.
  */
@@ -53,22 +60,32 @@ function opReconcileAccount(p) {
       var m = sgModel_('16_REKONSILIASI', RC_REQ_REKON_);
       if (!m) return errResult_('SCHEMA_MISMATCH', 'Sheet 16_REKONSILIASI tidak ditemukan', null);
       for (var i = 0; i < m.values.length; i++) {
-        if (String(m.values[i][m.idx.id]) === id) return okResult_('Rekonsiliasi sudah pernah dicatat (idempotent replay)', opJsonSafe_(sgObj_(m, m.values[i])));
+        if (String(m.values[i][m.idx.id]) === id) {
+          var prev = opJsonSafe_(sgObj_(m, m.values[i])); // saldoSistem tersimpan = nilai beku pada saat rekonsiliasi
+          prev.tanggalBatas = plPeriodEnd_(String(prev.periode || periode));
+          prev.saldoSistemTerkini = rcSaldoSistem_(String(prev.akunId || akunId), '');
+          return okResult_('Rekonsiliasi sudah pernah dicatat (idempotent replay)', prev);
+        }
       }
-      var pl = plGuard_([periode], 'rekonsiliasi'); if (pl) return pl;
-      var saldoSistem = rcSaldoSistem_(akunId, plPeriodEnd_(periode));
+      var tanggalBatas = plPeriodEnd_(periode), flR = plFlags_([periode]); // [P1-POLICY] penanda, bukan penolakan
+      var saldoSistem = rcSaldoSistem_(akunId, tanggalBatas);
       if (saldoSistem === null) return errResult_('VALIDATION_ERROR', 'akunId tidak ditemukan di 07_AKUN: ' + akunId, 'akunId'); // [TC-CRUD-04]
       var selisih = saldoAktual - saldoSistem, nol = Math.abs(selisih) < 0.5;
       if (!nol && !catatan) return errResult_('VALIDATION_ERROR', 'Selisih ditemukan (' + selisih + ') - catatan penjelasan WAJIB diisi', 'catatan');
       var now = new Date().toISOString();
       var row = { id: id, akunId: akunId, periode: periode, saldoSistem: saldoSistem, saldoAktual: saldoAktual, selisih: nol ? 0 : selisih, catatan: catatan,
         status: nol ? 'SELESAI' : 'PERLU_PENJELASAN', verifiedBy: g.identity.email, verifiedAt: now, createdAt: now };
+      var saldoSistemTerkini = rcSaldoSistem_(akunId, '');
+      var info = Object.assign({}, row, { tanggalBatas: tanggalBatas, saldoSistemTerkini: saldoSistemTerkini }); // respons + audit; TIDAK disimpan di sheet
       var rowNum = sgAppend_('16_REKONSILIASI', RC_REQ_REKON_, row);
-      try { opAuditBulk_([['REKONSILIASI', null, row, id]], g.identity.email); } catch (e) {
+      var auR = [['REKONSILIASI', null, info, id]];
+      if (flR.length) auR.push(['PERIODE_DITANDAI', null, plMarkAfter_(flR, 'REKONSILIASI'), id]);
+      try { opAuditBulk_(auR, g.identity.email); } catch (e) {
         try { sgUndoAppend_(m.sh, rowNum, 1); } catch (re) { return errResult_('ROLLBACK_FAILED', 'Audit gagal DAN pemulihan rekonsiliasi gagal: ' + re.message, null, id); }
         return errResult_('AUDIT_FAILED', 'Audit gagal ditulis; rekonsiliasi dibatalkan', null, id);
       }
-      return okResult_(nol ? 'Rekonsiliasi selesai, saldo sesuai' : 'Rekonsiliasi dicatat dengan selisih (perlu penjelasan/tindak lanjut)', row);
+      if (flR.length) info.periodeDitandai = flR;
+      return okResult_(nol ? 'Rekonsiliasi selesai, saldo sesuai' : 'Rekonsiliasi dicatat dengan selisih (perlu penjelasan/tindak lanjut)', info);
     });
   } catch (e) { return sgErr_(e, 'WRITE_FAILED', 'Gagal mencatat rekonsiliasi'); }
 }
@@ -105,7 +122,7 @@ function opMatchMutasi(p) {
         if (opStr_(mut.transaksiId) === trxId) { var same = okResult_('Mutasi sudah dicocokkan ke transaksi ini', opJsonSafe_(mut)); same.data.unchanged = true; return same; }
         return errResult_('ALREADY_MATCHED', 'Mutasi sudah dicocokkan ke transaksi lain (' + mut.transaksiId + ')', 'mutasiId', mutId);
       }
-      var pl = plGuard_([mut.tanggal], 'mutasi bank'); if (pl) return pl;
+      var flM = plFlags_([mut.tanggal]); // [P1-POLICY] penanda, bukan penolakan
       var trxMap = {}; readTrxRows_().forEach(function (t) { trxMap[String(t.id)] = t; });
       var lk = rcCheckLink_(mut, trxId, list, function (id) { var t = trxMap[id]; return t && !t.archivedAt ? t : null; });
       if (lk) return errResult_(lk.code, lk.message, 'transaksiId', mutId);
@@ -113,11 +130,15 @@ function opMatchMutasi(p) {
       nx[m.idx.status] = 'DIPROSES'; nx[m.idx.transaksiId] = trxId;
       m.sh.getRange(pos + 2, 1, 1, m.live.length).setValues([nx]);
       var before = opJsonSafe_(sgObj_(m, raw)), after = opJsonSafe_(sgObj_(m, nx));
-      try { opAuditBulk_([['COCOKKAN_MUTASI_TRANSAKSI', before, after, mutId]], g.identity.email); } catch (e) {
+      var auM = [['COCOKKAN_MUTASI_TRANSAKSI', before, after, mutId]];
+      if (flM.length) auM.push(['PERIODE_DITANDAI', null, plMarkAfter_(flM, 'COCOKKAN_MUTASI_TRANSAKSI'), mutId]);
+      try { opAuditBulk_(auM, g.identity.email); } catch (e) {
         try { opRestoreRows_(m.sh, m.live.length, [{ rowNum: pos + 2, orig: raw }], 0, 0); } catch (re) { return errResult_('ROLLBACK_FAILED', 'Audit gagal DAN pemulihan mutasi gagal: ' + re.message, null, mutId); }
         return errResult_('AUDIT_FAILED', 'Audit gagal ditulis; pencocokan mutasi dibatalkan', null, mutId);
       }
-      return okResult_('Mutasi dicocokkan ke transaksi yang sudah ada - TIDAK ada transaksi baru dibuat', after);
+      var outM = okResult_('Mutasi dicocokkan ke transaksi yang sudah ada - TIDAK ada transaksi baru dibuat', after);
+      if (flM.length) outM.data.periodeDitandai = flM;
+      return outM;
     });
   } catch (e) { return sgErr_(e, 'WRITE_FAILED', 'Gagal mencocokkan mutasi'); }
 }

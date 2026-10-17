@@ -12,7 +12,9 @@ L.rep(te, " * status alokasi dihitung server, aktor di audit, fungsi engine/tes 
   " * status alokasi dihitung server, aktor di audit, fungsi engine/tes dijadikan privat (akhiran _).\n *\n" +
   " * [P1 - 2026-10-17] Patch build apply_p1_server.js: audit engine satu kali append di langkah TERAKHIR (setelah\n" +
   " * catatan idempotensi) bersama jejak aktor/role (tanpa audit parsial), idempotensi + deteksi konflik pada\n" +
-  " * updateTransaction_, penguncian periode (PeriodLock.gs) di dalam lock, status SELESAI wajib bukti berfile.\n */", 'header', log);
+  " * updateTransaction_, status SELESAI wajib bukti berfile.\n" +
+  " * [P1-POLICY 17-10-2026] Status periode = PENANDA, bukan hard lock: periode bertanda/terlapor tidak menolak tulis;\n" +
+  " * baris audit PERIODE_DITANDAI ikut append audit yang sama dan respons memuat periodeDitandai.\n */", 'header', log);
 
 // ---------- P1-B: idempotensi update + audit batch ----------
 L.rep(te, "var RESULT_TYPE_SHEET = { transaction: SHT_TRANSAKSI, allocation: SHT_ALOKASI, bankMutation: SHT_MUTASI };",
@@ -42,7 +44,7 @@ function engineAuditBatch_(opts, entries, apiRefId) {
 // ---------- createTransactionWithAllocations_ ----------
 L.rep(te, "      if (payload.siswaId && !siswaExists_(payload.siswaId)) return errResult_('INVALID_STUDENT', 'siswaId tidak valid (re-check)', 'siswaId');\n",
   "      if (payload.siswaId && !siswaExists_(payload.siswaId)) return errResult_('INVALID_STUDENT', 'siswaId tidak valid (re-check)', 'siswaId');\n" +
-  "      var plC = plGuard_([payload.tanggal], 'transaksi'); if (plC) return plC; // [P1-A] periode tertutup, diperiksa di dalam lock\n", 'create: period lock', log);
+  "      var plFlagsC = plFlags_([payload.tanggal]); // [P1-POLICY] penanda periode (tidak menolak), dihitung di dalam lock\n", 'create: penanda periode', log);
 {
   const s = te.t, a = s.indexOf('      // --- 6. audit (CREATE_TRANSACTION + CREATE_ALLOCATION per baris) ---'), b = s.indexOf('      // --- 8. success ---');
   if (a < 0 || b < 0 || b < a || s.indexOf('      // --- 6. audit (CREATE_TRANSACTION', a + 1) !== -1) throw new Error('ASSERT create steps 6-7');
@@ -62,6 +64,7 @@ L.rep(te, "      if (payload.siswaId && !siswaExists_(payload.siswaId)) return e
         allocations.forEach(function (a, i) {
           auditRows.push(['CREATE_ALLOCATION', null, { transaksiId: trxId, siswaId: a.siswaId, komponenId: a.komponenId, nominal: a.nominal }, payload.sumber || 'write-door', writtenAllocIds[i]]);
         });
+        if (plFlagsC.length) auditRows.push(['PERIODE_DITANDAI', null, plMarkAfter_(plFlagsC, 'CREATE_TRANSACTION'), payload.sumber || 'write-door', trxId]);
         engineAuditBatch_(opts, auditRows, trxId);
       } catch (e) {
         Logger.log('createTransactionWithAllocations_: audit gagal, rollback transaksi+allocation+idempotency (tidak ada audit parsial): ' + e.message);
@@ -78,7 +81,7 @@ L.rep(te, "      if (payload.siswaId && !siswaExists_(payload.siswaId)) return e
 // ---------- createAllocation_ ----------
 L.rep(te, "      if (trx && trx.archivedAt) return errResult_('TRANSACTION_ARCHIVED', 'Transaksi sudah diarsipkan; alokasi baru tidak diterima: ' + payload.transaksiId, 'transaksiId');\n",
   "      if (trx && trx.archivedAt) return errResult_('TRANSACTION_ARCHIVED', 'Transaksi sudah diarsipkan; alokasi baru tidak diterima: ' + payload.transaksiId, 'transaksiId');\n" +
-  "      var plA = plGuard_([trx && trx.tanggal], 'alokasi'); if (plA) return plA; // [P1-A] transaksi induk pada periode tertutup\n", 'alloc: period lock', log);
+  "      var plFlagsA = plFlags_([trx && trx.tanggal]); // [P1-POLICY] penanda periode transaksi induk (tidak menolak)\n", 'alloc: penanda periode', log);
 L.rep(te, `      try {
         auditPush_('CREATE_ALLOCATION', null, alokRecord, payload.sumber || 'write-door', alokId);
       } catch (e) {
@@ -104,7 +107,9 @@ L.rep(te, `      try {
         return errResult_(engineErrCode_(e), 'Gagal menulis idempotency record, allocation sudah di-rollback (belum ada audit yang tertulis): ' + e.message, null, alokId);
       }
       try {
-        engineAuditBatch_({}, [['CREATE_ALLOCATION', null, alokRecord, payload.sumber || 'write-door', alokId]], alokId);
+        var auA = [['CREATE_ALLOCATION', null, alokRecord, payload.sumber || 'write-door', alokId]];
+        if (plFlagsA.length) auA.push(['PERIODE_DITANDAI', null, plMarkAfter_(plFlagsA, 'CREATE_ALLOCATION'), payload.sumber || 'write-door', alokId]);
+        engineAuditBatch_({}, auA, alokId);
       } catch (e) {
         Logger.log('createAllocation_: audit gagal, rollback allocation+idempotency: ' + e.message);
         deleteRowById_(SHT_ALOKASI, alokId);
@@ -115,7 +120,7 @@ L.rep(te, `      try {
 
 // ---------- createBankMutation_ ----------
 L.rep(te, "      var mutId = ID_PREFIX_MUT + Utilities.getUuid();\n",
-  "      var plM = plGuard_([payload.tanggal], 'mutasi bank'); if (plM) return plM; // [P1-A]\n      var mutId = ID_PREFIX_MUT + Utilities.getUuid();\n", 'mutasi: period lock', log);
+  "      var plFlagsM = plFlags_([payload.tanggal]); // [P1-POLICY] penanda periode (tidak menolak)\n      var mutId = ID_PREFIX_MUT + Utilities.getUuid();\n", 'mutasi: penanda periode', log);
 L.rep(te, `      try {
         auditPush_('CREATE_BANK_MUTATION', null, mutRecord, payload.sumber || 'write-door', mutId);
       } catch (e2) {
@@ -138,7 +143,9 @@ L.rep(te, `      try {
         return errResult_(engineErrCode_(e2), 'Gagal menulis idempotency record, mutasi sudah di-rollback (belum ada audit yang tertulis): ' + e2.message, null, mutId);
       }
       try {
-        engineAuditBatch_({}, [['CREATE_BANK_MUTATION', null, mutRecord, payload.sumber || 'write-door', mutId]], mutId);
+        var auM = [['CREATE_BANK_MUTATION', null, mutRecord, payload.sumber || 'write-door', mutId]];
+        if (plFlagsM.length) auM.push(['PERIODE_DITANDAI', null, plMarkAfter_(plFlagsM, 'CREATE_BANK_MUTATION'), payload.sumber || 'write-door', mutId]);
+        engineAuditBatch_({}, auM, mutId);
       } catch (e2) {
         Logger.log('createBankMutation_: audit gagal, rollback mutasi+idempotency: ' + e2.message);
         deleteRowById_(SHT_MUTASI, mutId);
@@ -146,7 +153,15 @@ L.rep(te, `      try {
         return errResult_(engineErrCode_(e2), 'Gagal menulis audit, mutasi+idempotency sudah di-rollback (tidak ada audit parsial): ' + e2.message, null, mutId);
       }`, 'mutasi: idempotency -> audit batch', log);
 
-// ---------- updateTransaction_ (P1-A/B/E/F) ----------
+// ---------- [P1-POLICY] penanda periode di respons sukses (setelah audit; isi audit tidak berubah) ----------
+L.rep(te, "      return okResult_('Transaksi berhasil dibuat', { id: trxId, transaction: trxRecord, allocationIds: writtenAllocIds });",
+  "      var okC = okResult_('Transaksi berhasil dibuat', { id: trxId, transaction: trxRecord, allocationIds: writtenAllocIds });\n      if (plFlagsC.length) okC.data.periodeDitandai = plFlagsC; // [P1-POLICY]\n      return okC;", 'create: respons penanda', log);
+L.rep(te, "      return okResult_('Allocation berhasil dibuat', alokRecord);",
+  "      if (plFlagsA.length) alokRecord.periodeDitandai = plFlagsA; // [P1-POLICY]\n      return okResult_('Allocation berhasil dibuat', alokRecord);", 'alloc: respons penanda', log);
+L.rep(te, "      return okResult_('Mutasi bank berhasil dicatat', mutRecord);",
+  "      if (plFlagsM.length) mutRecord.periodeDitandai = plFlagsM; // [P1-POLICY]\n      return okResult_('Mutasi bank berhasil dicatat', mutRecord);", 'mutasi: respons penanda', log);
+
+// ---------- updateTransaction_ (P1-B/E/F + P1-POLICY) ----------
 L.replFn(te, 'updateTransaction_', `
 function updateTransaction_(payload) {
   /* [P0-B] Patch PARSIAL: hanya field yang benar-benar berubah yang divalidasi dan ditulis; kolom lain
@@ -155,7 +170,8 @@ function updateTransaction_(payload) {
      perubahan = no-op (tanpa tulis, tanpa audit) sehingga retry aman. Audit gagal -> nilai dipulihkan.
      [P1-B] clientRequestId (opsional) = idempotensi: replay TIDAK diterapkan ulang (tidak menimpa perubahan yang lebih baru).
      [P1-F] _expect (opsional) = {field: nilai yang dilihat klien sebelum mengubah}; nilai server berbeda -> CONFLICT.
-     [P1-A] tanggal lama atau baru pada periode tertutup -> PERIOD_LOCKED (diperiksa di dalam lock).
+     [P1-POLICY] tanggal lama atau baru pada periode bertanda/terlapor TIDAK menolak koreksi; baris audit PERIODE_DITANDAI
+     ikut append audit yang sama dengan UPDATE_TRANSACTION (koreksi historis selalu tertelusur).
      [P1-E] transisi ke SELESAI wajib minimal satu bukti berfile (EVIDENCE_REQUIRED).
      Urutan tulis: baris -> idempotensi -> audit (satu append, terakhir); kegagalan memulihkan langkah sebelumnya. */
   try {
@@ -237,7 +253,7 @@ function updateTransaction_(payload) {
         if (payload.status && payload.status !== cur.status) same.data.statusDihitungServer = true;
         return same;
       }
-      var plU = plGuard_([cur.tanggal, next.tanggal], 'transaksi'); if (plU) return plU; // [P1-A]
+      var plFlagsU = plFlags_([cur.tanggal, next.tanggal]); // [P1-POLICY] penanda, bukan penolakan
       if (next.status === 'SELESAI' && cur.status !== 'SELESAI' && !rgTrxHasEvidence_(payload.id)) { // [P1-E]
         return errResult_('EVIDENCE_REQUIRED', 'Status SELESAI memerlukan minimal satu bukti berfile yang tertaut ke transaksi ini - lampirkan bukti lebih dulu', 'status', payload.id);
       }
@@ -258,7 +274,9 @@ function updateTransaction_(payload) {
         }
       }
       try {
-        engineAuditBatch_({}, [['UPDATE_TRANSACTION', cur, next, 'write-door', payload.id]], payload.id);
+        var auU = [['UPDATE_TRANSACTION', cur, next, 'write-door', payload.id]];
+        if (plFlagsU.length) auU.push(['PERIODE_DITANDAI', null, plMarkAfter_(plFlagsU, 'UPDATE_TRANSACTION'), 'write-door', payload.id]);
+        engineAuditBatch_({}, auU, payload.id);
       } catch (e) {
         Logger.log('updateTransaction_: audit gagal setelah update sukses, RESTORE nilai before: ' + e.message);
         try { restore(); if (crid) deleteIdempotencyByClientRequestId_(crid); } catch (restoreErr) {
@@ -268,6 +286,7 @@ function updateTransaction_(payload) {
       }
       var out = okResult_('Transaksi berhasil diupdate', next);
       out.data.changedFields = ch;
+      if (plFlagsU.length) out.data.periodeDitandai = plFlagsU;
       if (payload.status && next.status !== payload.status) out.data.statusDihitungServer = true;
       return out;
     });

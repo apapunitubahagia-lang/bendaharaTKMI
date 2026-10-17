@@ -9,13 +9,13 @@ const doc = L.load(OUT + 'Bendahara_V2.html');
 
 // ---------- galat permanen baru (tidak diulang tanpa henti; tampil di hitungan gagal sinkron) ----------
 L.rep(doc, "CONFIRM_REQUIRED:1, TOTALS_MISMATCH:1, PLAN_CONFLICT:1};",
-  "CONFIRM_REQUIRED:1, TOTALS_MISMATCH:1, PLAN_CONFLICT:1,\n  /* [P1] */ PERIOD_LOCKED:1, PERIOD_STATE_INVALID:1, PERIOD_LOCK_API_REQUIRED:1, CONFLICT:1, ARCHIVED:1, USE_DEDICATED_API:1, MATCH_VIA_API_REQUIRED:1, MUTASI_LOCKED:1, MATCH_NOMINAL_MISMATCH:1, DOUBLE_MATCH:1, ALREADY_MATCHED:1, INVALID_TRANSACTION:1, INVALID_RAB:1, LPJ_EXCEEDS_TRANSACTION:1, BUKTI_FILE_REQUIRED:1, BUKTI_IMMUTABLE:1, EVIDENCE_REQUIRED:1, IDEMPOTENCY_MISMATCH:1};", 'CC_PERMANENT_', log);
+  "CONFIRM_REQUIRED:1, TOTALS_MISMATCH:1, PLAN_CONFLICT:1,\n  /* [P1] */ PERIOD_LOCKED:1, PERIOD_STATE_INVALID:1, PERIOD_LOCK_API_REQUIRED:1, PERIOD_STATUS_API_REQUIRED:1, CONFLICT:1, ARCHIVED:1, USE_DEDICATED_API:1, MATCH_VIA_API_REQUIRED:1, MUTASI_LOCKED:1, MATCH_NOMINAL_MISMATCH:1, DOUBLE_MATCH:1, ALREADY_MATCHED:1, INVALID_TRANSACTION:1, INVALID_RAB:1, LPJ_EXCEEDS_TRANSACTION:1, BUKTI_FILE_REQUIRED:1, BUKTI_IMMUTABLE:1, EVIDENCE_REQUIRED:1, IDEMPOTENCY_MISMATCH:1};", 'CC_PERMANENT_', log);
 
 // ---------- P1-A: closing / reopen lewat server ----------
 L.replFn(doc, 'closePeriode', `
 function closePeriode(periode){
-  /* [P1-A] Status closing ditegakkan SERVER (opClosePeriod): penulisan pada periode tertutup ditolak di server.
-     Tidak ada lagi penulisan blob lokal; tanpa server -> galat eksplisit. */
+  /* [P1-POLICY] Status closing = penanda administratif yang disimpan SERVER (opClosePeriod, beraudit). Pencatatan pada
+     periode bertanda tetap diterima dan ditandai di audit. Tidak ada penulisan blob lokal; tanpa server -> galat eksplisit. */
   if(!(centralReady_() && ServerBridge.opClosePeriod)){ toast('Gagal menutup periode: ' + centralNotReadyText_()); return; }
   toast('Menutup periode ' + periode + ' di server - menunggu konfirmasi...');
   return ServerBridge.opClosePeriod(periode).then(function(res){
@@ -27,9 +27,9 @@ function closePeriode(periode){
 }`, log);
 L.replFn(doc, 'reopenPeriode', `
 function reopenPeriode(periode){
-  /* [P1-A] Buka kembali periode WAJIB alasan (dicatat di audit server). */
+  /* [P1-A] Buka kembali periode WAJIB alasan (dicatat di audit server). [P1-POLICY] teks sesuai keputusan 17-10-2026. */
   openModal('<h3>Buka Kembali Periode '+esc(periode)+'</h3>'+
-    '<p class="small-muted">Periode yang dibuka kembali dapat diubah lagi. Alasan dicatat di Audit Log server.</p>'+
+    '<p class="small-muted">Status periode bersifat penandaan administratif untuk pelaporan; pencatatan tetap dapat dilakukan dan tercatat di audit.</p>'+
     fieldTextarea('rp_alasan','Alasan membuka kembali (wajib, minimal 10 karakter)','')+
     '<div class="modal-actions"><button class="btn" onclick="closeModal()">Batal</button><button class="btn primary" onclick="submitReopenPeriode(\\''+periode+'\\')">Buka Kembali</button></div>');
 }

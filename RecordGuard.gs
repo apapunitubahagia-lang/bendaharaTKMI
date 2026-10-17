@@ -4,8 +4,9 @@
  * Dipanggil di DALAM lock opRecordBatch, sebelum perubahan diterapkan ke baris. Satu operasi yang melanggar
  * aturan ditolak dengan kode jelas; operasi lain di batch yang sama tetap diproses (perilaku batch tidak berubah).
  *
- *  [P1-A] Periode tertutup  : mutasiBank.tanggal, rekonsiliasi.periode, lpj.tanggal, anggaran.periode,
- *                             komitmen.tanggal, kewajiban.periode (nilai lama DAN baru) -> PERIOD_LOCKED. GAP-015 / K-P1-01.
+ *  [P1-POLICY] Periode      : field periode per sheet (RG_PERIOD_FIELD_, nilai lama DAN baru) TIDAK lagi menolak
+ *                             operasi. rgPeriodFlags_ menghasilkan penanda; RecordEngine menulis baris audit
+ *                             PERIODE_DITANDAI di append audit yang sama (keputusan 17-10-2026).
  *  [P1-C] Rekonsiliasi      : upsert lewat jalur generik ditolak (USE_DEDICATED_API) -> opReconcileAccount.
  *         Mutasi bank       : status/transaksiId hanya lewat opMatchMutasi (MATCH_VIA_API_REQUIRED); baris baru
  *                             berstatus DIPROSES divalidasi dengan aturan pencocokan yang sama (rcCheckLink_).
@@ -14,17 +15,17 @@
  *  [P1-E] Bukti (10_BUKTI)  : baris baru wajib berfile (driveFileId/fileRef); file & tautan transaksi yang sudah
  *                             terisi tidak dapat diubah/dikosongkan; transaksiId wajib transaksi aktif.
  *
- * DEPENDENSI: PeriodLock.gs (plGuard_, plClosedMap_), ReconEngine.gs (rcCheckLink_), TransactionEngine.gs
+ * DEPENDENSI: PeriodLock.gs (plFlags_, plMarkContext_), ReconEngine.gs (rcCheckLink_), TransactionEngine.gs
  *             (readTrxRows_), SchemaGuard.gs (sgModel_), OperationalAPI.gs (opStr_).
  * STATUS: sandbox lokal saja. BELUM dijalankan di Apps Script sungguhan.
  */
-var RG_LOCK_FIELD_ = { mutasiBank: 'tanggal', rekonsiliasi: 'periode', lpj: 'tanggal', anggaran: 'periode', komitmen: 'tanggal', kewajiban: 'periode' }; // kewajiban: GAP-015
+var RG_PERIOD_FIELD_ = { mutasiBank: 'tanggal', rekonsiliasi: 'periode', lpj: 'tanggal', anggaran: 'periode', komitmen: 'tanggal', kewajiban: 'periode' }; // [P1-POLICY] hanya untuk penanda
 
 /* Konteks per batch (dibaca sekali, malas). */
 function rgContext_(key, live, rows) {
-  var ctx = { key: key, live: live, rows: rows, closed: null, trx: null, ang: null };
+  var ctx = { key: key, live: live, rows: rows, mark: null, trx: null, ang: null };
   ctx.col = function (h) { return live.indexOf(h); };
-  ctx.closedMap = function () { if (!ctx.closed) ctx.closed = plClosedMap_(); return ctx.closed; };
+  ctx.markCtx = function () { if (!ctx.mark) ctx.mark = plMarkContext_(); return ctx.mark; };
   ctx.trxById = function () {
     if (!ctx.trx) { ctx.trx = {}; readTrxRows_().forEach(function (t) { ctx.trx[String(t.id)] = t; }); }
     return ctx.trx;
@@ -49,14 +50,7 @@ function rgFilled_(v) { return opStr_(v) !== ''; }
 
 /* cur = objek baris lama (null bila baru), next = objek baris sesudah upsert (null bila archive). */
 function rgCheckOp_(ctx, op, cur, next) {
-  var key = ctx.key, lf = RG_LOCK_FIELD_[key];
-  if (lf) {
-    var vals = [];
-    if (cur) vals.push(cur[lf]);
-    if (next) vals.push(next[lf]);
-    var pl = plGuard_(vals, key, ctx.closedMap());
-    if (pl) return rgFail_(pl.code, pl.message);
-  }
+  var key = ctx.key;
   if (op === 'archive') return null;
   if (key === 'rekonsiliasi') {
     var ak = opStr_(next.akunId); // [TC-CRUD-04 / GAP-014] referensi akun divalidasi lebih dulu
@@ -117,6 +111,13 @@ function rgCheckOp_(ctx, op, cur, next) {
     return null;
   }
   return null;
+}
+
+/* [P1-POLICY] Penanda periode untuk satu operasi record (nilai periode lama dan baru). Tidak pernah menolak. */
+function rgPeriodFlags_(ctx, cur, next) {
+  var f = RG_PERIOD_FIELD_[ctx.key];
+  if (!f) return [];
+  return plFlags_([cur ? cur[f] : null, next ? next[f] : null], ctx.markCtx());
 }
 
 /* [P1-E] Transaksi punya minimal satu bukti aktif yang berfile (driveFileId atau fileRef terisi). */

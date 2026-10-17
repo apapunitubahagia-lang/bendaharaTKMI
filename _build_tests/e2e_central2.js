@@ -179,9 +179,14 @@ const sync = async (c) => { await c.sb.centralRunSync(true); await tick(5); };
     A.Store.saveKeringananAssignment([{ id: 'ka1', siswaId: 's1', policy: 'Yatim', persen: 50 }]); c.sb.closePeriode('September 2026'); await sync(c);
     const setRows = rows(srv, '15_SETTINGS').map(r => r[0]);
     rec('I2 blob (keringanan assignment, penutupan periode) -> 15_SETTINGS sebagai kunci terpisah; terbaca kembali', setRows.some(k => /keringananAssignment|KeringananAssignment/i.test(k)) && setRows.some(k => /periodClosing|PeriodClosing/i.test(k)) && A.Store.loadKeringananAssignment().length === 1 && A.Store.loadPeriodClosing()[0].status === 'CLOSED', setRows);
-    // [P1-A] periode CLOSED kini ditegakkan server: buka kembali lewat jalur resmi (alasan wajib) sebelum skenario transaksi September berikutnya
+    // [P1-POLICY] periode CLOSED = penanda administratif: pengeluaran September lewat UI tetap tersimpan TANPA reopen, ditandai di audit
+    Object.assign(c.fields, { gf_nominal: '7300', gf_penerima: 'Toko Closing', gf_unit: 'MI', gf_tanggal: '2026-09-25', gf_kategori: 'ATK', gf_subkategori: '', gf_akun: 'akun_kas1', gf_metode: 'Tunai', gf_catatan: 'setelah closing' });
+    A.State.pengeluaranForm = {}; c.sb.submitPengeluaran(); await sync(c); await sync(c);
+    const trxClosed = rows(srv, '05_TRANSAKSI').find(r => r[col(srv, '05_TRANSAKSI', 'nominal')] === 7300);
+    rec('I2b [P1-POLICY] periode CLOSED tidak memblokir pencatatan via UI; tanggal aktual dipertahankan; audit PERIODE_DITANDAI', !!trxClosed && trxClosed[col(srv, '05_TRANSAKSI', 'tanggal')] === '2026-09-25' && rows(srv, '13_AUDIT_LOG').some(r => r[2] === 'PERIODE_DITANDAI' && r[6] === trxClosed[0]), { trx: !!trxClosed, toast: c.toast() });
+    // reopen tetap diuji sebagai perubahan status administratif (alasan wajib + audit)
     Object.assign(c.fields, { rp_alasan: 'uji e2e: lanjutkan skenario transaksi September' }); await c.sb.submitReopenPeriode('September 2026'); await sync(c);
-    rec('I3 [P1-A] buka kembali periode lewat server (alasan wajib, audit REOPEN_PERIODE); status terbaca OPEN', A.Store.loadPeriodClosing()[0].status === 'OPEN' && rows(srv, '13_AUDIT_LOG').some(r => r[2] === 'REOPEN_PERIODE'), A.Store.loadPeriodClosing());
+    rec('I3 [P1-A] buka kembali periode (status administratif) lewat server (alasan wajib, audit REOPEN_PERIODE); status terbaca OPEN', A.Store.loadPeriodClosing()[0].status === 'OPEN' && rows(srv, '13_AUDIT_LOG').some(r => r[2] === 'REOPEN_PERIODE'), A.Store.loadPeriodClosing());
 
     // ===== S: settings =====
     const st = A.Store.loadSettings(); st.namaBendahara = 'Bu Nur'; st.periodeAktif = 'Oktober 2026'; A.Store.saveSettings(st); await sync(c);
@@ -200,7 +205,7 @@ const sync = async (c) => { await c.sb.centralRunSync(true); await tick(5); };
     // ===== TRX reversal =====
     const t1 = c.sb.postTransaksi({ jenis: 'PENERIMAAN', tanggal: '2026-09-12', unit: 'MI', nominal: 200000, akunId: 'akun_kas1', metode: 'Tunai', status: 'TERCATAT', sumber: 'Pembayaran Siswa', siswaId: 's2' });
     await sync(c);
-    const gid = rows(srv, '05_TRANSAKSI').find(r => String(r[0]).startsWith('gas_trx_'))[0];
+    const gid = rows(srv, '05_TRANSAKSI').find(r => String(r[0]).startsWith('gas_trx_') && r[col(srv, '05_TRANSAKSI', 'jenis')] === 'PENERIMAAN' && r[col(srv, '05_TRANSAKSI', 'siswaId')] === 's2')[0]; // [P1-POLICY] dipertajam: I2b menambah pengeluaran gas_trx_ lebih dulu
     const ob = c.sb.kewajibanForSiswa('s2').find(o => o.periode === 'September 2026');
     c.sb.createAlokasi(gid, [{ ob, nominal: 150000, caraBayar: 'cicilan' }]); await sync(c);
     const alk = rows(srv, '06_ALOKASI').find(r => r[1] === gid);

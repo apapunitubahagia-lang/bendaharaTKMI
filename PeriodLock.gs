@@ -1,16 +1,24 @@
 /**
- * PeriodLock.gs - [P1-A] Penguncian periode (closing) yang DITEGAKKAN SERVER.
+ * PeriodLock.gs - Status periode (closing) sebagai PENANDA ADMINISTRATIF.
+ *
+ * [P1-POLICY 17-10-2026] Keputusan pengguna: status CLOSED/TERKUNCI BUKAN hard lock pencatatan rutin.
+ * Penulisan pada periode bertanda (atau periode yang laporannya sudah ada di 17_LAPORAN) TETAP diterima bila lolos
+ * otorisasi dan validasi; pemanggil menambahkan baris audit 'PERIODE_DITANDAI' di append audit YANG SAMA dengan
+ * audit wajib (plFlags_ + plMarkAfter_) dan mengembalikan periodeDitandai di respons. Status periode dan riwayat
+ * closing tetap disimpan dan hanya diubah lewat opClosePeriod/opReopenPeriod (beraudit, reopen wajib alasan).
  *
  * - Sumber status closing: blob klien yang SUDAH ADA di 15_SETTINGS (key 'blob.periodClosing.n' dan
  *   'blob.periodClosing.0..n-1', isi JSON [{periode, status, closedAt, closedBy, ...}]). Tidak ada sheet/kolom
  *   baru dan tidak ada migrasi: riwayat closing yang sudah tercatat langsung berlaku.
  * - [GAP-015] Status bawaan backend FINAL juga dibaca apa adanya: key 15_SETTINGS 'periodeStatus.YYYY-MM' bernilai
- *   TERKUNCI (atau CLOSED/LOCKED) = periode terkunci. Key itu TIDAK pernah ditulis kode ini (data asli dipertahankan).
+ *   TERKUNCI (atau CLOSED/LOCKED) = periode bertanda. Key itu TIDAK pernah ditulis kode ini (data asli dipertahankan).
  *   Entri blob closing (keputusan close/reopen lewat server, berjejak waktu) mengalahkan periodeStatus untuk periode
  *   yang sama, sehingga reopen beralasan atas periode TERKUNCI tetap mungkin tanpa mengubah data asli.
- * - Blob dan key periodeStatus.* HANYA diubah lewat opClosePeriod / opReopenPeriod (opSettingsUpsert menolak keduanya).
- * - plGuard_ dipanggil di DALAM lock yang sama dengan penulisan (engine, record, arsip, rekonsiliasi).
- * - Status blob rusak (JSON tidak terbaca) -> gagal tertutup (PERIOD_STATE_INVALID), bukan dianggap terbuka.
+ * - Blob dan key periodeStatus.* HANYA diubah lewat opClosePeriod / opReopenPeriod (opSettingsUpsert menolak keduanya:
+ *   PERIOD_STATUS_API_REQUIRED) agar setiap perubahan status beraudit.
+ * - plFlags_ dipanggil di DALAM lock yang sama dengan penulisan; penanda ikut append audit yang sama.
+ * - Status blob rusak (JSON tidak terbaca) -> TIDAK memblokir; dicatat sebagai penanda statusTidakTerbaca.
+ * - Riwayat: P1-A (3f9548a..31bb919) memakai hard lock PERIOD_LOCKED; dicabut oleh keputusan 17-10-2026.
  * - Label periode = format klien/FinanceEngine: "<Bulan> <Tahun>" (mis. "September 2026").
  *
  * DEPENDENSI: TransactionEngine.gs (errResult_, okResult_, withLock_, SHT_SETTINGS), SchemaGuard.gs (sgModel_,
@@ -74,28 +82,51 @@ function plRead_() {
 /* Peta periode terkunci: periodeStatus TERKUNCI, lalu ditimpa entri blob (CLOSED menambah, OPEN membuka). */
 function plClosedFrom_(st) {
   var map = {};
-  Object.keys(st.statusLocked).forEach(function (p) { map[p] = true; });
+  Object.keys(st.statusLocked).forEach(function (p) { map[p] = 'TERKUNCI'; });
   st.list.forEach(function (c) {
     if (!c || !c.periode) return;
-    if (c.status === 'CLOSED') map[String(c.periode)] = true; else delete map[String(c.periode)];
+    if (c.status === 'CLOSED') map[String(c.periode)] = 'CLOSED'; else delete map[String(c.periode)];
   });
   return map;
 }
 function plClosedMap_() { return plClosedFrom_(plRead_()); }
-/* values = tanggal (yyyy-MM-dd / Date) atau label periode. Mengembalikan errResult_ PERIOD_LOCKED atau null.
-   closedMap opsional (dipakai ulang dalam satu batch). */
-function plGuard_(values, what, closedMap) {
-  var closed;
-  try { closed = closedMap || plClosedMap_(); } catch (e) { return errResult_(e.code || 'PERIOD_STATE_INVALID', e.message, 'periode'); }
-  for (var i = 0; i < (values || []).length; i++) {
-    var v = values[i];
-    if (v === null || v === undefined || v === '') continue;
+/* [P1-POLICY] Konteks penanda: periode bertanda (CLOSED/TERKUNCI) dan periode yang sudah dilaporkan (17_LAPORAN aktif).
+   TIDAK PERNAH melempar dan tidak pernah memblokir: status yang tidak terbaca dicatat sebagai penanda, bukan galat. */
+function plMarkContext_() {
+  var ctx = { closed: {}, reported: {}, invalid: null, reportedUnknown: false };
+  try { ctx.closed = plClosedMap_(); } catch (e) { ctx.invalid = (e && e.code) || 'PERIOD_STATE_INVALID'; }
+  try {
+    var m = sgModel_('17_LAPORAN', ['periode']);
+    (m ? m.values : []).forEach(function (r) {
+      var a = sgGet_(m, r, 'archivedAt');
+      if (a !== undefined && a !== '' && a !== null) return;
+      ctx.reported[String(r[m.idx.periode])] = true;
+    });
+  } catch (e) { ctx.reportedUnknown = true; }
+  return ctx;
+}
+/* [P1-POLICY] Penanda periode untuk sekumpulan tanggal/label. [] bila tidak ada yang perlu ditandai.
+   Bentuk: [{periode, status: 'CLOSED'|'TERKUNCI'|'TERBUKA', dilaporkan, statusTidakTerbaca?}] */
+function plFlags_(values, ctx) {
+  ctx = ctx || plMarkContext_();
+  var out = [], seen = {};
+  (values || []).forEach(function (v) {
+    if (v === null || v === undefined || v === '') return;
     var p = plIsPeriodLabel_(v) ? String(v) : plPeriodeOfDate_(v);
-    if (p && closed[p]) {
-      return errResult_('PERIOD_LOCKED', 'Periode ' + p + ' sudah ditutup (closing); ' + (what || 'data') + ' pada periode itu tidak dapat dibuat/diubah. Buka kembali periode lewat Pengaturan > Closing (wajib alasan).', 'periode');
-    }
-  }
-  return null;
+    if (!p || seen[p]) return;
+    seen[p] = true;
+    var st = ctx.closed[p] || 'TERBUKA', rep = !!ctx.reported[p];
+    if (st === 'TERBUKA' && !rep && !ctx.invalid) return;
+    var f = { periode: p, status: st, dilaporkan: rep };
+    if (ctx.invalid) f.statusTidakTerbaca = ctx.invalid;
+    out.push(f);
+  });
+  return out;
+}
+/* [P1-POLICY] Isi kolom 'after' baris audit PERIODE_DITANDAI (null bila tidak ada penanda). */
+function plMarkAfter_(flags, operasi) {
+  if (!flags || !flags.length) return null;
+  return { operasi: operasi, periode: flags, kebijakan: 'Status periode = penandaan administratif; pencatatan diterima dan tercatat di audit (keputusan 17-10-2026)' };
 }
 
 function opPeriodLockStatus() {
