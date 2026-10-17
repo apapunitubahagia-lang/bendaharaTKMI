@@ -1463,7 +1463,7 @@ function kpiIndukRow(kpiMaster, periode){
   const jumlahMasalah = indicators.reduce((s,r)=>s+indicatorProblemRows(r, periode).length, 0);
   return Object.assign({}, kpiMaster, {indicators, skor, status:kpiStatusFromScore(skor), jumlahMasalah});
 }
-function kpiIndukSummary(periode){
+function kpiIndukSummaryCompute_(periode){
   periode = periode || Store.loadSettings().periodeAktif;
   const rows = KPI_MASTER.map(k=>kpiIndukRow(k, periode));
   const filled = rows.filter(r=>r.skor!=null);
@@ -1471,8 +1471,33 @@ function kpiIndukSummary(periode){
   const overall = bobotDiisi ? round1(sum(filled.map(r=>r.skor*r.bobot))/bobotDiisi) : null;
   return {periode, rows, overall, overallStatus:kpiStatusFromScore(overall)};
 }
+/* [P0-D] Sumber data KPI wajib berasal dari server dan termuat lengkap. Bila tidak, KPI berstatus
+   "DATA TIDAK TERSEDIA" (skor null), BUKAN skor 0 "Perlu Perbaikan". Alasan dicatat tanpa data sensitif. */
+const KPI_DATA_UNAVAILABLE_ = 'DATA TIDAK TERSEDIA';
+const KPI_SOURCE_KEYS_ = ['transaksi', 'alokasi', 'kewajiban', 'anggaran', 'komitmen', 'bukti', 'mutasiBank', 'rekonsiliasi', 'laporan'];
+function kpiDataStatus_(){
+  const alasan = [];
+  try{
+    if(typeof ServerBridge === 'undefined' || !ServerBridge) alasan.push('server tidak terhubung');
+    else if(!centralReady_()) alasan.push('pengguna belum terotorisasi');
+    else {
+      if(!CentralMasterData.ready) alasan.push('data master belum termuat');
+      const st = OperationalCache.states;
+      KPI_SOURCE_KEYS_.forEach(function(k){ const s = st[k]; if(!s || !s.loaded || s.error) alasan.push(OP_SHEETS[k] + (s && s.error ? ' gagal dimuat' : ' belum termuat')); });
+    }
+  }catch(e){ alasan.push('status sumber data tidak dapat diperiksa'); }
+  if(alasan.length) console.warn('[KPI] ' + KPI_DATA_UNAVAILABLE_ + ': ' + alasan.join('; '));
+  return {ok: !alasan.length, alasan: alasan};
+}
+function kpiUnavailableRow_(k, ds){ return Object.assign({}, k, {indicators: [], skor: null, status: KPI_DATA_UNAVAILABLE_, jumlahMasalah: 0, dataUnavailable: true, alasan: ds.alasan}); }
+function kpiIndukSummary(periode){
+  periode = periode || Store.loadSettings().periodeAktif;
+  const ds = kpiDataStatus_();
+  if(!ds.ok) return {periode: periode, rows: KPI_MASTER.map(function(k){ return kpiUnavailableRow_(k, ds); }), overall: null, overallStatus: KPI_DATA_UNAVAILABLE_ + ' (' + ds.alasan.join('; ') + ')', dataUnavailable: true, alasan: ds.alasan};
+  return kpiIndukSummaryCompute_(periode);
+}
 /* Kompatibilitas nama lama dipakai UI (Beranda/Laporan) */
-function kpiRow(kode, periode){ return kpiIndukRow(KPI_MASTER.find(k=>k.kode===kode), periode); }
+function kpiRow(kode, periode){ const ds = kpiDataStatus_(); if(!ds.ok) return kpiUnavailableRow_(KPI_MASTER.find(k=>k.kode===kode), ds); return kpiIndukRow(KPI_MASTER.find(k=>k.kode===kode), periode); } // [P0-D]
 function kpiSummary(periode){ return kpiIndukSummary(periode); }
 
 /* ---- 5b. BENDAHARA KPI DATA (bukan logic baru - hanya data BDS01-06
@@ -8609,6 +8634,7 @@ function centralVerifyObligations(periode){
 function centralSnapshotKpi(periode){
   periode = periode || Store.loadSettings().periodeAktif;
   const summary = kpiIndukSummary(periode), now = new Date().toISOString(), safe = periode.replace(/[^A-Za-z0-9]+/g, '_');
+  if(summary.dataUnavailable) throw new Error('KPI ' + KPI_DATA_UNAVAILABLE_ + ' (' + summary.alasan.join('; ') + ') - snapshot TIDAK disimpan.'); // [P0-D] tidak menyimpan skor palsu
   const arr = Store.loadKpiSnapshot();
   summary.rows.forEach(function(r){
     const row = {id:'kpi_' + safe + '_' + r.kode, periode:periode, kpiKode:r.kode, indikatorKode:'', skor:r.skor == null ? '' : r.skor, status:r.status, computedAt:now};
@@ -8748,7 +8774,7 @@ function pdSnapObl(){
   const periode = Store.loadSettings().periodeAktif;
   return ServerBridge.opObligationSnapshot(periode).then(function(res){ toast(res && res.ok ? ('Snapshot kewajiban: ' + res.data.dibuat + ' baru, ' + res.data.diperbarui + ' diperbarui') : ('Gagal: ' + centralErrText(res))); CentralSync.refresh.add('kewajiban'); return loadOperationalData(['kewajiban']).then(()=>res); });
 }
-function pdSnapKpi(){ const n = centralSnapshotKpi(); toast('Snapshot KPI disimpan (' + n + ' baris) - menunggu sinkron'); return n; }
+function pdSnapKpi(){ let n = 0; try{ n = centralSnapshotKpi(); }catch(e){ toast('GAGAL: ' + e.message); return 0; } toast('Snapshot KPI disimpan (' + n + ' baris) - menunggu sinkron'); return n; } // [P0-D]
 function pdAuditView(){
   const st = OperationalCache.states.audit;
   if(!st.loaded){ pdOut_('pdOblOut', 'Audit server belum dimuat'); return; }

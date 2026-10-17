@@ -303,6 +303,15 @@ async function bootClient(srv, opts) {
       const names = ['KPI_MASTER', 'INDICATOR_MASTER', 'indDef', 'computeKpiRow', 'kpiIndukRow', 'computeIndicatorDimensions', 'computeIndicatorActivityStatus', 'computeIndicatorQuality', 'kpiStatusFromScore', 'mkAkt', 'financialAktivitasFeed', 'getIndicatorRealization', 'computeIndicatorQuantityScore'];
       const diff = names.filter(n => grab(baseJs, n) !== grab(js, n));
       rec('P0D-05', 'regresi KPI', diff.length === 0, diff.length ? 'berubah: ' + diff.join(',') : 'definisi & rumus KPI identik (' + names.length + ' simbol)');
+      const sumBase = grab(baseJs, 'kpiIndukSummary'), sumNew = (grab(js, 'kpiIndukSummaryCompute_') || '').replace(/^function kpiIndukSummaryCompute_\(/, 'function kpiIndukSummary(');
+      rec('P0D-06', 'regresi KPI', !!sumBase && sumBase === sumNew, 'isi kpiIndukSummary asli dipertahankan utuh sebagai kpiIndukSummaryCompute_');
+      // regresi UI statis: markup/CSS di luar <script> identik; tidak ada fungsi/halaman yang hilang
+      const strip = s => s.replace(/<script>[\s\S]*?<\/script>/g, '<script/>');
+      rec('P0U-02', 'regresi UI', strip(baseHtml) === strip(fs.readFileSync(OUT + 'Bendahara_V2.html', 'utf8').replace(/\r/g, '')), 'markup & CSS di luar <script> identik dengan main');
+      const fnames = code => new Set((code.match(/^(?:async )?function\s+([A-Za-z0-9_$]+)/gm) || []).map(l => l.replace(/^(?:async )?function\s+/, '')));
+      const fb = fnames(baseJs), fn = fnames(js), lost = [...fb].filter(n => !fn.has(n));
+      const navB = (baseJs.match(/const NAV_TREE = [\s\S]*?\n\];/) || [''])[0], navN = (js.match(/const NAV_TREE = [\s\S]*?\n\];/) || [''])[0];
+      rec('P0U-03', 'regresi UI', lost.length === 0 && navB && navB === navN, lost.length ? 'hilang: ' + lost.join(',') : fb.size + ' fungsi baseline tetap ada; NAV_TREE identik');
     }
   }
 

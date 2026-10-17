@@ -1,0 +1,6 @@
+apply_central.js: OK 73 perubahan -> D:/biaya TK MI/BENDAHARA_V2_REPO/Bendahara_V2.html
+apply_tarif.js: apply_tarif OK: 24 perubahan
+apply_p0_client.js: apply_p0_client OK: 29 perubahan
+build_server_engines.js: OK: ObligationEngine.gs (22 fungsi diekstrak verbatim), FinanceEngine.gs, TransactionEngine.gs (patch aditif), MasterDataRead.gs
+apply_p0_server.js: apply_p0_server OK: 51 perubahan
+build_bridge.js: ServerBridge: 28 method op* ditambahkan

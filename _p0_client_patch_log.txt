@@ -23,3 +23,7 @@
 23. koleksi: wajib server setelah boot
 24. blob: wajib server setelah boot
 25. bootstrapCentralAuth: tanda boot
+26. replace fn kpiIndukSummary
+27. kpiRow: data tidak tersedia
+28. snapshot KPI ditolak bila data tidak tersedia
+29. pdSnapKpi: galat ditampilkan
