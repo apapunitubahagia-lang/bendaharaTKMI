@@ -202,7 +202,7 @@ Setiap perubahan ekspektasi menyangkut perilaku **"mode lokal"** yang secara eks
 | 6 | Antrean tulis masih di localStorage (desain asinkron). Alokasi *in-flight* (±1,5 detik) dihitung di klien sebelum konfirmasi | Baris gagal dikecualikan. Menulis sinkron penuh = refaktor alur, di luar P0 minimal |
 | 7 | `opSchemaApply`: audit gagal masih `auditWarning` | Pemulihan header berisiko. Operasi admin, bukan transaksi |
 | 8 | Baris audit tambahan `API_*` (role) gagal → `auditWarning` | Audit **wajib** dengan aktor sudah atomik di engine. Baris ini pelengkap |
-| 9 | Transfer antar-akun kini ditolak | Perlu write-door server (GAP-028, P1) dan **persetujuan** atas perubahan perilaku ini |
+| 9 | Transfer antar-akun kini ditolak | **DISETUJUI pengguna (17-10-2026):** "Saya setuju Transfer antar-akun diblokir sampai ada jalur server (GAP-028)." Blokir tetap berlaku sampai write-door server untuk transfer (GAP-028, P1) dibuat dan diuji |
 | 10 | `AUTH_CENTRAL_TEST.gs` (fungsi publik yang membaca `26_USER_ACCESS`) dan `MigrationOneTime.gs` | **Jangan di-deploy.** Berkas ini ada di `deps/` saja. Isi proyek Apps Script live tidak diketahui |
 
 ## 9. Risiko residual
