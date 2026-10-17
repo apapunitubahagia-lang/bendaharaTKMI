@@ -5,6 +5,8 @@
 - `05_DAFTAR_GAP_DAN_RISIKO.xlsx`: 47 temuan (11 P0, 26 P1, 10 P2), commit `f4f9fd4`.
 - `07_RANCANGAN_TEST_CASE.md`: diunggah sebagai `.md`, bukan `.xlsx`.
 
+> **Pembaruan 17-10-2026 (keputusan kebijakan):** status periode CLOSED/TERKUNCI kini **penanda administratif, bukan hard lock** (commit `79e2b66`). Ekspektasi `PERIOD_LOCKED` untuk GAP-015 / TC-CRUD-05 / P1L-13 / P1L-14 di dokumen ini **ditimpa**: penulisan diterima dan ditandai di audit. Lihat `P1_03_POLICY_CHANGE_AUDIT.md` dan `P1_03_IMPLEMENTATION_REPORT.md`. Status saat ini: `READY_FOR_INTEGRATION_TEST`.
+
 **Status P1: tetap BELUM SELESAI.** Uji live (Apps Script + salinan Sheets) masih BLOCKED.
 
 Hambatan H7 di `P1_00` (dokumen tidak tersedia) **teratasi**. ID TC sementara `TC-P1-*` diganti dengan ID dokumen di `p1_tests.js`.
