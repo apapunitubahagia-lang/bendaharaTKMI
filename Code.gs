@@ -161,8 +161,14 @@ function handleCheckPairingStatus_(body) {
 // gerbang auth + penerusan payload apa adanya.
 // ============================================================
 var PAIRING_ACTIONS_ = { requestPairing: true, checkPairingStatus: true };
+/* [P0-C] Jalur HTTP lama (doPost + device pairing) DINONAKTIFKAN. Jalur ini hanya memeriksa device token
+   (tanpa role 26_USER_ACCESS, tanpa AllocationGuard, clientRequestId tidak wajib) dan requestPairing menulis
+   25_DEVICE_WHITELIST tanpa autentikasi. Bendahara_V2.html tidak memakainya (include BridgeClient dikomentari);
+   jalur resmi = google.script.run -> op* (opGate_). Mengaktifkan kembali memerlukan keputusan & audit keamanan. */
+var LEGACY_DOPOST_ENABLED_ = false;
 
 function routeAction_(body) {
+  if (!LEGACY_DOPOST_ENABLED_) return errResult_('LEGACY_BRIDGE_DISABLED', 'Jalur HTTP lama dinonaktifkan. Gunakan aplikasi Bendahara (akun Google terotorisasi).', null);
   if (!body || !body.action) {
     return errResult_('VALIDATION_ERROR', 'action wajib diisi', 'action');
   }
@@ -180,15 +186,15 @@ function routeAction_(body) {
   if (body.clientRequestId) payload.clientRequestId = body.clientRequestId;
 
   switch (action) {
-    case 'createIncome': return createIncome(payload);
-    case 'createExpense': return createExpense(payload);
-    case 'createTransaction': return createTransaction(payload);
-    case 'createAllocation': return createAllocation(payload);
-    case 'updateTransaction': return updateTransaction(payload);
-    case 'getTransaction': return getTransaction(payload.id);
-    case 'getTransactions': return getTransactions(payload);
-    case 'getStudentPosition': return getStudentPosition(payload.siswaId);
-    case 'healthCheck': return healthCheck();
+    case 'createIncome': return createIncome_(payload);
+    case 'createExpense': return createExpense_(payload);
+    case 'createTransaction': return createTransaction_(payload);
+    case 'createAllocation': return createAllocation_(payload);
+    case 'updateTransaction': return updateTransaction_(payload);
+    case 'getTransaction': return getTransaction_(payload.id);
+    case 'getTransactions': return getTransactions_(payload);
+    case 'getStudentPosition': return getStudentPosition_(payload.siswaId);
+    case 'healthCheck': return healthCheck_();
     default:
       return errResult_('UNKNOWN_ACTION', 'Action tidak dikenal atau sengaja belum didukung bridge (lihat audit Fase 3B-3A): ' + action, 'action');
   }
@@ -213,7 +219,7 @@ function doGet(e) {
     .createTemplateFromFile('Bendahara_V2')
     .evaluate()
     .setTitle('Bendahara Darul Arifin')
-    .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
+    .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.DEFAULT); // [P0-C] tidak lagi ALLOWALL (cegah embedding dari domain lain)
 }
 function include(filename) {
   return HtmlService
@@ -223,7 +229,9 @@ function include(filename) {
 function doPost(e) {
   var response;
   try {
-    if (!e || !e.postData || !e.postData.contents) {
+    if (!LEGACY_DOPOST_ENABLED_) {
+      response = errResult_('LEGACY_BRIDGE_DISABLED', 'Jalur HTTP lama dinonaktifkan. Gunakan aplikasi Bendahara (akun Google terotorisasi).', null); // [P0-C]
+    } else if (!e || !e.postData || !e.postData.contents) {
       response = errResult_('VALIDATION_ERROR', 'Body request kosong', null);
     } else {
       var body = JSON.parse(e.postData.contents);

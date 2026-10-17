@@ -18,21 +18,34 @@
 18. rollback status (audit)
 19. rollback status (idempotensi)
 20. replace fn updateTransaction
-21. oblLoadContext_ mk
-22. opObligations err
-23. snapshot err
-24. FCC mk
-25. FCC err
-26. replace fn tpReadSheet_
-27. tarif plan err
-28. replace fn readMasterRows_
-29. replace fn getStudents
-30. replace fn getGuardians
-31. replace fn getComponents
-32. replace fn getTariffs
-33. replace fn getAccounts
-34. replace fn getIncomeCategories
-35. replace fn getExpenseCategories
-36. replace fn getSubcategories
-37. replace fn getAcademicYears
-38. replace fn getSettings
+21. rename createIncome -> createIncome_ (5x)
+22. rename createExpense -> createExpense_ (3x)
+23. rename createTransaction -> createTransaction_ (3x)
+24. rename createAllocation -> createAllocation_ (7x)
+25. rename createBankMutation -> createBankMutation_ (7x)
+26. rename updateTransaction -> updateTransaction_ (6x)
+27. rename getTransactions -> getTransactions_ (1x)
+28. rename getTransaction -> getTransaction_ (3x)
+29. rename getStudentPosition -> getStudentPosition_ (3x)
+30. rename healthCheck -> healthCheck_ (2x)
+31. rename testConcurrentWriteDoor -> testConcurrentWriteDoor_ (10x)
+32. rename runFinancialSafetyTests -> runFinancialSafetyTests_ (2x)
+33. rename regressionCheck -> regressionCheck_ (3x)
+34. oblLoadContext_ mk
+35. opObligations err
+36. snapshot err
+37. FCC mk
+38. FCC err
+39. replace fn tpReadSheet_
+40. tarif plan err
+41. replace fn readMasterRows_
+42. replace fn getStudents
+43. replace fn getGuardians
+44. replace fn getComponents
+45. replace fn getTariffs
+46. replace fn getAccounts
+47. replace fn getIncomeCategories
+48. replace fn getExpenseCategories
+49. replace fn getSubcategories
+50. replace fn getAcademicYears
+51. replace fn getSettings

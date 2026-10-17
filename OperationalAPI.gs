@@ -120,23 +120,23 @@ function opEngineWrite_(action, payload, engineFn, requireClientRequestId, keepI
   }
   return opJsonSafe_(res);
 }
-function opCreateIncome(payload) { return opEngineWrite_('CREATE_INCOME', payload, createIncome, true, false); }
-function opCreateExpense(payload) { return opEngineWrite_('CREATE_EXPENSE', payload, createExpense, true, false); }
-function opCreateAllocation(payload) { return opEngineWrite_('CREATE_ALLOCATION', payload, createAllocation, true, false); }
+function opCreateIncome(payload) { return opEngineWrite_('CREATE_INCOME', payload, createIncome_, true, false); }
+function opCreateExpense(payload) { return opEngineWrite_('CREATE_EXPENSE', payload, createExpense_, true, false); }
+function opCreateAllocation(payload) { return opEngineWrite_('CREATE_ALLOCATION', payload, createAllocation_, true, false); }
 // Kontrak idempotency updateTransaction: UNKNOWN - NEED LIVE VERIFICATION (tidak diwajibkan di sini).
-function opUpdateTransaction(payload) { return opEngineWrite_('UPDATE_TRANSACTION', payload, updateTransaction, false, true); }
+function opUpdateTransaction(payload) { return opEngineWrite_('UPDATE_TRANSACTION', payload, updateTransaction_, false, true); }
 
 function opGetTransactions(filters) {
   var g = opGate_(OP_READ_ROLES_); if (!g.ok) return g;
-  try { return opJsonSafe_(getTransactions(filters && typeof filters === 'object' ? filters : {})); } catch (e) { return sgErr_(e, 'READ_FAILED', 'Gagal membaca transaksi'); } // [P0-A]
+  try { return opJsonSafe_(getTransactions_(filters && typeof filters === 'object' ? filters : {})); } catch (e) { return sgErr_(e, 'READ_FAILED', 'Gagal membaca transaksi'); } // [P0-A]
 }
 function opGetTransaction(id) {
   var g = opGate_(OP_READ_ROLES_); if (!g.ok) return g;
-  try { return opJsonSafe_(getTransaction(id)); } catch (e) { return sgErr_(e, 'READ_FAILED', 'Gagal membaca transaksi'); } // [P0-A]
+  try { return opJsonSafe_(getTransaction_(id)); } catch (e) { return sgErr_(e, 'READ_FAILED', 'Gagal membaca transaksi'); } // [P0-A]
 }
 function opGetStudentPosition(siswaId) {
   var g = opGate_(OP_READ_ROLES_); if (!g.ok) return g;
-  try { return opJsonSafe_(getStudentPosition(siswaId)); } catch (e) { return sgErr_(e, 'READ_FAILED', 'Gagal membaca posisi siswa'); } // [P0-A]
+  try { return opJsonSafe_(getStudentPosition_(siswaId)); } catch (e) { return sgErr_(e, 'READ_FAILED', 'Gagal membaca posisi siswa'); } // [P0-A]
 }
 
 // ============================================================

@@ -72,7 +72,7 @@ rec('S ObligationEngine: fungsi bisnis = salinan verbatim dari HTML (dihasilkan,
     const archivedAlk = s.sheets['06_ALOKASI'].filter(x => x[1] === trxId && x[s.sheets['06_ALOKASI'][0].indexOf('archivedAt')]).length;
     rec('R14 reversal transaksi: transaksi + SEMUA alokasinya diarsipkan, tidak ada baris hilang; ulangi -> idempotent', r.ok && r.data.transaksiDiarsipkan === 1 && archivedAlk === 2 && B.opArchiveTransaction(trxId, 'ulang').data.transaksiDiarsipkan === 0 && s.sheets['05_TRANSAKSI'].length === 4, JSON.stringify(r.data));
     rec('R15 opArchiveTransaction untuk id tak ada -> NOT_FOUND', B.opArchiveTransaction('tidak-ada', 'x').code === 'NOT_FOUND');
-    rec('R16 getStudentPosition mengabaikan alokasi arsip', B.getStudentPosition('s1').data.totalTerbayar === 200000, JSON.stringify(B.getStudentPosition('s1').data));
+    rec('R16 getStudentPosition mengabaikan alokasi arsip', B.opGetStudentPosition('s1').data.totalTerbayar === 200000, JSON.stringify(B.opGetStudentPosition('s1').data));
     // R17 batch tx
     r = B.opCreateTxBatch([{ kind: 'expense', payload: { tanggal: '2026-10-02', unit: 'MI', nominal: 10, akunId: 'akun_kas1', metode: 'Tunai', status: 'TERCATAT', kategori: 'ATK', penerima: 'X', clientRequestId: 'b1' } }, { kind: 'income', payload: { tanggal: '2026-10-02', unit: 'MI', nominal: 20, akunId: 'tidak_ada', metode: 'Tunai', status: 'TERCATAT', clientRequestId: 'b2' } }, { kind: 'expense', payload: { tanggal: '2026-10-02', unit: 'MI', nominal: 10, akunId: 'akun_kas1', metode: 'Tunai', status: 'TERCATAT', kategori: 'ATK', penerima: 'X', clientRequestId: 'b1' } }, { kind: 'zzz' }]);
     const rr = r.data.results;

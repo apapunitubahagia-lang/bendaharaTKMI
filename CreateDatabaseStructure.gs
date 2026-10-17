@@ -268,7 +268,9 @@ var HEADER_FONT_COLOR = '#FFFFFF';
    - data di bawah baris header TIDAK pernah disentuh
    - dipanggil berkali-kali menghasilkan struktur akhir yang SAMA
    ============================================================ */
-function setupDatabaseStructure() {
+/* [P0-C] Diprivatkan (akhiran _): fungsi ini MEMBUAT/MENGUBAH sheet dan sebelumnya dapat dipanggil siapa pun lewat
+   google.script.run. Jalankan hanya dari editor Apps Script pada spreadsheet UJI, lewat fungsi pembungkus sementara. */
+function setupDatabaseStructure_() {
   var ss = SpreadsheetApp.getActiveSpreadsheet();
   var log = [];
 
@@ -404,6 +406,8 @@ function reorderSheets_(ss) {
    - primary key terdefinisi (ada di header) atau tidak
    ============================================================ */
 function validateDatabaseStructure() {
+  // [P0-C] hanya pengguna terotorisasi (baca)
+  if (typeof opGate_ === 'function') { var g0 = opGate_(OP_READ_ROLES_); if (!g0.ok) return g0; }
   var ss = SpreadsheetApp.getActiveSpreadsheet();
   var report = [];
   var allOk = true;

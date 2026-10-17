@@ -14,24 +14,24 @@
  * TIDAK ADA: delete API production, createExpectedReceivable(), KPI/Kewajiban
  * engine - semua itu sengaja di luar cakupan file ini (lihat bagian L).
  *
- * TEST MODE (revisi kedua): testConcurrentWriteDoor() memakai
+ * TEST MODE (revisi kedua): testConcurrentWriteDoor_() memakai
  * createTransactionWithAllocations_ForTest_() - jalur validasi/FK/
  * LockService/idempotency/rollback SAMA PERSIS dengan production (write-door
  * sungguhan, bukan mock), HANYA audit yang dialihkan ke Logger.log() +
  * array collector, TIDAK PERNAH ke 13_AUDIT_LOG. Konsekuensinya:
- * regressionCheck() sekarang WAJIB menunjukkan kelima metrik (termasuk
- * jumlahAuditLog) persis kembali ke baseline setelah testConcurrentWriteDoor()
+ * regressionCheck_() sekarang WAJIB menunjukkan kelima metrik (termasuk
+ * jumlahAuditLog) persis kembali ke baseline setelah testConcurrentWriteDoor_()
  * dijalankan, karena test tidak lagi menyentuh sheet audit sama sekali.
  *
  * Keamanan TEST MODE - kenapa browser tidak bisa mengaktifkannya:
  * opts.testMode adalah ARGUMEN KEDUA createTransactionWithAllocations_(),
  * BUKAN field di dalam payload (payload.testMode, kalau ada, tidak pernah
- * dibaca di mana pun). Semua 10 fungsi public wajib (createIncome dkk.)
+ * dibaca di mana pun). Semua 10 fungsi public wajib (createIncome_ dkk.)
  * hanya menerima SATU argumen dan tidak pernah meneruskan argumen kedua -
  * jadi opts selalu {} (testMode false) di jalur production apa pun isi
  * payload-nya. Satu-satunya titik yang menyalakan testMode:true adalah
  * createTransactionWithAllocations_ForTest_() - fungsi privat yang hanya
- * dipanggil dari testConcurrentWriteDoor(), tidak pernah dari luar.
+ * dipanggil dari testConcurrentWriteDoor_(), tidak pernah dari luar.
  *
  * [P0 - 2026-10-17] Patch build apply_p0_server.js: baca/tulis berbasis NAMA header (SchemaGuard.gs),
  * SCHEMA_MISMATCH gagal tertutup, normalisasi tanggal, validasi patch per-field, invarian nominal >= alokasi,
@@ -168,7 +168,7 @@ function recordIdempotentResult_(clientRequestId, resultRefId, resultType) {
   sgAppend_(SHT_IDEMPOTENCY, IDEMP_HEADERS, { clientRequestId: clientRequestId, resultRefId: resultRefId, resultType: resultType, createdAt: new Date().toISOString() }); // [P0-A]
 }
 /* [P] Helper cleanup - HANYA dipakai oleh:
-   (1) test cleanup (testConcurrentWriteDoor), dan
+   (1) test cleanup (testConcurrentWriteDoor_), dan
    (2) rollback internal atas idempotency record yang BARU SAJA dibuat oleh
        operasi yang sama yang kemudian gagal di langkah berikutnya.
    TIDAK PERNAH dipakai untuk menghapus idempotency record production lain -
@@ -292,7 +292,7 @@ function validateTransactionPayload_(payload) {
   return null;
 }
 
-/* [G] Validasi allocations[] untuk createIncome(). */
+/* [G] Validasi allocations[] untuk createIncome_(). */
 function validateAllocationsForIncome_(allocations, trxSiswaId, trxNominal) {
   if (!allocations || !allocations.length) return null;
   var sum = 0;
@@ -329,7 +329,7 @@ function writeMutasiRow_(mut) {
   sgAppend_(SHT_MUTASI, MUT_HEADERS, o); // [P0-A]
 }
 /* [PATCH ADITIF - arsip/reversal] Alokasi yang sudah diarsipkan (kolom archivedAt terisi) TIDAK dihitung.
-   Sheet tanpa kolom archivedAt berperilaku persis seperti sebelumnya. Hanya fungsi ini + getStudentPosition yang berubah. */
+   Sheet tanpa kolom archivedAt berperilaku persis seperti sebelumnya. Hanya fungsi ini + getStudentPosition_ yang berubah. */
 function activeAllocationRows_() {
   // [P0-A] berbasis nama; alokasi berkolom archivedAt terisi tidak dihitung
   var m = sgModel_(SHT_ALOKASI, ALOK_HEADERS);
@@ -406,7 +406,7 @@ function withLock_(fn) {
 // ============================================================
 // PUBLIC API
 // ============================================================
-function healthCheck() {
+function healthCheck_() {
   try {
     var ss = ss_();
     var trxSheet = ss.getSheetByName(SHT_TRANSAKSI);
@@ -420,20 +420,20 @@ function healthCheck() {
       serverTime: new Date().toISOString()
     });
   } catch (e) {
-    return errResult_(engineErrCode_(e), 'healthCheck gagal: ' + e.message, null);
+    return errResult_(engineErrCode_(e), 'healthCheck_ gagal: ' + e.message, null);
   }
 }
 
-/* [G] createIncome(payload) - payload boleh menyertakan allocations[].
-   createExpense(payload) - PENGELUARAN, tidak menerima allocation siswa.
-   createTransaction(payload) - alias generik (jenis sudah di payload). */
-function createIncome(payload) {
+/* [G] createIncome_(payload) - payload boleh menyertakan allocations[].
+   createExpense_(payload) - PENGELUARAN, tidak menerima allocation siswa.
+   createTransaction_(payload) - alias generik (jenis sudah di payload). */
+function createIncome_(payload) {
   return createTransactionWithAllocations_(Object.assign({}, payload, { jenis: 'PENERIMAAN' }));
 }
-function createExpense(payload) {
+function createExpense_(payload) {
   return createTransactionWithAllocations_(Object.assign({}, payload, { jenis: 'PENGELUARAN', allocations: null }));
 }
-function createTransaction(payload) {
+function createTransaction_(payload) {
   return createTransactionWithAllocations_(payload);
 }
 
@@ -461,7 +461,7 @@ function createTransactionWithAllocations_(payload, opts) {
       return errResult_('IDEMPOTENCY_ORPHAN', 'clientRequestId ini pernah tercatat sukses (refId=' + idemp1.record.resultRefId + ') tapi transaksinya sudah tidak ada di ' + SHT_TRANSAKSI + '. Tidak membuat transaksi baru secara diam-diam.', 'clientRequestId', idemp1.record.resultRefId);
     }
     if (idemp1.status === 'found') {
-      var priorGet = getTransaction(idemp1.record.resultRefId);
+      var priorGet = getTransaction_(idemp1.record.resultRefId);
       return okResult_('Request sudah pernah diproses (idempotent replay)', priorGet.data || { id: idemp1.record.resultRefId });
     }
 
@@ -473,7 +473,7 @@ function createTransactionWithAllocations_(payload, opts) {
         return errResult_('IDEMPOTENCY_ORPHAN', 'clientRequestId ini pernah tercatat sukses (refId=' + idemp2.record.resultRefId + ') tapi transaksinya sudah tidak ada (re-check saat lock). Tidak membuat transaksi baru secara diam-diam.', 'clientRequestId', idemp2.record.resultRefId);
       }
       if (idemp2.status === 'found') {
-        var priorGet2 = getTransaction(idemp2.record.resultRefId);
+        var priorGet2 = getTransaction_(idemp2.record.resultRefId);
         return okResult_('Request sudah pernah diproses (idempotent replay, terdeteksi saat lock)', priorGet2.data || { id: idemp2.record.resultRefId });
       }
       if (payload.akunId && !akunExists_(payload.akunId)) return errResult_('INVALID_ACCOUNT', 'akunId tidak valid (re-check)', 'akunId');
@@ -574,19 +574,19 @@ function createTransactionWithAllocations_(payload, opts) {
 /* [TEST MODE] SATU-SATUNYA titik di seluruh file yang menyalakan
    opts.testMode = true. Fungsi privat (trailing underscore + akhiran
    _ForTest_), TIDAK ADA di daftar 10 fungsi wajib section C, TIDAK PERNAH
-   dipanggil oleh createIncome/createExpense/createTransaction ataupun jalur
-   public lain - HANYA oleh testConcurrentWriteDoor() di bawah. Menerima
+   dipanggil oleh createIncome_/createExpense_/createTransaction_ ataupun jalur
+   public lain - HANYA oleh testConcurrentWriteDoor_() di bawah. Menerima
    `collector` (array) supaya audit test bisa diperiksa balik dari hasil
    test tanpa pernah menyentuh 13_AUDIT_LOG. */
 function createTransactionWithAllocations_ForTest_(payload, collector) {
   return createTransactionWithAllocations_(payload, { testMode: true, auditCollector: collector });
 }
 
-/* [J] createAllocation(payload) - allocation berdiri sendiri terhadap
+/* [J] createAllocation_(payload) - allocation berdiri sendiri terhadap
    transaksi yang SUDAH ADA. validate -> lock -> re-check transaction ->
    cek total allocation -> write -> audit -> idempotency; rollback kalau
    audit/idempotency gagal. */
-function createAllocation(payload) {
+function createAllocation_(payload) {
   try {
     if (!payload || !payload.transaksiId) return errResult_('VALIDATION_ERROR', 'transaksiId wajib diisi', 'transaksiId');
     if (!transaksiExists_(payload.transaksiId)) return errResult_('INVALID_TRANSACTION', 'transaksiId tidak ditemukan: ' + payload.transaksiId, 'transaksiId');
@@ -623,7 +623,7 @@ function createAllocation(payload) {
       try {
         writeAllocationRow_(alokRecord);
       } catch (e) {
-        Logger.log('createAllocation: write gagal: ' + e.message);
+        Logger.log('createAllocation_: write gagal: ' + e.message);
         return errResult_(engineErrCode_(e), 'Gagal menulis allocation: ' + e.message, null);
       }
       // [P0-B] status alokasi transaksi induk dihitung server
@@ -641,7 +641,7 @@ function createAllocation(payload) {
       try {
         auditPush_('CREATE_ALLOCATION', null, alokRecord, payload.sumber || 'write-door', alokId);
       } catch (e) {
-        Logger.log('createAllocation: audit gagal setelah write sukses, rollback allocation: ' + e.message);
+        Logger.log('createAllocation_: audit gagal setelah write sukses, rollback allocation: ' + e.message);
         deleteRowById_(SHT_ALOKASI, alokId);
         if (statusBaru) setTrxStatusCell_(trx.id, statusSebelum);
         return errResult_(engineErrCode_(e), 'Gagal menulis audit, allocation sudah di-rollback: ' + e.message, null, alokId);
@@ -649,7 +649,7 @@ function createAllocation(payload) {
       try {
         recordIdempotentResult_(payload.clientRequestId, alokId, 'allocation');
       } catch (e) {
-        Logger.log('createAllocation: idempotency gagal setelah audit sukses, rollback allocation (audit TETAP ada): ' + e.message);
+        Logger.log('createAllocation_: idempotency gagal setelah audit sukses, rollback allocation (audit TETAP ada): ' + e.message);
         deleteRowById_(SHT_ALOKASI, alokId);
         if (statusBaru) setTrxStatusCell_(trx.id, statusSebelum);
         return errResult_(engineErrCode_(e), 'Gagal menulis idempotency record, allocation sudah di-rollback (audit tetap ada): ' + e.message, null, alokId);
@@ -657,14 +657,14 @@ function createAllocation(payload) {
       return okResult_('Allocation berhasil dibuat', alokRecord);
     });
   } catch (e) {
-    Logger.log('createAllocation: error tak terduga: ' + e.message + '\n' + e.stack);
-    return errResult_(engineErrCode_(e), 'createAllocation error tak terduga: ' + e.message, null);
+    Logger.log('createAllocation_: error tak terduga: ' + e.message + '\n' + e.stack);
+    return errResult_(engineErrCode_(e), 'createAllocation_ error tak terduga: ' + e.message, null);
   }
 }
 
-/* [K] createBankMutation(payload) - staging rekonsiliasi, TERPISAH dari
+/* [K] createBankMutation_(payload) - staging rekonsiliasi, TERPISAH dari
    05_TRANSAKSI, TIDAK OTOMATIS membuat transaksi. */
-function createBankMutation(payload) {
+function createBankMutation_(payload) {
   try {
     if (!payload) return errResult_('VALIDATION_ERROR', 'payload wajib diisi', null);
     var e = validateTanggal_(payload.tanggal); if (e) return errResult_('VALIDATION_ERROR', e, 'tanggal');
@@ -690,36 +690,36 @@ function createBankMutation(payload) {
       try {
         writeMutasiRow_(mutRecord);
       } catch (e2) {
-        Logger.log('createBankMutation: write gagal: ' + e2.message);
+        Logger.log('createBankMutation_: write gagal: ' + e2.message);
         return errResult_(engineErrCode_(e2), 'Gagal menulis mutasi bank: ' + e2.message, null);
       }
       try {
         auditPush_('CREATE_BANK_MUTATION', null, mutRecord, payload.sumber || 'write-door', mutId);
       } catch (e2) {
-        Logger.log('createBankMutation: audit gagal setelah write sukses, rollback mutasi: ' + e2.message);
+        Logger.log('createBankMutation_: audit gagal setelah write sukses, rollback mutasi: ' + e2.message);
         deleteRowById_(SHT_MUTASI, mutId);
         return errResult_(engineErrCode_(e2), 'Gagal menulis audit, mutasi sudah di-rollback: ' + e2.message, null, mutId);
       }
       try {
         recordIdempotentResult_(payload.clientRequestId, mutId, 'bankMutation');
       } catch (e2) {
-        Logger.log('createBankMutation: idempotency gagal setelah audit sukses, rollback mutasi (audit TETAP ada): ' + e2.message);
+        Logger.log('createBankMutation_: idempotency gagal setelah audit sukses, rollback mutasi (audit TETAP ada): ' + e2.message);
         deleteRowById_(SHT_MUTASI, mutId);
         return errResult_(engineErrCode_(e2), 'Gagal menulis idempotency record, mutasi sudah di-rollback (audit tetap ada): ' + e2.message, null, mutId);
       }
       return okResult_('Mutasi bank berhasil dicatat', mutRecord);
     });
   } catch (e) {
-    Logger.log('createBankMutation: error tak terduga: ' + e.message + '\n' + e.stack);
-    return errResult_(engineErrCode_(e), 'createBankMutation error tak terduga: ' + e.message, null);
+    Logger.log('createBankMutation_: error tak terduga: ' + e.message + '\n' + e.stack);
+    return errResult_(engineErrCode_(e), 'createBankMutation_ error tak terduga: ' + e.message, null);
   }
 }
 
-/* [I] updateTransaction(payload) - bukan blind overwrite. cari -> exists ->
+/* [I] updateTransaction_(payload) - bukan blind overwrite. cari -> exists ->
    validate -> lock -> re-check -> update -> audit. Kalau update sukses tapi
    audit gagal: RESTORE nilai before (bukan rollback-hapus, karena baris
    sudah ada sejak sebelumnya - beda dari create yang rollback-nya delete). */
-function updateTransaction(payload) {
+function updateTransaction_(payload) {
   /* [P0-B] Patch PARSIAL: hanya field yang benar-benar berubah yang divalidasi dan ditulis; kolom lain
      (termasuk kolom tambahan/arsip) dipertahankan apa adanya. Field di luar kontrak / immutable ditolak.
      Nominal tidak boleh < total alokasi aktif. Status keluarga alokasi dihitung server. Patch tanpa
@@ -786,13 +786,13 @@ function updateTransaction(payload) {
       try {
         m.sh.getRange(rowNum, 1, 1, m.live.length).setValues([newRaw]);
       } catch (e) {
-        Logger.log('updateTransaction: write gagal: ' + e.message);
+        Logger.log('updateTransaction_: write gagal: ' + e.message);
         return errResult_(engineErrCode_(e), 'Gagal update transaksi: ' + e.message, null, payload.id);
       }
       try {
         auditPush_('UPDATE_TRANSACTION', cur, next, 'write-door', payload.id);
       } catch (e) {
-        Logger.log('updateTransaction: audit gagal setelah update sukses, RESTORE nilai before: ' + e.message);
+        Logger.log('updateTransaction_: audit gagal setelah update sukses, RESTORE nilai before: ' + e.message);
         try { m.sh.getRange(rowNum, 1, 1, m.live.length).setValues([raw]); } catch (restoreErr) {
           return errResult_('ROLLBACK_FAILED', 'Audit gagal DAN restore nilai before juga gagal: ' + restoreErr.message, null, payload.id);
         }
@@ -804,8 +804,8 @@ function updateTransaction(payload) {
       return out;
     });
   } catch (e) {
-    Logger.log('updateTransaction: error tak terduga: ' + e.message);
-    return errResult_(engineErrCode_(e), 'updateTransaction error tak terduga: ' + e.message, null);
+    Logger.log('updateTransaction_: error tak terduga: ' + e.message);
+    return errResult_(engineErrCode_(e), 'updateTransaction_ error tak terduga: ' + e.message, null);
   }
 }
 
@@ -837,12 +837,12 @@ function getTransactionRaw_(id) {
   for (var i = 0; i < rows.length; i++) if (rows[i].id === id) return rows[i];
   return null;
 }
-function getTransaction(id) {
+function getTransaction_(id) {
   var t = getTransactionRaw_(id);
   if (!t) return errResult_('NOT_FOUND', 'Transaksi tidak ditemukan: ' + id, 'id', id);
   return okResult_('OK', t);
 }
-function getTransactions(filters) {
+function getTransactions_(filters) {
   filters = filters || {};
   var rows = readTrxRows_();
   var out = rows.filter(function (r) {
@@ -857,9 +857,9 @@ function getTransactions(filters) {
   if (filters.limit) out = out.slice(0, filters.limit);
   return okResult_('OK', out);
 }
-/* [L] getStudentPosition() - HANYA agregasi mentah, BUKAN kewajiban
+/* [L] getStudentPosition_() - HANYA agregasi mentah, BUKAN kewajiban
    terhitung/expected receivable. Engine itu sengaja tidak dipindahkan ke sini. */
-function getStudentPosition(siswaId) {
+function getStudentPosition_(siswaId) {
   if (!siswaId) return errResult_('VALIDATION_ERROR', 'siswaId wajib diisi', 'siswaId');
   if (!siswaExists_(siswaId)) return errResult_('INVALID_STUDENT', 'siswaId tidak ditemukan: ' + siswaId, 'siswaId');
   var alokasi = activeAllocationRows_().filter(function (a) { return a.siswaId === siswaId; });
@@ -885,7 +885,7 @@ function getStudentPosition(siswaId) {
 // request browser sungguhan diserahkan ke LockService saat dipanggil lewat
 // Web App (doPost) - itulah baris pertahanan sesungguhnya, bukan test ini.
 // ============================================================
-function testConcurrentWriteDoor() {
+function testConcurrentWriteDoor_() {
   var results = [];
   var testAuditCollector = []; // [TEST MODE] audit test masuk sini, BUKAN ke 13_AUDIT_LOG
   var testAkun = readAllRows_(SHT_AKUN, ['id', 'nama', 'jenis', 'saldoAwal'])[0];
@@ -927,7 +927,7 @@ function testConcurrentWriteDoor() {
   if (r3.ok) { cleanupIds.push(r3.data.id); deleteIdempotencyByClientRequestId_(crIdB); }
   cleanupIds.forEach(function (id) { deleteRowById_(SHT_TRANSAKSI, id); });
 
-  Logger.log('testConcurrentWriteDoor selesai. deletedTestTransactionIds=' + JSON.stringify(cleanupIds) +
+  Logger.log('testConcurrentWriteDoor_ selesai. deletedTestTransactionIds=' + JSON.stringify(cleanupIds) +
     ' | duplicateHandledCorrectly=' + duplicateHandledCorrectly + ' | independentSuccess=' + independentSuccess +
     ' | testAuditCollector berisi ' + testAuditCollector.length + ' entri (TIDAK PERNAH ditulis ke 13_AUDIT_LOG)');
 
@@ -941,14 +941,14 @@ function testConcurrentWriteDoor() {
     r1: r1, r2: r2, r3: r3,
     details: results
   };
-  return okResult_('testConcurrentWriteDoor selesai (transaksi+idempotency test sudah dibersihkan; audit test TIDAK PERNAH menyentuh 13_AUDIT_LOG production)', summary);
+  return okResult_('testConcurrentWriteDoor_ selesai (transaksi+idempotency test sudah dibersihkan; audit test TIDAK PERNAH menyentuh 13_AUDIT_LOG production)', summary);
 }
 
 // ============================================================
 // [N] FINANCIAL SAFETY TEST - hanya jalur REJECT yang secara desain TIDAK
 // PERNAH menulis apa pun ke Sheets, jadi aman dijalankan berkali-kali.
 // ============================================================
-function runFinancialSafetyTests() {
+function runFinancialSafetyTests_() {
   var results = [];
   function check(name, expectedCode, actualResult) {
     var status = (actualResult.ok === false && actualResult.code === expectedCode) ? 'PASS' : 'FAIL';
@@ -980,7 +980,7 @@ function runFinancialSafetyTests() {
   var passed = results.filter(function (r) { return r.status === 'PASS'; }).length;
   var failed = results.length - passed;
   var allPass = failed === 0;
-  return okResult_('runFinancialSafetyTests selesai (jalur REJECT saja - tidak menulis data)', {
+  return okResult_('runFinancialSafetyTests_ selesai (jalur REJECT saja - tidak menulis data)', {
     totalTests: results.length, passed: passed, failed: failed, allPass: allPass, results: results
   });
 }
@@ -993,7 +993,7 @@ function validateTransactionPayloadPublicWrapper_(payload) {
 // [O] REGRESSION CHECK - membandingkan terhadap baseline literal, BUKAN
 // hanya menghitung baris. Lihat catatan di kepala file soal audit log.
 // ============================================================
-function regressionCheck() {
+function regressionCheck_() {
   function count(name) { var sh = ss_().getSheetByName(name); return sh ? Math.max(0, sh.getLastRow() - 1) : 0; }
   var actual = {
     jumlahTransaksi: count(SHT_TRANSAKSI),
@@ -1009,6 +1009,6 @@ function regressionCheck() {
     }
   });
   var status = differences.length === 0 ? 'PASS' : 'FAIL';
-  var note = 'Sejak TEST MODE dipisahkan dari audit production (auditPushTest_/writeAuditEntry_), testConcurrentWriteDoor() TIDAK PERNAH menulis ke 13_AUDIT_LOG - jadi kelima metrik di atas, TERMASUK jumlahAuditLog, WAJIB persis sama dengan baseline bahkan setelah testConcurrentWriteDoor() dijalankan berkali-kali.';
-  return okResult_('regressionCheck selesai', { baseline: REGRESSION_BASELINE, actual: actual, differences: differences, status: status, note: note });
+  var note = 'Sejak TEST MODE dipisahkan dari audit production (auditPushTest_/writeAuditEntry_), testConcurrentWriteDoor_() TIDAK PERNAH menulis ke 13_AUDIT_LOG - jadi kelima metrik di atas, TERMASUK jumlahAuditLog, WAJIB persis sama dengan baseline bahkan setelah testConcurrentWriteDoor_() dijalankan berkali-kali.';
+  return okResult_('regressionCheck_ selesai', { baseline: REGRESSION_BASELINE, actual: actual, differences: differences, status: status, note: note });
 }

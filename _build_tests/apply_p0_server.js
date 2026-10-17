@@ -135,6 +135,13 @@ function auditPush_(aksi, before, after, sumber, refId) {
 // ---------- P0-B: konsistensi transaksi/alokasi ----------
 require('./p0_server_b.js')(te, L, log);
 
+// ---------- P0-C: fungsi engine & tes tidak dapat dipanggil langsung lewat google.script.run ----------
+// Apps Script mengekspos SETIAP fungsi global tanpa akhiran "_" ke klien. Fungsi engine di bawah melewati opGate_
+// (role), AllocationGuard dan kewajiban clientRequestId bila dipanggil langsung -> dijadikan privat. Pintu resmi = op*.
+['createIncome', 'createExpense', 'createTransaction', 'createAllocation', 'createBankMutation', 'updateTransaction',
+ 'getTransactions', 'getTransaction', 'getStudentPosition', 'healthCheck', 'testConcurrentWriteDoor', 'runFinancialSafetyTests', 'regressionCheck']
+  .forEach(function (n) { L.renameIdent(te, n, n + '_', log); });
+
 // ======================= ObligationEngine.gs / FinanceEngine.gs / TarifPlan.gs =======================
 const ob = L.load(OUT + 'ObligationEngine.gs');
 L.rep(ob, "  var mk = function (sheet) { var m = opSheetModel_(sheet); return m ? m.rows.map(function (r) { return opJsonSafe_(opRowObj_(m.live, r)); }).filter(function (o) { return !o.archivedAt; }) : []; };",
