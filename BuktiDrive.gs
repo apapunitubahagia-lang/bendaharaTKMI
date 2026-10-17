@@ -56,7 +56,14 @@ function opUploadBukti(p) {
         if (existingIdx >= 0) { var merged = m.rows[existingIdx].slice(); ['driveFileId', 'driveFileUrl', 'kategori', 'judul', 'tanggal'].forEach(function (h) { if (c(h) !== -1 && row[c(h)] !== '') merged[c(h)] = row[c(h)]; }); if (trxId && c('transaksiId') !== -1) merged[c('transaksiId')] = trxId; m.sh.getRange(existingIdx + 2, 1, 1, m.lastCol).setValues([merged]); row = merged; }
         else m.sh.getRange(m.lastRow + 1, 1, 1, m.lastCol).setValues([row]);
         var saved = opRowObj_(m.live, row), out = okResult_('Bukti diunggah ke Drive', opJsonSafe_(saved));
-        try { opAuditBulk_([['BUKTI_UPLOAD', null, { id: id, transaksiId: trxId, driveFileId: file.getId(), mime: mime, bytes: b64.length }, id]], g.identity.email); } catch (e) { out.auditWarning = 'AUDIT_FAILED'; }
+        try { opAuditBulk_([['BUKTI_UPLOAD', null, { id: id, transaksiId: trxId, driveFileId: file.getId(), mime: mime, bytes: b64.length }, id]], g.identity.email); } catch (e) {
+          // [P0-B] audit wajib gagal -> baris 10_BUKTI dipulihkan dan file yang baru dibuat dibuang ke trash
+          var rbErr = null;
+          try { if (existingIdx >= 0) m.sh.getRange(existingIdx + 2, 1, 1, m.lastCol).setValues([m.rows[existingIdx]]); else sgUndoAppend_(m.sh, m.lastRow + 1, 1); } catch (re) { rbErr = re; }
+          try { file.setTrashed(true); } catch (e3) { /* dicatat di Logger */ Logger.log('trash bukti gagal: ' + e3.message); }
+          if (rbErr) return errResult_('ROLLBACK_FAILED', 'Audit gagal DAN pemulihan baris bukti gagal: ' + rbErr.message, null, id);
+          return errResult_('AUDIT_FAILED', 'Audit gagal ditulis; unggahan bukti dibatalkan', null, id);
+        }
         return out;
       } catch (e) {
         if (file) { try { file.setTrashed(true); } catch (e2) { /* biarkan */ } }

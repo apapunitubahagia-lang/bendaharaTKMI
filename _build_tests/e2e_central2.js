@@ -269,8 +269,13 @@ const sync = async (c) => { await c.sb.centralRunSync(true); await tick(5); };
     // data lokal lama (sebelum sentralisasi): 1 transaksi baru, 1 mirip server, anggaran, dokumen
     const cL0 = makeClient(makeServer(), { noBridge: true, store }); cL0.sb.initializeSeedData();
     cL0.a.Store.saveAnggaran([{ id: 'rab_old1', program: 'Lama', periode: 'September 2026', nominal: 111000, status: 'Draft' }]);
-    cL0.sb.postTransaksi({ jenis: 'PENGELUARAN', tanggal: '2026-09-02', unit: 'MI', nominal: 4500, akunId: 'akun_kas1', metode: 'Tunai', status: 'TERCATAT', kategori: 'ATK', penerima: 'Lama1' });
-    cL0.sb.postTransaksi({ jenis: 'PENGELUARAN', tanggal: '2026-09-05', unit: 'MI', nominal: 50000, akunId: 'akun_kas1', metode: 'Tunai', status: 'TERCATAT', kategori: 'ATK', penerima: 'Toko' });
+    // [P0-B] postTransaksi tanpa server kini DITOLAK (tidak ada lagi simpan lokal). Data lokal LAMA (dibuat sebelum
+    // sentralisasi) disiapkan langsung sebagai fixture localStorage dengan bentuk yang sama seperti dulu ditulis postTransaksi.
+    cL0.a.Store.saveTransaksi([
+      { id: 'trx_lama1', jenis: 'PENGELUARAN', tanggal: '2026-09-02', unit: 'MI', nominal: 4500, akunId: 'akun_kas1', metode: 'Tunai', status: 'TERCATAT', kategori: 'ATK', penerima: 'Lama1', createdAt: '2026-09-02T01:00:00.000Z', buktiId: [] },
+      { id: 'trx_lama2', jenis: 'PENGELUARAN', tanggal: '2026-09-05', unit: 'MI', nominal: 50000, akunId: 'akun_kas1', metode: 'Tunai', status: 'TERCATAT', kategori: 'ATK', penerima: 'Toko', createdAt: '2026-09-05T01:00:00.000Z', buktiId: [] }]);
+    let e0 = ''; try { cL0.sb.postTransaksi({ jenis: 'PENGELUARAN', tanggal: '2026-09-06', unit: 'MI', nominal: 1000, akunId: 'akun_kas1', metode: 'Tunai', status: 'TERCATAT', kategori: 'ATK', penerima: 'X' }); } catch (e) { e0 = e.message; }
+    rec('G0 [P0-B] tanpa server: postTransaksi ditolak eksplisit, tidak ada baris lokal baru', /TIDAK disimpan/.test(e0) && cL0.a.Store.loadTransaksi().length === 2, e0);
     // buka kembali dengan server (data lokal dipertahankan di store yang sama)
     const cL = makeClient(srvL, { store }); const AL = cL.a; cL.sb.initializeSeedData(); cL.sb.bootstrapCentralAuth();
     await until(() => Object.keys(AL.OperationalCache.states).every(k => AL.OperationalCache.states[k].loaded));
@@ -312,26 +317,25 @@ const sync = async (c) => { await c.sb.centralRunSync(true); await tick(5); };
     cF.fault.mode = 'lostOnce'; cF.fault.only = /^opRecordBatch$/; await sync(cF); await sync(cF);
     rec('X3 respons hilang setelah server menulis: retry tidak menggandakan baris', rows(srvF, '08_ANGGARAN').filter(r => r[0] === 'rab_f2').length === 1 && cF.sb.centralPendingCount() === 0);
 
-    // ===== REG: mode lokal identik =====
-    const run = async (scriptJs) => {
-      const s = makeServer(); const k = makeClient(s, { noBridge: true, js: scriptJs }); k.sb.initializeSeedData(); k.sb.bootstrapCentralAuth(); await tick(10);
-      const tl = k.sb.postTransaksi({ jenis: 'PENGELUARAN', tanggal: '2026-10-01', unit: 'MI', nominal: 1000, akunId: k.sb.akunList()[0].id, metode: 'Tunai', status: 'TERCATAT', kategori: 'ATK', penerima: 'X' });
-      k.sb.updateTransaksiStatus(tl.id, 'SELESAI'); k.sb.editNominalTransaksi(tl.id, 2000, 'x');
-      k.a.Store.saveAnggaran([{ id: 'r1', program: 'P', periode: 'September 2026', nominal: 1, status: 'Draft' }]);
-      k.a.Store.saveDokumen([{ id: 'd1', judul: 'j', fileRef: 'data:image/png;base64,AAA' }]);
-      const st2 = k.a.Store.loadSettings(); st2.namaBendahara = 'Q'; k.a.Store.saveSettings(st2);
-      const norm = o => { const c2 = JSON.parse(JSON.stringify(o)); delete c2.id; delete c2.createdAt; return c2; };
-      return { trx: k.a.Store.loadTransaksi().map(norm), aud: k.a.Store.loadAuditTrail().map(x => x.aksi), ang: k.a.Store.loadAnggaran(), dok: k.a.Store.loadDokumen(), set: k.a.Store.loadSettings().namaBendahara, calls: k.calls.length, wr: k.writes.filter(w => /central/.test(w)).length };
-    };
-    const oldRun = await run(jsPrev), newRun = await run(js);
-    rec('Z1 mode lokal (tanpa server): hasil IDENTIK dengan skrip sebelum sentralisasi; nol panggilan server; tidak ada kunci central_*', JSON.stringify({ ...oldRun, calls: 0, wr: 0 }) === JSON.stringify({ ...newRun, calls: 0, wr: 0 }) && newRun.calls === 0 && newRun.wr === 0, { old: oldRun, nw: newRun });
+    // ===== REG: mode lokal [P0-B] =====
+    // Sebelum P0, Z1 menuntut mode lokal IDENTIK dengan skrip pra-sentralisasi (transaksi/koleksi tersimpan lokal).
+    // P0 melarang perilaku itu: tanpa server, penulisan resmi DITOLAK eksplisit dan tidak ada data operasional lokal baru.
+    {
+      const s = makeServer(); const k = makeClient(s, { noBridge: true }); k.sb.initializeSeedData(); k.sb.bootstrapCentralAuth(); await tick(10);
+      const err = f => { try { f(); return ''; } catch (e) { return e.message; } };
+      const e1 = err(() => k.sb.postTransaksi({ jenis: 'PENGELUARAN', tanggal: '2026-10-01', unit: 'MI', nominal: 1000, akunId: k.sb.akunList()[0].id, metode: 'Tunai', status: 'TERCATAT', kategori: 'ATK', penerima: 'X' }));
+      const e2 = err(() => k.a.Store.saveAnggaran([{ id: 'r1', program: 'P', periode: 'September 2026', nominal: 1, status: 'Draft' }]));
+      const e3 = err(() => k.a.Store.saveDokumen([{ id: 'd1', judul: 'j', fileRef: 'data:image/png;base64,AAA' }]));
+      rec('Z1 [P0-B] mode lokal (tanpa server): transaksi/anggaran/dokumen DITOLAK eksplisit; tidak ada baris lokal; nol panggilan server', [e1, e2, e3].every(m => /TIDAK disimpan/.test(m)) && k.a.Store.loadTransaksi().length === 0 && k.a.Store.loadAnggaran().length === 0 && k.a.Store.loadDokumen().length === 0 && k.calls.length === 0, [e1, e2, e3, k.calls.length]);
+    }
     // kill switch
     const srvK = makeServer(); const cK = makeClient(srvK); cK.sb.initializeSeedData(); cK.a.CENTRAL_CONFIG.writeCollections = false; cK.a.CENTRAL_CONFIG.writeTransactions = false; cK.a.CENTRAL_CONFIG.writeMaster = false; cK.sb.bootstrapCentralAuth();
     await until(() => Object.keys(cK.a.OperationalCache.states).every(k => cK.a.OperationalCache.states[k].loaded));
-    cK.a.Store.saveAnggaran([{ id: 'rab_k', program: 'K', periode: 'September 2026', nominal: 1, status: 'Draft' }]);
-    cK.sb.postTransaksi({ jenis: 'PENGELUARAN', tanggal: '2026-10-01', unit: 'MI', nominal: 1, akunId: 'akun_kas1', metode: 'Tunai', status: 'TERCATAT', kategori: 'ATK', penerima: 'K' });
+    let ek1 = '', ek2 = '';
+    try { cK.a.Store.saveAnggaran([{ id: 'rab_k', program: 'K', periode: 'September 2026', nominal: 1, status: 'Draft' }]); } catch (e) { ek1 = e.message; }
+    try { cK.sb.postTransaksi({ jenis: 'PENGELUARAN', tanggal: '2026-10-01', unit: 'MI', nominal: 1, akunId: 'akun_kas1', metode: 'Tunai', status: 'TERCATAT', kategori: 'ATK', penerima: 'K' }); } catch (e) { ek2 = e.message; }
     await sync(cK);
-    rec('Z2 kill switch (write* = false): hanya baca; tidak ada tulisan ke Sheets, data tetap lokal', rows(srvK, '08_ANGGARAN').every(r => r[0] !== 'rab_k') && rows(srvK, '05_TRANSAKSI').length === 2 && cK.a.Store.loadAnggaran().some(a => a.id === 'rab_k'));
+    rec('Z2 kill switch (write* = false): hanya baca; tidak ada tulisan ke Sheets; [P0-B] penulisan DITOLAK eksplisit (tidak disimpan lokal)', rows(srvK, '08_ANGGARAN').every(r => r[0] !== 'rab_k') && rows(srvK, '05_TRANSAKSI').length === 2 && /TIDAK disimpan/.test(ek1) && /TIDAK disimpan/.test(ek2) && !cK.a.Store.loadAnggaran().some(a => a.id === 'rab_k') && cK.a.Store.loadTransaksi().length === 0, [ek1, ek2]);
   } catch (e) { rec('HARNESS ERROR', false, e.stack.slice(0, 900)); }
   R.forEach(x => console.log((x.ok ? 'PASS ' : 'FAIL ') + x.n + (x.ok ? '' : '  <= ' + String(JSON.stringify(x.d)).slice(0, 700))));
   console.log('\nPASS=' + R.filter(x => x.ok).length + ' FAIL=' + R.filter(x => !x.ok).length);

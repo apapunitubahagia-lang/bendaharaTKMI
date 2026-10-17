@@ -29,6 +29,9 @@
  */
 
 var OP_WRITE_ROLES_ = ['BENDAHARA'];
+/* [P0-B] Email aktor terverifikasi selama satu panggilan engine; dibaca auditPush_ (TransactionEngine.gs) agar baris
+   audit CREATE_x dan UPDATE_x memuat aktor. Selalu di-reset di finally. */
+var ENGINE_ACTOR_ = null;
 var OP_READ_ROLES_ = ['BENDAHARA', 'KEPALA_SEKOLAH', 'YAYASAN', 'AUDITOR']; // baca-saja; tulis tetap hanya OP_WRITE_ROLES_
 
 // Sheet yang boleh dibaca generik. Sengaja TIDAK termasuk: 24_IDEMPOTENCY_LOG
@@ -93,20 +96,27 @@ function opEngineWrite_(action, payload, engineFn, requireClientRequestId, keepI
   var guard = (typeof opAllocGuard_ === 'function') ? opAllocGuard_(action, p) : null;
   if (guard) return guard;
   var res;
+  ENGINE_ACTOR_ = g.identity.email; // [P0-B] aktor masuk ke baris audit wajib engine (atomik dengan perubahan bisnis)
   try {
     res = engineFn(p);
   } catch (e) {
     return sgErr_(e, 'WRITE_FAILED', 'Gagal memproses permintaan'); // [P0-A] SCHEMA_MISMATCH tidak disamarkan
+  } finally {
+    ENGINE_ACTOR_ = null;
   }
   var isReplay = res && res.message && String(res.message).indexOf('idempotent replay') !== -1;
-  if (res && res.ok && !isReplay) {
+  var unchanged = res && res.data && res.data.unchanged === true;
+  if (res && res.ok && !isReplay && !unchanged) {
+    // Baris API_* = jejak tambahan (role). Audit WAJIB (dengan aktor) sudah ditulis engine di dalam lock yang sama
+    // dengan perubahan; baris ini ditulis di dalam lock tersendiri agar tidak tumpang-tindih (GAP-013).
     var refId = res.data && res.data.id ? res.data.id : '';
-    try {
-      auditPush_('API_' + action, null, { actorEmail: g.identity.email, actorRole: g.identity.role, refId: refId },
-        'google:' + g.identity.email, refId);
-    } catch (e2) {
-      res.auditWarning = 'ACTOR_AUDIT_FAILED';
-    }
+    var ar = withLock_(function () {
+      try {
+        auditPush_('API_' + action, null, { actorEmail: g.identity.email, actorRole: g.identity.role, refId: refId }, 'google:' + g.identity.email, refId);
+        return { ok: true };
+      } catch (e2) { return { ok: false }; }
+    });
+    if (!ar || !ar.ok) res.auditWarning = 'ACTOR_ROLE_AUDIT_FAILED';
   }
   return opJsonSafe_(res);
 }
@@ -329,16 +339,19 @@ function opMasterUpsert(sheetKey, record, createId) {
       var outRow = live.map(function (h) { return h && merged[h] !== undefined ? merged[h] : ''; });
       if (isUpdate) sh.getRange(idx + 2, 1, 1, lastCol).setValues([outRow]);
       else sh.getRange(lastRow + 1, 1, 1, lastCol).setValues([outRow]);
-      var res = okResult_(isUpdate ? 'Data master diperbarui' : 'Data master dibuat', opJsonSafe_(merged));
       try {
         auditPush_(isUpdate ? 'MASTER_UPDATE' : 'MASTER_CREATE', isUpdate ? opJsonSafe_(base) : null, opJsonSafe_(merged),
           'google:' + g.identity.email, merged.id);
       } catch (e2) {
-        res.auditWarning = 'AUDIT_FAILED';
+        // [P0-B] audit wajib gagal -> perubahan master dibatalkan (bukan sukses + auditWarning)
+        try {
+          if (isUpdate) sh.getRange(idx + 2, 1, 1, lastCol).setValues([rows[idx]]); else sgUndoAppend_(sh, lastRow + 1, 1);
+        } catch (re) { return errResult_('ROLLBACK_FAILED', 'Audit gagal DAN pemulihan data master gagal: ' + re.message, null, merged.id); }
+        return errResult_('AUDIT_FAILED', 'Audit gagal ditulis; perubahan data master dibatalkan', null, merged.id);
       }
-      return res;
+      return okResult_(isUpdate ? 'Data master diperbarui' : 'Data master dibuat', opJsonSafe_(merged));
     });
   } catch (e) {
-    return errResult_('WRITE_FAILED', 'Gagal menulis data master', null);
+    return sgErr_(e, 'WRITE_FAILED', 'Gagal menulis data master');
   }
 }

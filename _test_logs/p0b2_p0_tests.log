@@ -1,0 +1,44 @@
+PASS P0A-01 [TC-HDR-02] {"id":"imp_trx_1","jenis":"PENERIMAAN","tanggal":"2026-09-05","unit":"MI","nominal":200000,"akunId":"akun_kas1","metode":"Tunai","status":"TERCATAT","createdAt":"2026-09-05T01:00:00.000Z","catatan":""
+PASS P0A-02 [TC-HDR-02] {"ok":true,"code":"SUCCESS","message":"Transaksi berhasil dibuat","data":{"id":"gas_trx_036253dd-ff22-40f5-8006-0efb6e2b0e44","transaction":{"id":"gas_trx_03625
+PASS P0A-03 [TC-HDR-02] {"r":[false,"SCHEMA_MISMATCH"],"w":[false,"SCHEMA_MISMATCH"]}
+PASS P0A-04 [TC-HDR-03] {"role":"BENDAHARA","auth":true,"w":"SUCCESS"}
+PASS P0A-05 [TC-HDR-03] {"id":[false,"SCHEMA_MISMATCH"],"w":[false,"SCHEMA_MISMATCH"]}
+PASS P0A-06 [TC-HDR-04] {"ok":false,"code":"SCHEMA_MISMATCH","message":"SCHEMA_MISMATCH pada 01_SISWA: kolom wajib tidak ditemukan: id, nis, kelas, tahunAjaran, jenisKelamin, waliId, namaWali, kontakWali, tanggalMasuk, tangg
+PASS P0A-07 [kompatibilitas FINAL] {"id":[true,"BENDAHARA","SUCCESS"],"s":true}
+INFO P0A-08 [TC-HDR-01] opSchemaReport atas header FINAL: {"MATCH":21,"EXTRA_COLUMNS":3,"MISMATCH_MISSING_COLUMNS":2,"SCHEMA_NOT_VERIFIED":1}
+PASS P0A-09 [GAP-002] ["SCHEMA_MISMATCH","SCHEMA_MISMATCH"]
+PASS P0B-01 [TC-CRUD-01] ["nominal","tanggal","unit"]
+PASS P0B-02 [TC-CRUD-02] {"ok":true,"code":"SUCCESS","msg":"Transaksi berhasil diupdate"}
+PASS P0B-03 [GAP-003] [false,"UNKNOWN_FIELD"]
+PASS P0B-04 [TC-CRUD-03] [false,"ALLOCATION_EXCEEDS_TRANSACTION"]
+PASS P0B-05 [GAP-012] status tersimpan=SEBAGIAN_TERALOKASI 
+PASS P0B-06 [GAP-012] setelah alokasi sisa: TERALOKASI SUCCESS
+PASS P0B-07 [TC-TRX-02] [true,true,"Request sudah pernah diproses (idempotent replay)"]
+PASS P0B-08 [TC-TRX-03] ALLOCATION_EXCEEDS_OBLIGATION
+PASS P0B-09 [TC-TRX-06] LOCK_TIMEOUT
+PASS P0B-10 [TC-FAIL-02] transaksi=1 audit=1
+PASS P0B-11 [TC-FAIL-02] baris UI_UJI=1
+PASS P0B-12 [GAP-013] [false,"LOCK_TIMEOUT"]
+PASS P0B-13 [GAP-013] sumber audit=google:bendahara@x.id
+PASS P0B-14 [TC-FAIL-03] [false,"AUDIT_FAILED",null]
+PASS P0B-15 [TC-FAIL-03] [false,"AUDIT_FAILED",null]
+FAIL P0B-16 [TC-FAIL-01] toast="Pengeluaran tersimpan" lokal=1
+FAIL P0B-17 [TC-FAIL-01] toast1="Pengeluaran tersimpan" toast2="Pengeluaran tersimpan" resmi=true
+FAIL P0B-18 [TC-TRX-06] toast="Pengeluaran tersimpan"
+FAIL P0B-19 [GAP-004] t1="Pengeluaran tersimpan" t2="Pengeluaran tersimpan"
+FAIL P0B-20 [GAP-003] tampil=100000 server=200000
+FAIL P0C-01 [TC-AUTH-01] server=USER_NOT_FOUND lokal=1 toast="Pengeluaran tersimpan"
+FAIL P0C-02 [TC-AUTH-02] {"createIncome":"SUCCESS","createExpense":"SUCCESS","createTransaction":"SUCCESS","createAllocation":"SUCCESS","updateTransaction":"SUCCESS","createBankMutation":"SUCCESS","testConcurrentWriteDoor":"SUCCESS"}
+FAIL P0C-03 [GAP-006] ["BOCOR","DITOLAK","BOCOR","DITOLAK"]
+PASS P0C-04 [TC-AUTH-03] USER_INACTIVE
+FAIL P0C-05 [TC-AUTH-04] {"ok":true,"code":"SUCCESS","message":"Pairing diminta - menunggu approval manual admin langsung di sheet 25_DEVICE_WHITELIST","data":{"deviceId":"devBaru","sta
+FAIL P0C-06 [TC-AUTH-05] mode=ALLOWALL
+FAIL P0C-07 [GAP-006] setupDatabaseStructure=EXCEPTION
+FAIL P0D-01 [TC-KPI-02] {"overall":24.3,"st":"Perlu Perbaikan","r0":[55.4,"Perlu Perbaikan"]}
+FAIL P0D-02 [TC-KPI-02] snapshot=6 err=
+FAIL P0D-03 [TC-KPI-02] [13.2,"Perlu Perbaikan"]
+PASS P0D-04 [regresi KPI] identik: {"overall":57,"st":"Perlu Perbaikan","rows":[["BDS01",85.3,"Baik",0,[["BDS01-I01",85.29,"Baik","MEASURED",100],["BDS01-I
+PASS P0D-05 [regresi KPI] definisi & rumus KPI identik (13 simbol)
+PASS P0U-01 [regresi UI] 8 halaman render
+
+PASS=27 FAIL=14 INFO=1

@@ -132,6 +132,9 @@ function auditPush_(aksi, before, after, sumber, refId) {
   L.rep(te, "function errResult_(code, message, field, refId) {", "/* [P0-A] SCHEMA_MISMATCH dibawa apa adanya; galat lain tetap WRITE_FAILED */\nfunction engineErrCode_(e) { return e && e.code === 'SCHEMA_MISMATCH' ? 'SCHEMA_MISMATCH' : 'WRITE_FAILED'; }\nfunction errResult_(code, message, field, refId) {", 'engineErrCode_ def', log);
 }
 
+// ---------- P0-B: konsistensi transaksi/alokasi ----------
+require('./p0_server_b.js')(te, L, log);
+
 // ======================= ObligationEngine.gs / FinanceEngine.gs / TarifPlan.gs =======================
 const ob = L.load(OUT + 'ObligationEngine.gs');
 L.rep(ob, "  var mk = function (sheet) { var m = opSheetModel_(sheet); return m ? m.rows.map(function (r) { return opJsonSafe_(opRowObj_(m.live, r)); }).filter(function (o) { return !o.archivedAt; }) : []; };",

@@ -50,10 +50,14 @@ function opUserUpsert(record) {
       row[c('email')] = email; row[c('nama')] = nama; row[c('role')] = role; row[c('unit')] = unit; row[c('status')] = status; row[c('updatedAt')] = now;
       if (idx >= 0) m.sh.getRange(idx + 2, 1, 1, m.lastCol).setValues([row]); else m.sh.getRange(m.lastRow + 1, 1, 1, m.lastCol).setValues([row]);
       var saved = opRowObj_(m.live, row), out = okResult_(idx >= 0 ? 'Akses pengguna diperbarui' : 'Pengguna ditambahkan', opJsonSafe_(saved));
-      try { opAuditBulk_([[idx >= 0 ? 'ACCESS_UPDATE' : 'ACCESS_CREATE', before, saved, String(saved.id)]], g.identity.email); } catch (e) { out.auditWarning = 'AUDIT_FAILED'; }
+      try { opAuditBulk_([[idx >= 0 ? 'ACCESS_UPDATE' : 'ACCESS_CREATE', before, saved, String(saved.id)]], g.identity.email); } catch (e) {
+        // [P0-B] audit wajib gagal -> perubahan akses dibatalkan
+        try { if (idx >= 0) m.sh.getRange(idx + 2, 1, 1, m.lastCol).setValues([m.rows[idx]]); else sgUndoAppend_(m.sh, m.lastRow + 1, 1); } catch (re) { return errResult_('ROLLBACK_FAILED', 'Audit gagal DAN pemulihan akses gagal: ' + re.message, null); }
+        return errResult_('AUDIT_FAILED', 'Audit gagal ditulis; perubahan akses pengguna dibatalkan', null);
+      }
       return out;
     });
-  } catch (e) { return errResult_('WRITE_FAILED', 'Gagal menyimpan akses pengguna', null); }
+  } catch (e) { return sgErr_(e, 'WRITE_FAILED', 'Gagal menyimpan akses pengguna'); }
 }
 
 /* ---- MIGRASI SKEMA ADITIF ---- */

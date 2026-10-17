@@ -122,3 +122,9 @@ function sgRowsChecked_(sheetName) {
   if (!m) return [];
   return m.values.map(function (r) { var o = sgObj_(m, r); return typeof opJsonSafe_ === 'function' ? opJsonSafe_(o) : o; });
 }
+
+/* [P0-B] Rollback KHUSUS baris yang BARU SAJA ditambahkan oleh operasi yang sama di dalam lock yang sama
+   (pola yang sama dengan rollback engine deleteRowById_). Tidak boleh dipakai untuk menghapus data lama. */
+function sgUndoAppend_(sh, fromRow, count) {
+  for (var k = (count || 0) - 1; k >= 0; k--) sh.deleteRow(fromRow + k);
+}

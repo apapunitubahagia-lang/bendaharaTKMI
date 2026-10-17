@@ -12,21 +12,27 @@
 12. replace fn auditPush_
 13. engineErrCode_ pada 17 jalur galat
 14. engineErrCode_ def
-15. oblLoadContext_ mk
-16. opObligations err
-17. snapshot err
-18. FCC mk
-19. FCC err
-20. replace fn tpReadSheet_
-21. tarif plan err
-22. replace fn readMasterRows_
-23. replace fn getStudents
-24. replace fn getGuardians
-25. replace fn getComponents
-26. replace fn getTariffs
-27. replace fn getAccounts
-28. replace fn getIncomeCategories
-29. replace fn getExpenseCategories
-30. replace fn getSubcategories
-31. replace fn getAcademicYears
-32. replace fn getSettings
+15. engineAllocStatusFor_/setTrxStatusCell_
+16. status dihitung saat create
+17. status dihitung saat createAllocation
+18. rollback status (audit)
+19. rollback status (idempotensi)
+20. replace fn updateTransaction
+21. oblLoadContext_ mk
+22. opObligations err
+23. snapshot err
+24. FCC mk
+25. FCC err
+26. replace fn tpReadSheet_
+27. tarif plan err
+28. replace fn readMasterRows_
+29. replace fn getStudents
+30. replace fn getGuardians
+31. replace fn getComponents
+32. replace fn getTariffs
+33. replace fn getAccounts
+34. replace fn getIncomeCategories
+35. replace fn getExpenseCategories
+36. replace fn getSubcategories
+37. replace fn getAcademicYears
+38. replace fn getSettings

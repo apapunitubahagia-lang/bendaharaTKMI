@@ -168,7 +168,7 @@ a.link:hover{text-decoration:underline;}
 const APP_PREFIX = 'draBendaharaV2_';
 function lsKey(name){ return APP_PREFIX + name; }
 function lsGet(key, fallback){ try{ const v = localStorage.getItem(key); return v===null ? fallback : JSON.parse(v); }catch(e){ return fallback; } }
-function lsSet(key, val){ try{ localStorage.setItem(key, JSON.stringify(val)); }catch(e){ console.error('lsSet failed', key, e); } }
+function lsSet(key, val){ try{ localStorage.setItem(key, JSON.stringify(val)); }catch(e){ console.error('lsSet failed', key, e); throw new Error('Penyimpanan browser gagal (' + key + '): ' + ((e && e.message) || e)); } } /* [P0-B] galat tidak ditelan */
 function uid(prefix){ return prefix+'_'+Date.now().toString(36)+Math.random().toString(36).slice(2,8); }
 function deepClone(o){ return JSON.parse(JSON.stringify(o)); }
 function todayISO(){ const d=new Date(); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
@@ -178,7 +178,16 @@ function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;'
 function BULAN_ID_LIST(){ return ['Januari','Februari','Maret','April','Mei','Juni','Juli','Agustus','September','Oktober','November','Desember']; }
 function currentPeriodeLabel(){ const d=new Date(); return BULAN_ID_LIST()[d.getMonth()]+' '+d.getFullYear(); }
 function tahunAjaranForDate(d){ d=d||new Date(); const y=d.getFullYear(), m=d.getMonth(); return (m>=6? y : y-1)+'/'+(m>=6? y+1 : y); }
-function toast(msg){ const t=document.getElementById('toast'); t.textContent=msg; t.style.display='block'; clearTimeout(window.__toastTimer); window.__toastTimer=setTimeout(()=>{t.style.display='none';},2400); }
+/* [P0-B] Selama ada penulisan yang belum dikonfirmasi server, pesan sukses tidak boleh menyatakan "tersimpan". */
+function centralToastText_(msg){
+  try{
+    const s = String(msg == null ? '' : msg);
+    if(!globalThis.__centralAwaitConfirm) return s;
+    if(/gagal|tidak |menunggu konfirmasi|server/i.test(s)) return s;
+    return s.replace(/\btersimpan\b/gi, 'dikirim').replace(/berhasil dicatat/gi, 'dikirim') + ' \u2014 menunggu konfirmasi server\u2026';
+  }catch(e){ return msg; }
+}
+function toast(msg){ msg = centralToastText_(msg); const t=document.getElementById('toast'); t.textContent=msg; t.style.display='block'; clearTimeout(window.__toastTimer); window.__toastTimer=setTimeout(()=>{t.style.display='none';},2400); }
 function auditTrailPush(aksi, dataSebelum, dataSesudah, sumber){
   const arr = Store.loadAuditTrail();
   arr.push({id:uid('audit'), tanggal:new Date().toISOString(), user:Store.loadSettings().namaBendahara||'Bendahara', aksi, dataSebelum:dataSebelum||null, dataSesudah:dataSesudah||null, sumber:sumber||'manual'});
@@ -665,7 +674,10 @@ function migrateV1ToV2(){
    Semua halaman lain (Beranda, Laporan, KPI, Profil Siswa, Dokumen,
    Perlu Tindakan) HANYA membaca dari sini. Tidak ada database ganda.
    ============================================================ */
-function allTransaksi(){ return OperationalAPI.transaksi().filter(t=>!t.archivedAt); }
+/* [P0-B] Baris lokal yang belum dikonfirmasi server (antre/gagal) BUKAN transaksi resmi: tidak masuk total, saldo, laporan, KPI.
+   transaksiById() tetap menemukannya agar alur alokasi berjalan sampai server mengonfirmasi. */
+function centralIsUnconfirmedTrx_(t){ return !!(t && t._pendingSync && !t._synced); }
+function allTransaksi(){ return OperationalAPI.transaksi().filter(t=>!t.archivedAt && !centralIsUnconfirmedTrx_(t)); }
 function transaksiById(id){ const sid = centralResolveTrxId(id); return OperationalAPI.transaksi().find(t=>t.id===sid)||null; }
 function penerimaanList(){ return allTransaksi().filter(t=>t.jenis==='PENERIMAAN'); }
 function pengeluaranList(){ return allTransaksi().filter(t=>t.jenis==='PENGELUARAN'); }
@@ -1083,6 +1095,10 @@ function postTransaksi(t){
      kalau kosong, ditolak, titik. */
   if((t.jenis==='PENERIMAAN'||t.jenis==='PENGELUARAN') && (!t.unit || (t.unit!=='TK'&&t.unit!=='MI'))) throw new Error('Unit (TK/MI) wajib diisi');
   if(t.siswaId && !MasterAPI.students().some(s=>s.id===t.siswaId)) throw new Error('Siswa tidak ditemukan (data siswa tidak valid)');
+  /* [P0-B] Transaksi resmi HANYA lewat server (Google Sheets). Tidak ada lagi penyimpanan lokal yang tampak berhasil
+     saat server tidak siap/tidak terotorisasi. TRANSFER belum punya jalur server -> ditolak dengan pesan jelas. */
+  if(t.jenis==='TRANSFER') throw new Error('Transfer antar-akun belum didukung server - TIDAK disimpan.');
+  if((t.jenis==='PENERIMAAN'||t.jenis==='PENGELUARAN') && !centralTxWriteActive()) throw new Error(centralNotReadyText_());
   const arr = Store.loadTransaksi();
   t.id = t.id || uid('trx');
   t.createdAt = new Date().toISOString();
@@ -1091,6 +1107,7 @@ function postTransaksi(t){
   arr.push(t);
   Store.saveTransaksi(arr);
   auditTrailPush('TAMBAH_TRANSAKSI_'+t.jenis, null, t, 'input-manual');
+  if(t._pendingSync) globalThis.__centralAwaitConfirm = true; // [P0-B] sukses baru setelah server mengonfirmasi
   /* Fase 3B-3A: enqueue ke sync queue cloud SETELAH localStorage-write sukses
      - localStorage TETAP primary/sudah selesai di atas baris ini, ini murni
      tambahan pengiriman di belakang layar (tidak pernah blocking, tidak
@@ -1133,6 +1150,7 @@ function createAlokasi(transaksiId, list){
   transaksiId = centralResolveTrxId(transaksiId);
   const trx = transaksiById(transaksiId);
   if(!trx) throw new Error('Transaksi tidak ditemukan');
+  if(!centralTxWriteActive()) throw new Error(centralNotReadyText_()); // [P0-B] alokasi resmi hanya lewat server
   const sudahAda = alokasiForTransaksi(transaksiId).reduce((s,a)=>s+Number(a.nominal||0),0);
   const totalBaru = list.reduce((s,l)=>s+Number(l.nominal||0),0);
   if(sudahAda + totalBaru > Number(trx.nominal||0) + 0.5) throw new Error('Total alokasi (' + fmtRp(sudahAda+totalBaru) + ') melebihi nominal transaksi (' + fmtRp(trx.nominal) + ')');
@@ -1154,6 +1172,7 @@ function createAlokasi(transaksiId, list){
     savedNow.push(row);
   });
   Store.saveAlokasi(arr);
+  if(savedNow.some(r=>r._pendingSync)) globalThis.__centralAwaitConfirm = true; // [P0-B]
   centralScheduleSync();
   /* Fase 3B-3A: enqueue createAllocation SATU per baris alokasi, dengan
      transaksiId yang SAMA dengan transaksi induknya sebagai kunci FIFO -
@@ -2856,7 +2875,7 @@ function pwConfirmDuplicateAndSubmit(){ const w=ensurePenerimaanWizard(); w.conf
 /* Panel sukses (section 13) - muncul setelah COMMIT POINT (pwSubmit)
    berhasil, dengan tiga aksi lanjutan langsung ke Detail/Resi. */
 function pwShowSuccessPanel(trxId, totalNominal, rowCount){
-  let body = '<div style="text-align:center;padding:6px 0"><div style="font-size:32px;color:var(--green)">&#10003;</div><h3 style="margin:6px 0">Penerimaan berhasil dicatat</h3><p class="small-muted">'+fmtRp(totalNominal)+' untuk '+rowCount+' siswa</p></div>';
+  let body = '<div style="text-align:center;padding:6px 0"><div style="font-size:32px;color:var(--green)">&#10003;</div><h3 style="margin:6px 0">'+(globalThis.__centralAwaitConfirm?'Penerimaan dikirim ke server - menunggu konfirmasi':'Penerimaan berhasil dicatat')+'</h3><p class="small-muted">'+fmtRp(totalNominal)+' untuk '+rowCount+' siswa</p></div>';
   body += '<div class="modal-actions" style="justify-content:center;flex-wrap:wrap">'+
     '<button class="btn" onclick="closeModal();openDetailPenerimaan(\''+trxId+'\')">&#128065; Detail</button>'+
     '<button class="btn primary" onclick="closeModal();openResiModal(\''+trxId+'\')">&#129534; Lihat Resi / Download</button>'+
@@ -5668,6 +5687,7 @@ function openTarifForm(id){
     '<div class="modal-actions"><button class="btn" onclick="closeModal()">Batal</button><button class="btn primary" onclick="submitTarif('+(id?"'"+id+"'":'null')+')">Simpan</button></div>');
 }
 function submitTarif(id){
+  if(!centralMasterWriteActive()){ toast('GAGAL: ' + centralNotReadyText_()); return; } // [P0-B] tanpa simpan lokal
   if(centralMasterWriteActive()){
     centralMasterSave('tarif', id, {komponenId:val('trf_komponen'), unit:val('trf_unit'), kelas:val('trf_kelas'), tahunAjaran:val('trf_ta'), nominal:numval('trf_nominal')}, 'Tarif tersimpan di Google Sheets'); return;
   }
@@ -5685,6 +5705,7 @@ function tarifUsedInHistory(t){
   return OperationalAPI.alokasi().some(a=>a.komponenId===t.komponenId) || Store.loadTagihan().some(tg=>tg.komponen===((komponenById(t.komponenId)||{}).nama));
 }
 function hapusAtauNonaktifkanTarif(id){
+  if(!centralMasterWriteActive()){ toast('GAGAL: ' + centralNotReadyText_()); return; } // [P0-B] tanpa simpan lokal
   if(centralMasterWriteActive()){ toast(CENTRAL_MSG.noStatus); return; }
   const arr = Store.loadTarif();
   const idx = arr.findIndex(t=>t.id===id);
@@ -5764,6 +5785,7 @@ function openTahunAjaranForm(){
     '<div class="modal-actions"><button class="btn" onclick="closeModal()">Batal</button><button class="btn primary" onclick="submitTahunAjaranForm()">Simpan</button></div>');
 }
 function submitTahunAjaranForm(){
+  if(!centralMasterWriteActive()){ toast('GAGAL: ' + centralNotReadyText_()); return; } // [P0-B] tanpa simpan lokal
   if(centralMasterWriteActive()){
     const lb = val('taf_label').trim();
     if(!/^\d{4}\/\d{4}$/.test(lb)){ toast('Format harus YYYY/YYYY, mis. 2031/2032'); return; }
@@ -5779,6 +5801,7 @@ function submitTahunAjaranForm(){
   closeModal(); toast('Tahun ajaran ditambahkan'); renderContent();
 }
 function toggleTahunAjaranStatus(id){
+  if(!centralMasterWriteActive()){ toast('GAGAL: ' + centralNotReadyText_()); return; } // [P0-B] tanpa simpan lokal
   if(centralMasterWriteActive()){ centralMasterToggle('tahunAjaran', id, MasterAPI.academicYears(), 'Status diperbarui', 'Status diperbarui'); return; }
   const arr = Store.loadTahunAjaranMaster();
   const row = arr.find(t=>t.id===id);
@@ -5812,6 +5835,7 @@ function openSiswaForm(id){
     '<div class="modal-actions"><button class="btn" onclick="closeModal()">Batal</button><button class="btn primary" onclick="submitSiswaForm('+(id?"'"+id+"'":'null')+')">Simpan</button></div>');
 }
 function submitSiswaForm(id){
+  if(!centralMasterWriteActive()){ toast('GAGAL: ' + centralNotReadyText_()); return; } // [P0-B] tanpa simpan lokal
   if(centralMasterWriteActive()){
     const d0 = {nama:val('sif_nama'),nis:val('sif_nis'),nisn:val('sif_nisn'),kelas:val('sif_kelas'),unit:val('sif_unit'),namaWali:val('sif_wali'),kontakWali:val('sif_kontak'),status:val('sif_status'),tahunAjaran:Store.loadSettings().tahunAjaranAktif};
     if(!d0.nama){ toast('Nama wajib diisi'); return; }
@@ -5850,6 +5874,7 @@ function openKomponenForm(id){
     '<div class="modal-actions"><button class="btn" onclick="closeModal()">Batal</button><button class="btn primary" onclick="submitKomponen('+(id?"'"+id+"'":'null')+')">Simpan</button></div>');
 }
 function submitKomponen(id){
+  if(!centralMasterWriteActive()){ toast('GAGAL: ' + centralNotReadyText_()); return; } // [P0-B] tanpa simpan lokal
   if(centralMasterWriteActive()){
     const dk = Object.assign({nama:val('kmf_nama'), unit:val('kmf_unit'), frekuensi:val('kmf_frek'), status:val('kmf_status')}, komponenExtraFields_(id));
     if(!dk.nama.trim()){ toast('Nama komponen wajib diisi'); return; }
@@ -5865,6 +5890,7 @@ function komponenUsedInHistory(k){
   return OperationalAPI.alokasi().some(a=>a.komponenId===k.id) || Store.loadTagihan().some(t=>t.komponen===k.nama) || Store.loadTarif().some(t=>t.komponenId===k.id);
 }
 function hapusAtauNonaktifkanKomponen(id){
+  if(!centralMasterWriteActive()){ toast('GAGAL: ' + centralNotReadyText_()); return; } // [P0-B] tanpa simpan lokal
   if(centralMasterWriteActive()){ centralMasterToggle('komponen', id, MasterAPI.components(), 'Komponen diaktifkan kembali', 'Komponen dinonaktifkan (tidak dihapus)'); return; }
   const s = Store.loadSettings();
   const idx = s.komponenBiayaList.findIndex(x=>x.id===id);
@@ -5966,6 +5992,7 @@ function openKategoriForm(type, id){
     '<div class="modal-actions"><button class="btn" onclick="closeModal()">Batal</button><button class="btn primary" onclick="submitKategoriForm(\''+type+'\''+(id?",'"+id+"'":',null')+')">Simpan</button></div>');
 }
 function submitKategoriForm(type, id){
+  if(!centralMasterWriteActive()){ toast('GAGAL: ' + centralNotReadyText_()); return; } // [P0-B] tanpa simpan lokal
   if(centralMasterWriteActive()){
     const nm = val('ktf_nama').trim();
     if(!nm){ toast('Nama kategori wajib diisi'); return; }
@@ -5982,6 +6009,7 @@ function submitKategoriForm(type, id){
   saveFn(arr); syncKategoriFlatLists(); closeModal(); toast('Kategori tersimpan'); renderContent();
 }
 function hapusAtauNonaktifkanKategori(type, id){
+  if(!centralMasterWriteActive()){ toast('GAGAL: ' + centralNotReadyText_()); return; } // [P0-B] tanpa simpan lokal
   if(centralMasterWriteActive()){ centralMasterToggle(type==='pengeluaran' ? 'kategoriPengeluaran' : 'kategoriPenerimaan', id, type==='pengeluaran' ? MasterAPI.expenseCategories() : MasterAPI.incomeCategories(), 'Kategori diaktifkan kembali', 'Kategori dinonaktifkan (tidak dihapus)'); return; }
   const loadFn = type==='pengeluaran' ? Store.loadKategoriPengeluaranMaster.bind(Store) : Store.loadKategoriPenerimaanMaster.bind(Store);
   const saveFn = type==='pengeluaran' ? Store.saveKategoriPengeluaranMaster.bind(Store) : Store.saveKategoriPenerimaanMaster.bind(Store);
@@ -6006,6 +6034,7 @@ function openSubkategoriForm(id){
     '<div class="modal-actions"><button class="btn" onclick="closeModal()">Batal</button><button class="btn primary" onclick="submitSubkategoriForm('+(id?"'"+id+"'":'null')+')">Simpan</button></div>');
 }
 function submitSubkategoriForm(id){
+  if(!centralMasterWriteActive()){ toast('GAGAL: ' + centralNotReadyText_()); return; } // [P0-B] tanpa simpan lokal
   if(centralMasterWriteActive()){
     const ns = val('skf_nama').trim();
     if(!ns || !val('skf_kategori')){ toast('Lengkapi kategori dan nama subkategori'); return; }
@@ -6020,6 +6049,7 @@ function submitSubkategoriForm(id){
   Store.saveSubkategoriMaster(arr); closeModal(); toast('Subkategori tersimpan'); renderContent();
 }
 function hapusAtauNonaktifkanSubkategori(id){
+  if(!centralMasterWriteActive()){ toast('GAGAL: ' + centralNotReadyText_()); return; } // [P0-B] tanpa simpan lokal
   if(centralMasterWriteActive()){ centralMasterToggle('subkategori', id, MasterAPI.subcategories(), 'Subkategori diaktifkan kembali', 'Subkategori dinonaktifkan (tidak dihapus)'); return; }
   const arr = Store.loadSubkategoriMaster();
   const idx = arr.findIndex(x=>x.id===id);
@@ -6057,6 +6087,7 @@ function openAkunForm(id){
     '<div class="modal-actions"><button class="btn" onclick="closeModal()">Batal</button><button class="btn primary" onclick="submitAkun('+(id?"'"+id+"'":'null')+')">Simpan</button></div>');
 }
 function submitAkun(id){
+  if(!centralMasterWriteActive()){ toast('GAGAL: ' + centralNotReadyText_()); return; } // [P0-B] tanpa simpan lokal
   if(centralMasterWriteActive()){
     const da = {nama:val('akf_nama'), jenis:val('akf_jenis'), saldoAwal:numval('akf_saldo')};
     if(!da.nama.trim()){ toast('Nama akun wajib diisi'); return; }
@@ -6070,6 +6101,7 @@ function submitAkun(id){
 }
 function akunUsedInHistory(a){ return allTransaksi().some(t=>t.akunId===a.id || t.akunTujuanId===a.id); }
 function hapusAtauNonaktifkanAkun(id){
+  if(!centralMasterWriteActive()){ toast('GAGAL: ' + centralNotReadyText_()); return; } // [P0-B] tanpa simpan lokal
   if(centralMasterWriteActive()){ toast(CENTRAL_MSG.noStatus); return; }
   const s = Store.loadSettings();
   const idx = s.akunKasBankList.findIndex(x=>x.id===id);
@@ -6756,6 +6788,7 @@ function classifySiswaBatch(rows, headerMap){
   });
 }
 function commitSiswaRow(get, extra, res){
+  if(!centralMasterWriteActive()){ toast('GAGAL: ' + centralNotReadyText_()); return; } // [P0-B] tanpa simpan lokal
   if(centralMasterWriteActive()){
     const s0 = Store.loadSettings(), id0 = uid('siswa');
     const rec0 = {nama:get('namaSiswa'), nis:get('nis'), nisn:get('nisn'), unit:get('unit') || (res&&res.unit) || '', kelas:get('kelas'), tahunAjaran:get('tahunAjaran')||s0.tahunAjaranAktif,
@@ -6781,6 +6814,7 @@ function commitSiswaRow(get, extra, res){
    yang ADA nilainya di baris import yang menimpa - field kosong tidak
    menimpa data lama (supaya import parsial tidak mengosongkan data valid). */
 function updateSiswaRow(siswaId, get, extra, res){
+  if(!centralMasterWriteActive()){ toast('GAGAL: ' + centralNotReadyText_()); return; } // [P0-B] tanpa simpan lokal
   if(centralMasterWriteActive()){
     const cur0 = MasterAPI.students().find(x=>x.id===siswaId); if(!cur0) return;
     const upd0 = {}, setIf0 = (f, v)=>{ if(v) upd0[f] = v; };
@@ -7753,7 +7787,7 @@ const OperationalAPI = (function(){
       const srv = serverTrx();
       if(!srv) return Store.loadTransaksi(); // TEMPORARY FALLBACK — REMOVE AFTER MASTER READ MIGRATION
       const map = centralSyncMapGet(), ov = centralOverlayGet(), arch = centralArchiveMapGet();
-      const out = srv.filter(t=>!arch[t.id]).map(t=> ov[t.id] ? Object.assign({}, t, ov[t.id]) : t);
+      const out = srv.filter(t=>!arch[t.id]).map(t=> (ov[t.id] && !ov[t.id]._blocked) ? Object.assign({}, t, ov[t.id]) : t); // [P0-B] overlay ditolak server tidak ditampilkan
       const cut = centralCutoverDone_();
       Store.loadTransaksi().forEach(l=>{ if(memo.trxIds.has(l.id) || map[l.id]) return; if(cut && !l._pendingSync) return; out.push(l); });
       return out;
@@ -7764,7 +7798,8 @@ const OperationalAPI = (function(){
       const arch = centralArchiveMapGet();
       const out = srv.filter(a=>!a.archivedAt && !arch[a.id] && !(arch[a.transaksiId] && arch[a.transaksiId].kind==='trx'));
       const cut2 = centralCutoverDone_();
-      Store.loadAlokasi().forEach(l=>{ if(l._synced || memo.alkIds.has(l.id) || arch[l.id]) return; if(cut2 && !l._pendingSync) return; out.push(l); });
+      const failTrx = new Set(Store.loadTransaksi().filter(x=>x._syncError || x._syncBlocked).map(x=>x.id)); // [P0-B]
+      Store.loadAlokasi().forEach(l=>{ if(l._synced || memo.alkIds.has(l.id) || arch[l.id]) return; if(cut2 && !l._pendingSync) return; if(l._syncError || l._syncBlocked || failTrx.has(l.transaksiId)) return; out.push(l); });
       return out;
     },
     /* Sheet lain: baris mentah dari server (belum dipakai UI) atau null bila belum termuat. */
@@ -7806,11 +7841,13 @@ function centralMarkError_(kind, id, res){
   if(kind === 'trx'){ const arr = Store.loadTransaksi(); const i = arr.findIndex(x=>x.id===id); if(i>=0){ upd(arr[i]); Store.saveTransaksi(arr); } }
   else { const arr = Store.loadAlokasi(); const i = arr.findIndex(x=>x.id===id); if(i>=0){ upd(arr[i]); Store.saveAlokasi(arr); } }
   CentralSync.lastError = centralErrText(res);
+  centralResultNote_(false, centralErrText(res));
 }
 function centralMarkTrxSynced_(t, serverId, sentAlk){
   const map = centralSyncMapGet(); map[t.id] = serverId; lsSet(lsKey('centralSyncMap'), map);
   const arr = Store.loadTransaksi(); const i = arr.findIndex(x=>x.id===t.id);
   if(i>=0){ arr[i]._synced = true; delete arr[i]._pendingSync; delete arr[i]._syncError; Store.saveTransaksi(arr); }
+  centralResultNote_(true);
   const sentIds = new Set(sentAlk.map(a=>a.id));
   const al = Store.loadAlokasi(); let ch = false;
   al.forEach(a=>{ if(sentIds.has(a.id)){ a._synced = true; delete a._pendingSync; delete a._syncError; ch = true; } });
@@ -7847,6 +7884,7 @@ function centralPushAlk_(a){
     if(res && res.ok){
       const al = Store.loadAlokasi(); const i = al.findIndex(x=>x.id===a.id);
       if(i>=0){ al[i]._synced = true; delete al[i]._pendingSync; delete al[i]._syncError; Store.saveAlokasi(al); }
+      centralResultNote_(true);
       return true;
     }
     centralMarkError_('alk', a.id, res); return false;
@@ -7857,8 +7895,9 @@ function centralPushPatch_(id){
   if(!patch || patch._pushed || patch._blocked) return Promise.resolve(false);
   const body = Object.assign({}, patch); delete body._pushed; delete body._blocked; delete body._error;
   return ServerBridge.opUpdateTransaction(JSON.parse(JSON.stringify(Object.assign({id:id}, body)))).then(function(res){
-    if(res && res.ok){ const o2 = centralOverlayGet(); if(o2[id]){ o2[id]._pushed = true; lsSet(lsKey('centralTrxOverlay'), o2); } return true; }
+    if(res && res.ok){ const o2 = centralOverlayGet(); if(o2[id]){ o2[id]._pushed = true; lsSet(lsKey('centralTrxOverlay'), o2); } centralResultNote_(true); return true; }
     CentralSync.lastError = centralErrText(res);
+    centralResultNote_(false, centralErrText(res));
     // galat permanen (mis. TRANSACTION_ARCHIVED, validasi): tahan perubahan ini (tidak diulang tanpa henti) dan tampilkan di hitungan "gagal sinkron"
     if(!(res && CENTRAL_RETRYABLE_[res.code])){ const o3 = centralOverlayGet(); if(o3[id]){ o3[id]._blocked = true; o3[id]._error = centralErrText(res); lsSet(lsKey('centralTrxOverlay'), o3); } }
     return false;
@@ -7894,6 +7933,21 @@ function centralPushTrxBatch_(list){
     return any;
   });
 }
+/* [P0-B] Pencatatan & pelaporan hasil sinkron transaksi/alokasi/patch/arsip. */
+function centralResultNote_(ok, err){ const r = CentralSync.result || (CentralSync.result = {ok:0, fail:0, err:''}); if(ok) r.ok++; else { r.fail++; if(err && !r.err) r.err = String(err); } }
+function centralReportResult_(){
+  const r = CentralSync.result || {ok:0, fail:0, err:''};
+  if(!r.ok && !r.fail) return;
+  globalThis.__centralAwaitConfirm = false;
+  if(r.fail) toast('GAGAL menyimpan ' + r.fail + ' perubahan ke server: ' + (r.err || 'galat tidak diketahui') + '. Perubahan itu TIDAK dihitung sebagai transaksi resmi; periksa lalu coba lagi lewat tautan "tertunda".');
+  else toast('Tersimpan di server (' + r.ok + ' perubahan dikonfirmasi).');
+}
+/* [P0-B] Alasan penulisan ditolak di klien bila server belum siap. */
+function centralNotReadyText_(){
+  if(typeof ServerBridge === 'undefined') return 'Server tidak terhubung (aplikasi tidak dibuka dari Apps Script) - data TIDAK disimpan.';
+  if(!CentralAuth.authorized) return 'Akun belum terotorisasi (' + (CentralAuth.code || 'AUTH_REQUIRED') + ') - data TIDAK disimpan.';
+  return 'Data server belum termuat atau gagal dimuat - data TIDAK disimpan. Coba lagi setelah data termuat.';
+}
 function centralSyncActive_(){ return centralTxWriteActive() || ccWriteActive_(); }
 function centralAfterRefresh(fn){ CentralSync.after.push(fn); }
 function centralRunSync(manual){
@@ -7906,7 +7960,7 @@ function centralRunSync(manual){
     if(c) Store.saveAlokasi(a);
     centralUnblockExtra_();
   }
-  CentralSync.running = true; CentralSync.lastError = null; CentralSync.refresh = new Set(); CentralSync.after = []; CentralSync.afterMaster = [];
+  CentralSync.running = true; CentralSync.lastError = null; CentralSync.result = {ok:0, fail:0, err:''}; // [P0-B] CentralSync.refresh = new Set(); CentralSync.after = []; CentralSync.afterMaster = [];
   const jobs = [];
   centralMasterJobs_().forEach(j=>jobs.push(j));
   if(centralTxWriteActive()){
@@ -7934,6 +7988,7 @@ function centralRunSync(manual){
     CentralSync.afterMaster.forEach(fn=>{ try{ fn(); }catch(e){ console.error('after-master gagal:', e); } });
     CentralSync.afterMaster = [];
     CentralSync.masterDirty = false; CentralSync.running = false;
+    centralReportResult_(); // [P0-B]
     renderAuthStatusBadge();
     if(changed) centralRerenderIfIdle();
     if(CentralSync.again){ CentralSync.again = false; centralScheduleSync(); }
@@ -7954,6 +8009,7 @@ function centralPatchTransaksi(trxId, patch){
   const cur = transaksiById(id); const before = deepClone(cur);
   const ov = centralOverlayGet(); ov[id] = Object.assign({}, ov[id] || {}, patch); delete ov[id]._pushed;
   lsSet(lsKey('centralTrxOverlay'), ov);
+  globalThis.__centralAwaitConfirm = true; // [P0-B]
   centralScheduleSync();
   return {before:before, after:Object.assign({}, cur, patch)};
 }
@@ -8270,7 +8326,7 @@ function ccAuditEnqueue_(aksi, before, after, sumber){
   if(!(CENTRAL_CONFIG.writeAudit && centralReady_() && ServerBridge.opAuditAppend && CentralMasterData.ready)) return;
   const small = v=>{ if(v === null || v === undefined) return null; const s = JSON.stringify(v); return s.length > 4000 ? {truncated:true, length:s.length} : v; };
   const q = lsGet(lsKey('central_audit_queue'), []);
-  q.push({aksi:String(aksi) + (sumber ? '@' + sumber : ''), before:small(before), after:small(after), refId:(after && after.id) || (before && before.id) || ''});
+  q.push({id:uid('aud'), aksi:String(aksi) + (sumber ? '@' + sumber : ''), before:small(before), after:small(after), refId:(after && after.id) || (before && before.id) || ''});
   while(q.length > 2000) q.shift();
   lsSet(lsKey('central_audit_queue'), q); centralScheduleSync();
 }
@@ -8339,8 +8395,8 @@ function centralMasterJobs_(){
 
 /* ---- arsip/reversal transaksi & alokasi ---- */
 function centralArchiveMapGet(){ return lsGet(lsKey('central_archive'), {}); }
-function centralArchiveTrx(id, reason){ const sid = centralResolveTrxId(id), m = centralArchiveMapGet(); m[sid] = {kind:'trx', reason:ccStr_(reason) || 'diarsipkan dari aplikasi'}; lsSet(lsKey('central_archive'), m); centralScheduleSync(); }
-function centralArchiveAlokasi(id, reason){ const m = centralArchiveMapGet(); m[id] = {kind:'alk', reason:ccStr_(reason) || 'diarsipkan dari aplikasi'}; lsSet(lsKey('central_archive'), m); centralScheduleSync(); }
+function centralArchiveTrx(id, reason){ const sid = centralResolveTrxId(id), m = centralArchiveMapGet(); m[sid] = {kind:'trx', reason:ccStr_(reason) || 'diarsipkan dari aplikasi'}; lsSet(lsKey('central_archive'), m); globalThis.__centralAwaitConfirm = true; centralScheduleSync(); }
+function centralArchiveAlokasi(id, reason){ const m = centralArchiveMapGet(); m[id] = {kind:'alk', reason:ccStr_(reason) || 'diarsipkan dari aplikasi'}; lsSet(lsKey('central_archive'), m); globalThis.__centralAwaitConfirm = true; centralScheduleSync(); }
 function centralArchiveJobs_(){
   const m = centralArchiveMapGet(), ids = Object.keys(m).filter(id=>!m[id].done && !m[id].blocked);
   return ids.map(function(id){
@@ -8349,7 +8405,8 @@ function centralArchiveJobs_(){
       if(!fn){ return Promise.resolve(false); }
       return fn(id, e.reason).then(function(res){
         const cur = centralArchiveMapGet();
-        if(res && res.ok){ if(cur[id]){ cur[id].done = true; lsSet(lsKey('central_archive'), cur); } CentralSync.refresh.add('transaksi'); CentralSync.refresh.add('alokasi'); return true; }
+        if(res && res.ok){ if(cur[id]){ cur[id].done = true; lsSet(lsKey('central_archive'), cur); } CentralSync.refresh.add('transaksi'); CentralSync.refresh.add('alokasi'); centralResultNote_(true); return true; }
+        centralResultNote_(false, centralErrText(res));
         if(cur[id]){ cur[id].error = centralErrText(res); cur[id].attempts = (cur[id].attempts || 0) + 1; if(!(res && CENTRAL_RETRYABLE_[res.code]) || cur[id].attempts >= 3) cur[id].blocked = true; lsSet(lsKey('central_archive'), cur); }
         CentralSync.lastError = centralErrText(res); return false;
       });
@@ -8393,7 +8450,7 @@ Object.keys(CC_).forEach(function(name){
   const S = CC_[name].store;
   CC_ORIG_[name] = {load:Store['load' + S].bind(Store), save:Store['save' + S].bind(Store)};
   Store['load' + S] = function(){ return ccActive_(name) ? ccView_(name) : CC_ORIG_[name].load(); };
-  Store['save' + S] = function(arr){ if(ccActive_(name)) return ccSave_(name, arr); return CC_ORIG_[name].save(arr); };
+  Store['save' + S] = function(arr){ if(ccActive_(name)) return ccSave_(name, arr); if(globalThis.__appBooted){ const m = centralNotReadyText_(); toast('GAGAL: ' + m); throw new Error(m); } return CC_ORIG_[name].save(arr); }; // [P0-B]
 });
 Object.keys(CC_BLOBS).forEach(function(name){
   const S = CC_BLOBS[name].store, def = CC_BLOBS[name].def;
@@ -8403,7 +8460,7 @@ Object.keys(CC_BLOBS).forEach(function(name){
     const v = ccBlobGet_(name);
     return v === null ? CC_ORIG_['blob:' + name].load() : v;
   };
-  Store['save' + S] = function(v){ if(ccSettingsActive_()) return ccBlobPut_(name, v); return CC_ORIG_['blob:' + name].save(v); };
+  Store['save' + S] = function(v){ if(ccSettingsActive_()) return ccBlobPut_(name, v); if(globalThis.__appBooted){ const m = centralNotReadyText_(); toast('GAGAL: ' + m); throw new Error(m); } return CC_ORIG_['blob:' + name].save(v); }; // [P0-B]
 });
 (function(){
   const oLoad = Store.loadSettings.bind(Store), oSave = Store.saveSettings.bind(Store), oExport = Store.exportAllJSON.bind(Store);
@@ -9125,6 +9182,7 @@ function loadCentralMasterData(opts){
    bootstrap ini menyusul async dan HANYA mengubah #authStatusBadge +
    CentralMasterData runtime, tidak pernah menyentuh render lain. */
 function bootstrapCentralAuth(){
+  globalThis.__appBooted = true; // [P0-B] setelah titik ini, tulis koleksi tanpa server ditolak
   renderAuthStatusBadge();
   if(typeof ServerBridge === 'undefined'){ CentralAuth.checked = true; renderAuthStatusBadge(); return; }
   ServerBridge.getCurrentUserIdentity().then(function(result){

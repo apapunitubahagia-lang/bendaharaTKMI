@@ -178,15 +178,18 @@ const annualSum = rs => sum(rs.filter(r => r.komponenId.indexOf('kmp_thn_') === 
     const ar2 = cl.sb.tarifApplyLocal_(); const nT2 = cl.a.Store.loadTarif().length;
     rec('L3 penerapan lokal ulang idempoten', ar2.ok && cl.a.Store.loadTarif().length === nT2 && ar2.ringkasan.tarifAdd === 0 && ar2.ringkasan.komponenAdd === 0, ar2);
     cl.a.Store.saveSiswa([{ id: 'l1', nama: 'LOKAL K5', nis: '', nisn: '1', kelas: '5 A', unit: 'MI', tahunAjaran: '2026/2027', status: 'Aktif' }, { id: 'l2', nama: 'LOKAL K1', nis: '', nisn: '2', kelas: '1 A', unit: 'MI', tahunAjaran: '2026/2027', status: 'Aktif' }]);
-    cl.a.Store.saveCateringHari({ 'MI|Juli 2026': 20 });
+    cl.store['draBendaharaV2_cateringHari'] = JSON.stringify({ 'MI|Juli 2026': 20 }); // [P0-B] fixture data lokal lama; simpan blob tanpa server kini ditolak
     const lo = id => cl.sb.kewajibanForSiswa(id);
     rec('L4 mode lokal: tagihan tahunan K5 = 1.800.000, K1 = 2.200.000, katering K5 Juli = 20 x 11.000 = 220.000, SPP K1 = 350.000 (sumber sama dengan server)', annualSum(lo('l1')) === 1800000 && annualSum(lo('l2')) === 2200000 && lo('l1').find(o => o.komponenId === 'kmp_katering_harian' && o.periode === 'Juli 2026').netto === 220000 && lo('l2').find(o => o.komponenId === 'kmp_spp' && o.periode === 'Juli 2026').netto === 350000, [annualSum(lo('l1')), annualSum(lo('l2'))]);
-    const tl = cl.sb.postTransaksi({ jenis: 'PENERIMAAN', tanggal: '2026-09-10', unit: 'MI', nominal: 300000, akunId: cl.sb.akunList()[0].id, metode: 'Tunai', status: 'TERCATAT', sumber: 'Pembayaran Siswa' });
-    let e2 = ''; try { cl.sb.createAlokasi(tl.id, [{ ob: lo('l1').find(o => o.komponenId === 'kmp_spp' && o.periode === 'Juli 2026'), nominal: 200000, caraBayar: 'cicilan' }, { ob: lo('l1').find(o => o.komponenId === 'kmp_spp' && o.periode === 'Juli 2026'), nominal: 100000, caraBayar: 'cicilan' }]); } catch (e) { e2 = e.message; }
-    rec('L5 mode lokal: validasi alokasi batch aktif (jumlah > sisa ditolak)', /Total alokasi/.test(e2), e2);
-    cl.sb.createAlokasi(tl.id, [{ ob: lo('l1').find(o => o.komponenId === 'kmp_spp' && o.periode === 'Juli 2026'), nominal: 250000, caraBayar: 'lunas' }]);
-    const nl = lo('l1').find(o => o.komponenId === 'kmp_spp' && o.periode === 'Juli 2026');
-    rec('L6 mode lokal: alokasi tersimpan, kewajiban lunas, sisa dana transaksi 50.000 tidak masuk kewajiban lain', cl.sb.sisaObligation(nl) === 0 && cl.sb.alokasiForTransaksi(tl.id).reduce((s, a) => s + a.nominal, 0) === 250000 && cl.calls.length === 0, cl.calls.length);
+    // [P0-B] Mode lokal tidak lagi boleh mencatat transaksi/alokasi resmi. L5/L6 diubah: validasi batch tetap aktif,
+    // dan penulisan tanpa server DITOLAK eksplisit tanpa baris lokal (sebelumnya: tersimpan lokal).
+    const ob1 = lo('l1').find(o => o.komponenId === 'kmp_spp' && o.periode === 'Juli 2026');
+    const vb = cl.sb.validateAllocationBatch([{ ob: ob1, nominal: 200000 }, { ob: ob1, nominal: 100000 }]);
+    rec('L5 validasi alokasi batch aktif (jumlah > sisa ditolak)', vb && vb.ok === false && /alokasi/i.test(vb.msg || ''), vb);
+    let e5 = '', e6 = '';
+    try { cl.sb.postTransaksi({ jenis: 'PENERIMAAN', tanggal: '2026-09-10', unit: 'MI', nominal: 300000, akunId: cl.sb.akunList()[0].id, metode: 'Tunai', status: 'TERCATAT', sumber: 'Pembayaran Siswa' }); } catch (e) { e5 = e.message; }
+    try { cl.sb.createAlokasi('trx_tidak_ada', [{ ob: ob1, nominal: 250000, caraBayar: 'lunas' }]); } catch (e) { e6 = e.message; }
+    rec('L6 [P0-B] mode lokal: transaksi & alokasi DITOLAK eksplisit, tidak ada baris lokal, tidak ada panggilan server', /TIDAK disimpan/.test(e5) && /tidak ditemukan|TIDAK disimpan/i.test(e6) && cl.a.Store.loadTransaksi().length === 0 && cl.a.Store.loadAlokasi().length === 0 && cl.calls.length === 0, [e5, e6, cl.calls.length]);
   } catch (e) { rec('HARNESS ERROR', false, e.stack.slice(0, 1200)); }
   R.forEach(x => console.log((x.ok ? 'PASS ' : 'FAIL ') + x.n + (x.ok ? '' : '  <= ' + String(JSON.stringify(x.d)).slice(0, 700))));
   console.log('\nPASS=' + R.filter(x => x.ok).length + ' FAIL=' + R.filter(x => !x.ok).length);

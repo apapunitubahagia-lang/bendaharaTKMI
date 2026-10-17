@@ -9,7 +9,8 @@ suites.forEach(s => {
   const out = (r.stdout || '') + (r.stderr || '');
   fs.writeFileSync(path.join(dir, prefix + '_' + s + '.log'), out);
   const last = (out.trim().split('\n').reverse().find(l => /PASS=|CRASH|Error/.test(l)) || '(tanpa ringkasan)');
-  console.log((r.status === 0 ? 'OK  ' : 'GAGAL') + ' ' + s.padEnd(22) + last);
-  if (r.status !== 0) bad++;
+  const m = /FAIL=(\d+)/.exec(last); const okRun = r.status === 0 && m && Number(m[1]) === 0;
+  console.log((okRun ? 'OK   ' : 'GAGAL') + ' ' + s.padEnd(22) + last);
+  if (!okRun) bad++;
 });
 process.exitCode = bad ? 1 : 0;

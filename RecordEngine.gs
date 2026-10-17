@@ -45,15 +45,21 @@ function opSheetModel_(sheetName) {
 }
 function opRowObj_(live, r) { var o = {}; live.forEach(function (h, c) { if (h) o[h] = r[c]; }); return o; }
 
-/* Audit massal: format baris IDENTIK dengan auditPush_ (13_AUDIT_LOG, append-only). */
+/* Audit massal: format baris IDENTIK dengan auditPush_ (13_AUDIT_LOG, append-only).
+   [P0-A] kolom dipetakan berdasarkan nama header. [P0-B] e[4] (opsional) = id audit deterministik (idempotensi).
+   WAJIB dipanggil di dalam withLock_ (append aman dari tumpang-tindih baris). */
 function opAuditBulk_(entries, email) {
   if (!entries.length) return;
-  var sh = sheet_(SHT_AUDIT);
   var ts = new Date().toISOString();
-  var out = entries.map(function (e) {
-    return [ID_PREFIX_AUDIT + Utilities.getUuid(), ts, e[0], e[1] ? JSON.stringify(opJsonSafe_(e[1])) : '', e[2] ? JSON.stringify(opJsonSafe_(e[2])) : '', 'google:' + email, e[3] || ''];
-  });
-  sh.getRange(sh.getLastRow() + 1, 1, out.length, AUDIT_HEADERS.length).setValues(out);
+  sgAppendMany_(SHT_AUDIT, AUDIT_HEADERS, entries.map(function (e) {
+    return { id: e[4] || (ID_PREFIX_AUDIT + Utilities.getUuid()), timestamp: ts, aksi: e[0], before: e[1] ? JSON.stringify(opJsonSafe_(e[1])) : '', after: e[2] ? JSON.stringify(opJsonSafe_(e[2])) : '', sumber: 'google:' + email, refId: e[3] || '' };
+  }));
+}
+/* [P0-B] Pemulihan bila audit wajib gagal: baris yang diubah dikembalikan ke nilai asal, baris yang baru
+   ditambahkan dihapus (dari bawah). touched = [{rowNum, orig}], appendedFrom = nomor baris pertama yang ditambah. */
+function opRestoreRows_(sh, lastCol, touched, appendedFrom, appendedCount) {
+  sgUndoAppend_(sh, appendedFrom, appendedCount || 0);
+  (touched || []).forEach(function (t) { sh.getRange(t.rowNum, 1, 1, lastCol).setValues([t.orig]); });
 }
 function opCoerce_(cfg, key, v) {
   if (cfg.num.indexOf(key) !== -1 && opStr_(v) !== '' && isFinite(Number(v))) return Number(v);
@@ -82,7 +88,7 @@ function opRecordBatchLocked_(g, cfg, key, ops) {
   if (!m) return errResult_('SCHEMA_MISMATCH', 'Sheet tidak ditemukan', 'key');
   var live = m.live, idCol = live.indexOf('id');
   if (idCol === -1) return errResult_('SCHEMA_MISMATCH', 'Kolom id tidak ada di sheet', 'key');
-  var rows = m.rows, origLen = rows.length, byId = {};
+  var rows = m.rows, origLen = rows.length, byId = {}, origRows = m.rows.map(function (r) { return r.slice(); });
   rows.forEach(function (r, i) { byId[String(r[idCol])] = i; });
   var aIdx = OP_ARCHIVE_COLS_.map(function (c) { return live.indexOf(c); });
   var results = [], touched = {}, audits = [], cnt = { created: 0, updated: 0, archived: 0, unchanged: 0, failed: 0 };
@@ -135,11 +141,18 @@ function opRecordBatchLocked_(g, cfg, key, ops) {
       res.code = 'VALIDATION_ERROR'; res.message = 'op tidak dikenal'; cnt.failed++;
     }
   });
+  var touchedList = Object.keys(touched).map(function (i) { return { rowNum: Number(i) + 2, orig: origRows[Number(i)] }; });
   Object.keys(touched).forEach(function (i) { m.sh.getRange(Number(i) + 2, 1, 1, m.lastCol).setValues([rows[i]]); });
-  if (rows.length > origLen) m.sh.getRange(m.lastRow + 1, 1, rows.length - origLen, m.lastCol).setValues(rows.slice(origLen));
-  var out = okResult_('Batch diproses', { results: results, created: cnt.created, updated: cnt.updated, archived: cnt.archived, unchanged: cnt.unchanged, failed: cnt.failed });
-  try { opAuditBulk_(audits, g.identity.email); } catch (e) { out.auditWarning = 'AUDIT_FAILED'; }
-  return out;
+  var nAppend = rows.length - origLen;
+  if (nAppend > 0) m.sh.getRange(m.lastRow + 1, 1, nAppend, m.lastCol).setValues(rows.slice(origLen));
+  try { opAuditBulk_(audits, g.identity.email); } catch (e) {
+    // [P0-B] audit wajib gagal -> perubahan dibatalkan, bukan sukses + auditWarning
+    try { opRestoreRows_(m.sh, m.lastCol, touchedList, m.lastRow + 1, Math.max(0, nAppend)); } catch (re) {
+      return errResult_('ROLLBACK_FAILED', 'Audit gagal DAN pemulihan gagal: ' + re.message, null);
+    }
+    return errResult_('AUDIT_FAILED', 'Audit gagal ditulis; seluruh perubahan batch dibatalkan', null);
+  }
+  return okResult_('Batch diproses', { results: results, created: cnt.created, updated: cnt.updated, archived: cnt.archived, unchanged: cnt.unchanged, failed: cnt.failed });
 }
 
 /* ---- ARSIP / REVERSAL transaksi & alokasi (tanpa hard delete) ---- */
@@ -148,17 +161,32 @@ function opArchiveRowsLocked_(g, sheetName, matchFn, reason, actionName, refId) 
   if (!m) return { err: errResult_('SCHEMA_MISMATCH', 'Sheet tidak ditemukan', null) };
   var a0 = m.live.indexOf('archivedAt'), a1 = m.live.indexOf('archivedBy'), a2 = m.live.indexOf('archiveReason');
   if (a0 === -1) return { err: errResult_('SCHEMA_ADDITIVE_REQUIRED', 'Kolom archivedAt belum ada di ' + sheetName + ' - jalankan Migrasi Skema Aditif (Pusat Data)', null) };
-  var ids = [], now = new Date().toISOString(), audits = [];
+  var ids = [], now = new Date().toISOString(), audits = [], restore = [], objs = [];
   m.rows.forEach(function (r, i) {
     var o = opRowObj_(m.live, r);
     if (!matchFn(o) || opStr_(r[a0]) !== '') return;
     var nx = r.slice(); nx[a0] = now;
     if (a1 !== -1) nx[a1] = g.identity.email;
     if (a2 !== -1) nx[a2] = opStr_(reason).slice(0, 500);
+    restore.push({ rowNum: i + 2, orig: r.slice() }); // [P0-B] untuk pemulihan bila langkah berikut gagal
     m.sh.getRange(i + 2, 1, 1, m.lastCol).setValues([nx]);
-    ids.push(String(o.id)); audits.push([actionName, o, opRowObj_(m.live, nx), String(o.id)]);
+    ids.push(String(o.id)); objs.push(o); audits.push([actionName, o, opRowObj_(m.live, nx), String(o.id)]);
   });
-  return { ids: ids, audits: audits };
+  return { ids: ids, audits: audits, restore: restore, sh: m.sh, lastCol: m.lastCol, objs: objs };
+}
+/* [P0-B] Pulihkan seluruh baris yang sudah diubah oleh satu atau lebih langkah arsip. */
+function opArchiveUndo_(parts) {
+  parts.forEach(function (p) { if (p && p.restore && p.restore.length) opRestoreRows_(p.sh, p.lastCol, p.restore, 0, 0); });
+}
+/* [P0-B] Setelah alokasi diarsipkan, status alokasi transaksi induk dihitung ulang di server. */
+function opRecomputeTrxStatus_(trxId) {
+  if (!trxId || typeof engineAllocStatusFor_ !== 'function') return null;
+  var t = getTransactionRaw_(trxId);
+  if (!t || t.archivedAt || t.jenis !== 'PENERIMAAN' || TRX_ALLOC_STATUS_.indexOf(String(t.status || 'TERCATAT')) === -1) return null;
+  var st = engineAllocStatusFor_(t);
+  if (!st || st === t.status) return null;
+  setTrxStatusCell_(trxId, st);
+  return { id: trxId, sebelum: t.status, sesudah: st };
 }
 function opArchiveTransaction(id, reason) {
   var g = opGate_(OP_WRITE_ROLES_); if (!g.ok) return g;
@@ -173,12 +201,14 @@ function opArchiveTransaction(id, reason) {
       var r1 = opArchiveRowsLocked_(g, SHT_TRANSAKSI, function (o) { return String(o.id) === id; }, reason, 'ARCHIVE_TRANSACTION', id);
       if (r1.err) return r1.err;
       var r2 = opArchiveRowsLocked_(g, SHT_ALOKASI, function (o) { return String(o.transaksiId) === id; }, reason, 'ARCHIVE_ALLOCATION', id);
-      if (r2.err) return r2.err;
-      var out = okResult_(r1.ids.length ? 'Transaksi diarsipkan (reversal, data tidak dihapus)' : 'Transaksi sudah diarsipkan sebelumnya', { id: id, transaksiDiarsipkan: r1.ids.length, alokasiDiarsipkan: r2.ids.length });
-      try { opAuditBulk_(r1.audits.concat(r2.audits), g.identity.email); } catch (e) { out.auditWarning = 'AUDIT_FAILED'; }
-      return out;
+      if (r2.err) { opArchiveUndo_([r1]); return r2.err; } // [P0-B] transaksi tidak boleh terarsip tanpa alokasinya
+      try { opAuditBulk_(r1.audits.concat(r2.audits), g.identity.email); } catch (e) {
+        try { opArchiveUndo_([r1, r2]); } catch (re) { return errResult_('ROLLBACK_FAILED', 'Audit gagal DAN pemulihan arsip gagal: ' + re.message, null, id); }
+        return errResult_('AUDIT_FAILED', 'Audit gagal ditulis; arsip transaksi dibatalkan', null, id);
+      }
+      return okResult_(r1.ids.length ? 'Transaksi diarsipkan (reversal, data tidak dihapus)' : 'Transaksi sudah diarsipkan sebelumnya', { id: id, transaksiDiarsipkan: r1.ids.length, alokasiDiarsipkan: r2.ids.length });
     });
-  } catch (e) { return errResult_('WRITE_FAILED', 'Gagal mengarsipkan transaksi', null); }
+  } catch (e) { return sgErr_(e, 'WRITE_FAILED', 'Gagal mengarsipkan transaksi'); }
 }
 function opArchiveAllocation(id, reason) {
   var g = opGate_(OP_WRITE_ROLES_); if (!g.ok) return g;
@@ -188,11 +218,20 @@ function opArchiveAllocation(id, reason) {
     return withLock_(function () {
       var r = opArchiveRowsLocked_(g, SHT_ALOKASI, function (o) { return String(o.id) === id; }, reason, 'ARCHIVE_ALLOCATION', id);
       if (r.err) return r.err;
-      var out = okResult_(r.ids.length ? 'Alokasi diarsipkan (reversal, data tidak dihapus)' : 'Alokasi tidak ditemukan atau sudah diarsipkan', { id: id, diarsipkan: r.ids.length });
-      try { opAuditBulk_(r.audits, g.identity.email); } catch (e) { out.auditWarning = 'AUDIT_FAILED'; }
-      return out;
+      // [P0-B] status alokasi transaksi induk dihitung ulang di server
+      var st = null;
+      try { st = r.objs.length ? opRecomputeTrxStatus_(String(r.objs[0].transaksiId)) : null; } catch (e) {
+        opArchiveUndo_([r]); return sgErr_(e, 'WRITE_FAILED', 'Gagal menghitung status transaksi; arsip alokasi dibatalkan');
+      }
+      var audits = r.audits.slice();
+      if (st) audits.push(['STATUS_ALOKASI_DIHITUNG', { id: st.id, status: st.sebelum }, { id: st.id, status: st.sesudah }, st.id]);
+      try { opAuditBulk_(audits, g.identity.email); } catch (e) {
+        try { opArchiveUndo_([r]); if (st) setTrxStatusCell_(st.id, st.sebelum); } catch (re) { return errResult_('ROLLBACK_FAILED', 'Audit gagal DAN pemulihan arsip gagal: ' + re.message, null, id); }
+        return errResult_('AUDIT_FAILED', 'Audit gagal ditulis; arsip alokasi dibatalkan', null, id);
+      }
+      return okResult_(r.ids.length ? 'Alokasi diarsipkan (reversal, data tidak dihapus)' : 'Alokasi tidak ditemukan atau sudah diarsipkan', { id: id, diarsipkan: r.ids.length, statusTransaksi: st ? st.sesudah : null });
     });
-  } catch (e) { return errResult_('WRITE_FAILED', 'Gagal mengarsipkan alokasi', null); }
+  } catch (e) { return sgErr_(e, 'WRITE_FAILED', 'Gagal mengarsipkan alokasi'); }
 }
 
 /* ---- BATCH transaksi (lewat TransactionEngine) & master ---- */
@@ -241,13 +280,14 @@ function opSettingsUpsert(items) {
       var kc = m.live.indexOf('key'), vc = m.live.indexOf('value'), uc = m.live.indexOf('updatedAt');
       if (kc === -1 || vc === -1) return errResult_('SCHEMA_MISMATCH', 'Header key/value tidak ada', null);
       var byKey = {}; m.rows.forEach(function (r, i) { byKey[String(r[kc])] = i; });
-      var now = new Date().toISOString(), audits = [], created = 0, updated = 0, unchanged = 0, appended = [];
+      var now = new Date().toISOString(), audits = [], created = 0, updated = 0, unchanged = 0, appended = [], touchedList = [];
       items.forEach(function (it) {
         var k = opStr_(it.key);
         if (Object.prototype.hasOwnProperty.call(byKey, k)) {
           var idx = byKey[k], cur = m.rows[idx];
           if (String(cur[vc]) === it.value) { unchanged++; return; }
           var before = { key: k, value: cur[vc] }, nx = cur.slice(); nx[vc] = it.value; if (uc !== -1) nx[uc] = now;
+          touchedList.push({ rowNum: idx + 2, orig: cur.slice() }); // [P0-B] untuk pemulihan
           m.rows[idx] = nx; m.sh.getRange(idx + 2, 1, 1, m.lastCol).setValues([nx]);
           audits.push(['SETTING_UPDATE', before.value.length > 300 ? { key: k, valueLength: String(before.value).length } : before, it.value.length > 300 ? { key: k, valueLength: it.value.length } : { key: k, value: it.value }, k]);
           updated++;
@@ -259,11 +299,14 @@ function opSettingsUpsert(items) {
         }
       });
       if (appended.length) m.sh.getRange(m.lastRow + 1, 1, appended.length, m.lastCol).setValues(appended);
-      var out = okResult_('Setting diproses', { created: created, updated: updated, unchanged: unchanged });
-      try { opAuditBulk_(audits, g.identity.email); } catch (e) { out.auditWarning = 'AUDIT_FAILED'; }
-      return out;
+      try { opAuditBulk_(audits, g.identity.email); } catch (e) {
+        // [P0-B] audit wajib gagal -> perubahan setting dibatalkan
+        try { opRestoreRows_(m.sh, m.lastCol, touchedList, m.lastRow + 1, appended.length); } catch (re) { return errResult_('ROLLBACK_FAILED', 'Audit gagal DAN pemulihan setting gagal: ' + re.message, null); }
+        return errResult_('AUDIT_FAILED', 'Audit gagal ditulis; perubahan setting dibatalkan', null);
+      }
+      return okResult_('Setting diproses', { created: created, updated: updated, unchanged: unchanged });
     });
-  } catch (e) { return errResult_('WRITE_FAILED', 'Gagal menulis setting', null); }
+  } catch (e) { return sgErr_(e, 'WRITE_FAILED', 'Gagal menulis setting'); }
 }
 
 /* ---- AUDIT MIRROR dari aksi UI (append-only, prefix UI_) ---- */
@@ -271,12 +314,26 @@ function opAuditAppend(entries) {
   var g = opGate_(OP_WRITE_ROLES_); if (!g.ok) return g;
   if (!Array.isArray(entries) || !entries.length) return errResult_('VALIDATION_ERROR', 'entries wajib array tidak kosong', 'entries');
   if (entries.length > 100) return errResult_('VALIDATION_ERROR', 'maksimal 100 entri per panggilan', 'entries');
+  /* [P0-B] Ditulis di dalam LockService (append tidak tumpang-tindih) dan idempoten: entri yang membawa id
+     klien dicatat dengan id audit deterministik; pengiriman ulang id yang sama dilewati, tidak digandakan. */
   try {
-    var rows = entries.map(function (e) {
+    return withLock_(function () {
       var short = function (v) { var s = v ? JSON.stringify(v) : ''; return s.length > 45000 ? JSON.stringify({ truncated: true, length: s.length }) : s; };
-      return ['UI_' + opStr_(e && e.aksi).slice(0, 80), e && e.before ? JSON.parse(short(e.before) || 'null') : null, e && e.after ? JSON.parse(short(e.after) || 'null') : null, opStr_(e && e.refId).slice(0, 100)];
+      var existing = {};
+      if (entries.some(function (e) { return e && opStr_(e.id); })) {
+        var am = sgModel_(SHT_AUDIT, ['id']);
+        (am ? am.values : []).forEach(function (r) { existing[String(r[am.idx.id])] = true; });
+      }
+      var rows = [], skipped = 0;
+      entries.forEach(function (e) {
+        var cid = opStr_(e && e.id).replace(/[^A-Za-z0-9_\-]/g, '').slice(0, 80);
+        var aid = cid ? ID_PREFIX_AUDIT + 'ui_' + cid : '';
+        if (aid && existing[aid]) { skipped++; return; }
+        if (aid) existing[aid] = true;
+        rows.push(['UI_' + opStr_(e && e.aksi).slice(0, 80), e && e.before ? JSON.parse(short(e.before) || 'null') : null, e && e.after ? JSON.parse(short(e.after) || 'null') : null, opStr_(e && e.refId).slice(0, 100), aid]);
+      });
+      opAuditBulk_(rows, g.identity.email);
+      return okResult_('Audit dicatat', { count: rows.length, duplikatDilewati: skipped });
     });
-    opAuditBulk_(rows, g.identity.email);
-    return okResult_('Audit dicatat', { count: rows.length });
-  } catch (e) { return errResult_('WRITE_FAILED', 'Gagal mencatat audit', null); }
+  } catch (e) { return sgErr_(e, 'WRITE_FAILED', 'Gagal mencatat audit'); }
 }
