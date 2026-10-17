@@ -4499,30 +4499,28 @@ function openLampirkanBukti(trxId){
   openModal('<h3>Lampirkan Bukti</h3>'+
     fieldSelect('bk_kategori','Kategori Dokumen', ['Bukti Pembayaran','Kuitansi','Bukti Transfer','Bukti Pengeluaran','Invoice/Nota'], 'Bukti Pembayaran')+
     fieldText('bk_judul','Judul/No. Referensi', '')+
-    '<div class="field"><label>File (opsional, disimpan lokal)</label><input type="file" id="bk_file"></div>'+
+    '<div class="field"><label>File bukti (wajib: PDF/PNG/JPEG/WEBP/GIF)</label><input type="file" id="bk_file"></div>'+
     '<div class="modal-actions"><button class="btn" onclick="closeModal()">Batal</button><button class="btn primary" onclick="submitBukti(\''+trxId+'\')">Simpan</button></div>');
 }
 function submitBukti(trxId){
+  /* [P1-E] Bukti WAJIB berfile (diunggah ke Drive lewat server). Status transaksi TIDAK lagi diubah otomatis saat
+     bukti dilampirkan: perubahan status pembayaran butuh bukti DAN tindakan eksplisit (Tandai Direkonsiliasi). */
   const fileInput = document.getElementById('bk_file');
+  if(!(fileInput && fileInput.files && fileInput.files[0])){ toast('File bukti wajib dilampirkan - bukti TIDAK disimpan.'); return; }
   const finish = (fileRef)=>{
     const dok = Store.loadDokumen();
     const d = {id:uid('dok'), kategori:val('bk_kategori'), transaksiId:trxId, fileRef:fileRef||'', judul:val('bk_judul')||('Bukti '+trxId), tanggal:todayISO()};
     dok.push(d); Store.saveDokumen(dok);
-    if(centralIsServerTrx(trxId)){ const c0 = transaksiById(trxId); if(c0 && c0.jenis==='PENGELUARAN' && c0.status==='TERCATAT') updateTransaksiStatus(trxId, 'SELESAI'); }
-    else {
+    if(!centralIsServerTrx(trxId)){
       const arr = Store.loadTransaksi(); const idx = arr.findIndex(t=>t.id===trxId);
-      arr[idx].buktiId = (arr[idx].buktiId||[]).concat([d.id]);
-      if(arr[idx].jenis==='PENGELUARAN' && arr[idx].status==='TERCATAT') arr[idx].status='SELESAI';
-      Store.saveTransaksi(arr);
+      if(idx>=0){ arr[idx].buktiId = (arr[idx].buktiId||[]).concat([d.id]); Store.saveTransaksi(arr); }
     }
     auditTrailPush('LAMPIRKAN_BUKTI', null, d, 'manual');
-    closeModal(); toast('Bukti tersimpan'); renderContent();
+    closeModal(); toast('Bukti dikirim ke server - menunggu konfirmasi. Status transaksi TIDAK diubah otomatis.'); renderContent();
   };
-  if(fileInput && fileInput.files && fileInput.files[0]){
-    const reader = new FileReader();
-    reader.onload = ()=>finish(reader.result);
-    reader.readAsDataURL(fileInput.files[0]);
-  } else finish('');
+  const reader = new FileReader();
+  reader.onload = ()=>finish(reader.result);
+  reader.readAsDataURL(fileInput.files[0]);
 }
 function markRekonsiliasi(trxId){
   updateTransaksiStatus(trxId, 'SELESAI');
@@ -4643,6 +4641,21 @@ function openCreateTransaksiFromMutasiUnitModal(mutId){
   openModal(body, false);
 }
 function linkMutasiToTransaksi(mutId, trxId){
+  /* [P1-C] Mutasi yang tersimpan di server dicocokkan lewat opMatchMutasi (nominal sama, transaksi aktif, tanpa
+     pencocokan ganda - divalidasi server). Baris lokal lama (belum dimigrasi) memakai jalur lama. */
+  if(ccMutasiOnServer_(mutId)){
+    if(!ServerBridge.opMatchMutasi){ toast('Server belum mendukung pencocokan mutasi - data TIDAK diubah.'); return; }
+    const tid = centralResolveTrxId(trxId);
+    if(tid === trxId && ccIsLocalPendingTrx_(trxId)){ toast('Transaksi belum dikonfirmasi server - cocokkan setelah transaksi tersimpan.'); return; }
+    const before = deepClone(Store.loadMutasiBank().find(x=>x.id===mutId) || {id:mutId});
+    toast('Mencocokkan mutasi di server - menunggu konfirmasi...');
+    return ServerBridge.opMatchMutasi({mutasiId:mutId, transaksiId:tid}).then(function(res){
+      if(!res || !res.ok){ toast('GAGAL mencocokkan mutasi: ' + centralErrText(res)); return false; }
+      if(!(res.data && res.data.unchanged)) auditTrailPush('COCOKKAN_MUTASI_TRANSAKSI', before, res.data, 'reconciliation-assistant');
+      closeModal(); toast('Mutasi dicocokkan ke transaksi yang sudah ada - TIDAK ada transaksi baru dibuat (dikonfirmasi server)');
+      return loadOperationalData(['mutasiBank']).then(function(){ renderContent(); return true; });
+    });
+  }
   const arr = Store.loadMutasiBank();
   const idx = arr.findIndex(m=>m.id===mutId);
   const before = deepClone(arr[idx]);
@@ -4651,16 +4664,27 @@ function linkMutasiToTransaksi(mutId, trxId){
   auditTrailPush('COCOKKAN_MUTASI_TRANSAKSI', before, arr[idx], 'reconciliation-assistant');
   closeModal(); toast('Mutasi dicocokkan ke transaksi yang sudah ada - TIDAK ada transaksi baru dibuat'); renderContent();
 }
+/* [P1-C] Mutasi ini sudah ada di 11_MUTASI_BANK server (bukan baris lokal lama). */
+function ccMutasiOnServer_(mutId){ return ccWriteActive_() && ccActive_('mutasiBank') && ccSrv_('mutasiBank').byId.has(mutId); }
 function createTransaksiFromMutasi(mutId){
   const unit = val('mtu_unit');
   if(!unit){ toast('Unit (TK/MI) wajib dipilih'); return; }
   const arr = Store.loadMutasiBank();
   const idx = arr.findIndex(m=>m.id===mutId);
   const m = arr[idx];
+  const onServer = ccMutasiOnServer_(mutId); // [P1-C]
+  if(onServer && !ServerBridge.opMatchMutasi){ toast('Gagal memproses mutasi: server belum mendukung pencocokan mutasi - TIDAK disimpan.'); return; }
   let trx;
   try{
     trx = postTransaksi({jenis:'PENERIMAAN', tanggal:m.tanggal, sumber:'Mutasi Bank', akunId:akunList().find(a=>a.jenis==='Bank')?.id||akunList()[0].id, unit, nominal:m.nominal, metode:'Transfer Bank', status:'TERCATAT', catatan:m.keterangan, namaPengirim:m.namaPengirim||undefined, ftNumber:m.ftNumber||undefined});
   }catch(e){ toast('Gagal memproses mutasi: '+e.message); return; }
+  if(onServer){
+    /* [P1-C] Mutasi dicocokkan (opMatchMutasi) SETELAH transaksi barunya dikonfirmasi server - lihat ccMutMatchJobs_. */
+    const pp = ccMutMatchPend_(); pp[mutId] = {trxId:trx.id, attempts:0}; lsSet(lsKey('central_pending_mutmatch'), pp);
+    auditTrailPush('PROSES_MUTASI_BANK', null, Object.assign({}, m, {transaksiId:trx.id}), 'manual');
+    closeModal(); toast('Transaksi penerimaan dikirim ke server - mutasi dicocokkan setelah transaksi dikonfirmasi'); centralScheduleSync(); renderContent();
+    return;
+  }
   arr[idx].status='DIPROSES'; arr[idx].transaksiId=trx.id;
   Store.saveMutasiBank(arr);
   auditTrailPush('PROSES_MUTASI_BANK', null, arr[idx], 'manual');
@@ -5342,11 +5366,16 @@ function submitRekonsiliasi(akunId){
   const selisih = saldoAktual - saldoSistem;
   const catatan = val('rk_catatan');
   if(selisih!==0 && !catatan){ toast('Selisih ditemukan ('+fmtRp(selisih)+') - catatan penjelasan WAJIB diisi'); return; }
-  const arr = Store.loadRekonsiliasi();
-  arr.push({id:uid('rekon'), akunId, periode:Store.loadSettings().periodeAktif, saldoSistem, saldoAktual, selisih, catatan, status: selisih===0?'SELESAI':(catatan?'PERLU_PENJELASAN':'OPEN'), verifiedBy:Store.loadSettings().namaBendahara||'Bendahara', verifiedAt:new Date().toISOString(), createdAt:new Date().toISOString()});
-  Store.saveRekonsiliasi(arr);
-  auditTrailPush('REKONSILIASI', null, arr[arr.length-1], 'manual');
-  closeModal(); toast(selisih===0?'Rekonsiliasi selesai, saldo sesuai':'Rekonsiliasi dicatat dengan selisih (perlu penjelasan/tindak lanjut)'); renderContent();
+  /* [P1-C] Saldo sistem, selisih, dan status DIHITUNG SERVER (opReconcileAccount); nilai klien hanya pratinjau. */
+  if(!(centralReady_() && ServerBridge.opReconcileAccount)){ toast('Gagal mencatat rekonsiliasi: ' + centralNotReadyText_()); return; }
+  toast('Mencatat rekonsiliasi di server - menunggu konfirmasi...');
+  return ServerBridge.opReconcileAccount({akunId:akunId, periode:Store.loadSettings().periodeAktif, saldoAktual:saldoAktual, catatan:catatan, clientRequestId:uid('rk')}).then(function(res){
+    if(!res || !res.ok){ toast('GAGAL mencatat rekonsiliasi: ' + centralErrText(res)); return false; }
+    const r = res.data || {};
+    auditTrailPush('REKONSILIASI', null, r, 'manual');
+    closeModal(); toast(Math.abs(Number(r.selisih||0))<0.5 ? 'Rekonsiliasi selesai, saldo sesuai (dihitung server)' : 'Rekonsiliasi dicatat dengan selisih '+fmtRp(r.selisih)+' terhadap saldo sistem server '+fmtRp(r.saldoSistem)+' (perlu penjelasan/tindak lanjut)');
+    return loadOperationalData(['rekonsiliasi']).then(function(){ renderContent(); return true; });
+  });
 }
 function selisihRekonsiliasiTerbuka(){ return Store.loadRekonsiliasi().filter(r=>Number(r.selisih||0)!==0 && r.status!=='SELESAI'); }
 
@@ -5563,6 +5592,7 @@ function openDokumenForm(){
 }
 function submitDokumen(){
   const fileInput = document.getElementById('dkf_file');
+  if(!(fileInput && fileInput.files && fileInput.files[0])){ toast('File dokumen wajib dilampirkan - dokumen TIDAK disimpan.'); return; } // [P1-E] 10_BUKTI wajib berfile
   const finish = (fileRef)=>{
     const arr = Store.loadDokumen();
     arr.push({id:uid('dok'), judul:val('dkf_judul')||'Dokumen', kategori:val('dkf_kategori'), transaksiId:val('dkf_transaksi')||null, fileRef:fileRef||'', tanggal:todayISO()});
@@ -5755,19 +5785,35 @@ function renderPengaturanClosing(){
     '</tbody></table></div></div>';
 }
 function closePeriode(periode){
-  const arr = Store.loadPeriodClosing();
-  const idx = arr.findIndex(c=>c.periode===periode);
-  const row = {periode, status:'CLOSED', closedAt:new Date().toISOString(), closedBy:Store.loadSettings().namaBendahara||'Bendahara'};
-  if(idx>=0) arr[idx]=row; else arr.push(row);
-  Store.savePeriodClosing(arr);
-  auditTrailPush('CLOSING_PERIODE', null, row, 'manual');
-  toast('Periode ditutup'); renderContent();
+  /* [P1-A] Status closing ditegakkan SERVER (opClosePeriod): penulisan pada periode tertutup ditolak di server.
+     Tidak ada lagi penulisan blob lokal; tanpa server -> galat eksplisit. */
+  if(!(centralReady_() && ServerBridge.opClosePeriod)){ toast('Gagal menutup periode: ' + centralNotReadyText_()); return; }
+  toast('Menutup periode ' + periode + ' di server - menunggu konfirmasi...');
+  return ServerBridge.opClosePeriod(periode).then(function(res){
+    if(!res || !res.ok){ toast('GAGAL menutup periode: ' + centralErrText(res)); return false; }
+    if(!(res.data && res.data.unchanged)) auditTrailPush('CLOSING_PERIODE', null, res.data && res.data.entry, 'manual');
+    toast(res.data && res.data.unchanged ? 'Periode sudah ditutup sebelumnya' : 'Periode ditutup (dikonfirmasi server)');
+    return loadCentralMasterData({skipOperational:true}).then(function(){ renderContent(); return true; });
+  });
 }
 function reopenPeriode(periode){
-  const arr = Store.loadPeriodClosing();
-  const idx = arr.findIndex(c=>c.periode===periode);
-  if(idx>=0){ const before=deepClone(arr[idx]); arr[idx].status='OPEN'; Store.savePeriodClosing(arr); auditTrailPush('REOPEN_PERIODE', before, arr[idx], 'manual'); }
-  toast('Periode dibuka kembali'); renderContent();
+  /* [P1-A] Buka kembali periode WAJIB alasan (dicatat di audit server). */
+  openModal('<h3>Buka Kembali Periode '+esc(periode)+'</h3>'+
+    '<p class="small-muted">Periode yang dibuka kembali dapat diubah lagi. Alasan dicatat di Audit Log server.</p>'+
+    fieldTextarea('rp_alasan','Alasan membuka kembali (wajib, minimal 10 karakter)','')+
+    '<div class="modal-actions"><button class="btn" onclick="closeModal()">Batal</button><button class="btn primary" onclick="submitReopenPeriode(\''+periode+'\')">Buka Kembali</button></div>');
+}
+function submitReopenPeriode(periode){
+  const alasan = String(val('rp_alasan')||'').trim();
+  if(alasan.length < 10){ toast('Alasan membuka kembali periode wajib diisi (minimal 10 karakter)'); return; }
+  if(!(centralReady_() && ServerBridge.opReopenPeriod)){ toast('Gagal membuka kembali periode: ' + centralNotReadyText_()); return; }
+  toast('Membuka kembali periode ' + periode + ' di server - menunggu konfirmasi...');
+  return ServerBridge.opReopenPeriod(periode, alasan).then(function(res){
+    if(!res || !res.ok){ toast('GAGAL membuka kembali periode: ' + centralErrText(res)); return false; }
+    if(!(res.data && res.data.unchanged)) auditTrailPush('REOPEN_PERIODE', null, res.data && res.data.entry, 'manual');
+    closeModal(); toast(res.data && res.data.unchanged ? 'Periode tidak dalam status CLOSED' : 'Periode dibuka kembali (dikonfirmasi server)');
+    return loadCentralMasterData({skipOperational:true}).then(function(){ renderContent(); return true; });
+  });
 }
 function renderPengaturanSekolah(){
   const s = Store.loadSettings();
@@ -7918,8 +7964,11 @@ function centralPushAlk_(a){
 function centralPushPatch_(id){
   const ov = centralOverlayGet(); const patch = ov[id];
   if(!patch || patch._pushed || patch._blocked) return Promise.resolve(false);
-  const body = Object.assign({}, patch); delete body._pushed; delete body._blocked; delete body._error;
-  return ServerBridge.opUpdateTransaction(JSON.parse(JSON.stringify(Object.assign({id:id}, body)))).then(function(res){
+  const body = Object.assign({}, patch); delete body._pushed; delete body._blocked; delete body._error; delete body._expect; delete body._crid;
+  const req = Object.assign({id:id}, body); // [P1-B/F] idempotensi + ekspektasi nilai (konflik terdeteksi server)
+  if(patch._crid) req.clientRequestId = 'ui_' + patch._crid;
+  if(patch._expect){ const ex = {}; Object.keys(body).forEach(k=>{ if(Object.prototype.hasOwnProperty.call(patch._expect, k)) ex[k] = patch._expect[k]; }); if(Object.keys(ex).length) req._expect = ex; }
+  return ServerBridge.opUpdateTransaction(JSON.parse(JSON.stringify(req))).then(function(res){
     if(res && res.ok){ const o2 = centralOverlayGet(); if(o2[id]){ o2[id]._pushed = true; lsSet(lsKey('centralTrxOverlay'), o2); } centralResultNote_(true); return true; }
     CentralSync.lastError = centralErrText(res);
     centralResultNote_(false, centralErrText(res));
@@ -8032,7 +8081,12 @@ function centralPatchTransaksi(trxId, patch){
   }
   if(!serverSide || !centralTxWriteActive()) throw new Error('Transaksi tidak ditemukan');
   const cur = transaksiById(id); const before = deepClone(cur);
-  const ov = centralOverlayGet(); ov[id] = Object.assign({}, ov[id] || {}, patch); delete ov[id]._pushed;
+  const ov = centralOverlayGet(); const prev = ov[id] || {};
+  /* [P1-F] _expect = nilai server yang DILIHAT sebelum field diubah (hanya diambil saat field pertama kali diubah);
+     _crid = id permintaan (idempotensi) yang baru setiap kali isi patch berubah. */
+  const expect = prev._pushed ? {} : Object.assign({}, prev._expect || {});
+  Object.keys(patch).forEach(function(k){ if(!Object.prototype.hasOwnProperty.call(expect, k)) expect[k] = (cur[k] === undefined || cur[k] === null) ? '' : cur[k]; });
+  ov[id] = Object.assign({}, prev, patch, {_expect:expect, _crid:uid('pt')}); delete ov[id]._pushed;
   lsSet(lsKey('centralTrxOverlay'), ov);
   globalThis.__centralAwaitConfirm = true; // [P0-B]
   centralScheduleSync();
@@ -8084,7 +8138,8 @@ const CC_BLOBS = { keringananAssignment:{store:'KeringananAssignment', def:[]}, 
 const SETTINGS_SYNC_KEYS = ['sekolah','yayasan','alamat','namaBendahara','jabatanBendahara','namaKepalaSekolah','nipKepalaSekolah','periodeAktif','tahunAjaranAktif','unitList','keringananPolicyList','budgetNearLimitPct','kebijakanEnrollmentTengahPeriode','docSeqCounters'];
 const CC_ORIG_ = {};
 const CC_MEM = { blobs:{}, memo:{}, dropped:{}, schemaChecked:null, legacy:null };
-const CC_PERMANENT_ = {VALIDATION_ERROR:1, UNKNOWN_FIELD:1, VALUE_TOO_LARGE:1, SCHEMA_ADDITIVE_REQUIRED:1, SCHEMA_MISMATCH:1, NOT_FOUND:1, DUPLICATE:1, ROLE_NOT_ALLOWED:1, USER_NOT_FOUND:1, USER_INACTIVE:1, AUTH_REQUIRED:1, OBLIGATION_NOT_FOUND:1, ALLOCATION_EXCEEDS_OBLIGATION:1, ALLOCATION_EXCEEDS_TRANSACTION:1, CONFIRM_REQUIRED:1, TOTALS_MISMATCH:1, PLAN_CONFLICT:1};
+const CC_PERMANENT_ = {VALIDATION_ERROR:1, UNKNOWN_FIELD:1, VALUE_TOO_LARGE:1, SCHEMA_ADDITIVE_REQUIRED:1, SCHEMA_MISMATCH:1, NOT_FOUND:1, DUPLICATE:1, ROLE_NOT_ALLOWED:1, USER_NOT_FOUND:1, USER_INACTIVE:1, AUTH_REQUIRED:1, OBLIGATION_NOT_FOUND:1, ALLOCATION_EXCEEDS_OBLIGATION:1, ALLOCATION_EXCEEDS_TRANSACTION:1, CONFIRM_REQUIRED:1, TOTALS_MISMATCH:1, PLAN_CONFLICT:1,
+  /* [P1] */ PERIOD_LOCKED:1, PERIOD_STATE_INVALID:1, PERIOD_LOCK_API_REQUIRED:1, CONFLICT:1, ARCHIVED:1, USE_DEDICATED_API:1, MATCH_VIA_API_REQUIRED:1, MUTASI_LOCKED:1, MATCH_NOMINAL_MISMATCH:1, DOUBLE_MATCH:1, ALREADY_MATCHED:1, INVALID_TRANSACTION:1, INVALID_RAB:1, LPJ_EXCEEDS_TRANSACTION:1, BUKTI_FILE_REQUIRED:1, BUKTI_IMMUTABLE:1, EVIDENCE_REQUIRED:1, IDEMPOTENCY_MISMATCH:1};
 
 function ccStr_(v){ return (v===null || v===undefined) ? '' : String(v); }
 function ccPendKey_(name){ return lsKey('central_pending_' + name); }
@@ -8193,6 +8248,8 @@ function ccSave_(name, arr, promoteLegacy){
     const conv = ccToRow_(name, o, live);
     if(conv.dropped.length) CC_MEM.dropped[name] = Array.from(new Set((CC_MEM.dropped[name] || []).concat(conv.dropped)));
     const p = {op:'upsert', local:o, attempts:0};
+    const so = CC_[name].custom ? null : m.byId.get(o.id); // [P1-F] ekspektasi = nilai server untuk field yang diubah
+    if(so){ const sr = ccToRow_(name, so, live).row, ex = {}; Object.keys(conv.row).forEach(function(k){ if((CC_[name].json || []).indexOf(k) !== -1) return; const sv = sr[k] === undefined ? '' : sr[k]; if(JSON.stringify(conv.row[k]) !== JSON.stringify(sv)) ex[k] = sv; }); if(Object.keys(ex).length) p.expect = ex; }
     const lost = ccLostFields_(conv, o);
     if(lost.length){ p.blocked = true; p.needsSchema = true; p.error = 'Kolom belum ada di sheet: ' + lost.join(', ') + ' - jalankan Migrasi Skema Aditif (Pusat Data)'; }
     if(name === 'dokumen' && typeof o.fileRef === 'string' && o.fileRef.indexOf('data:') === 0){ CC_MEM.blobs[o.id] = o.fileRef; o.fileRef = ''; p.blobKey = o.id; p.local = o; }
@@ -8246,7 +8303,7 @@ function ccPush_(name){
     if(lost.length){ p.blocked = true; p.needsSchema = true; p.error = 'Kolom belum ada di sheet: ' + lost.join(', ') + ' - jalankan Migrasi Skema Aditif (Pusat Data)'; return; }
     const row = conv.row;
     if(row.transaksiId){ if(ccIsLocalPendingTrx_(row.transaksiId)) return; row.transaksiId = centralResolveTrxId(row.transaksiId); }
-    ops.push({op:'upsert', id:id, row:row}); meta.push(id);
+    ops.push(p.expect ? {op:'upsert', id:id, row:row, expect:p.expect} : {op:'upsert', id:id, row:row}); meta.push(id); // [P1-F]
   });
   ccPendSet_(name, pend);
   for(let i = 0; i < ops.length; i += 100){
@@ -8271,6 +8328,28 @@ function centralCollectionJobs_(){
     const pend = ccPend_(name);
     if(Object.keys(pend).some(id=>!pend[id].blocked)) jobs.push(()=>ccPush_(name));
   });
+  if(ServerBridge.opMatchMutasi) ccMutMatchJobs_().forEach(j=>jobs.push(j)); // [P1-C]
+  return jobs;
+}
+/* [P1-C] Pencocokan mutasi yang menunggu transaksi barunya dikonfirmasi server (createTransaksiFromMutasi).
+   Dijalankan SETELAH job transaksi di centralRunSync, jadi id lokal sudah terpetakan ke id server. */
+function ccMutMatchPend_(){ return lsGet(lsKey('central_pending_mutmatch'), {}); }
+function ccMutMatchJobs_(){
+  const pend = ccMutMatchPend_(), jobs = [];
+  Object.keys(pend).forEach(function(mutId){
+    const e = pend[mutId]; if(!e || e.blocked) return;
+    jobs.push(function(){
+      const tid = centralResolveTrxId(e.trxId);
+      if(tid === e.trxId && ccIsLocalPendingTrx_(e.trxId)) return Promise.resolve(false);
+      return ServerBridge.opMatchMutasi({mutasiId:mutId, transaksiId:tid}).then(function(res){
+        const pp = ccMutMatchPend_();
+        if(res && res.ok){ delete pp[mutId]; lsSet(lsKey('central_pending_mutmatch'), pp); CentralSync.refresh.add('mutasiBank'); centralResultNote_(true); return true; }
+        if(pp[mutId]){ pp[mutId].error = centralErrText(res); pp[mutId].attempts = (pp[mutId].attempts||0) + 1; if(!(res && CENTRAL_RETRYABLE_[res.code]) || pp[mutId].attempts >= 3) pp[mutId].blocked = true; lsSet(lsKey('central_pending_mutmatch'), pp); }
+        centralResultNote_(false, centralErrText(res)); CentralSync.lastError = centralErrText(res);
+        return false;
+      });
+    });
+  });
   return jobs;
 }
 
@@ -8288,6 +8367,7 @@ function ccBlobGet_(name){
   try{ return JSON.parse(s); }catch(e){ return null; }
 }
 function ccBlobPut_(name, value){
+  if(name === 'periodClosing'){ console.warn('[P1-A] status closing periode hanya diubah lewat server (opClosePeriod/opReopenPeriod) - penulisan blob lokal diabaikan'); return; }
   const cur = ccBlobGet_(name), s = JSON.stringify(value);
   if(cur !== null && JSON.stringify(cur) === s) return;
   const cs = 40000, chunks = Math.max(1, Math.ceil(s.length / cs)), p = ccSetPend_();
@@ -8327,7 +8407,10 @@ function ccSettingsSave_(orig, before, o){
 }
 function centralSettingsJobs_(){
   if(!ccSettingsActive_()) return [];
-  const p = ccSetPend_(), keys = Object.keys(p).filter(k=>!p[k].blocked);
+  const p = ccSetPend_();
+  const own = Object.keys(p).filter(k=>k.indexOf('blob.periodClosing.') === 0); // [P1-A] antrean lama: buang, bukan kirim
+  if(own.length){ own.forEach(k=>{ delete p[k]; }); lsSet(lsKey('central_pending_settings'), p); CentralSync.lastError = 'Perubahan status closing lokal lama dibuang - closing hanya lewat server'; }
+  const keys = Object.keys(p).filter(k=>!p[k].blocked);
   const jobs = [];
   for(let i = 0; i < keys.length; i += 50){
     const chunk = keys.slice(i, i + 50);

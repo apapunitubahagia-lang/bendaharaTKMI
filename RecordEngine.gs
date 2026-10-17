@@ -11,6 +11,9 @@
  *   Kolom arsip ditambah ADITIF lewat opSchemaApply (AdminAPI.gs), tidak pernah otomatis.
  * - Header dibaca dari sheet LIVE; field di luar header ditolak (UNKNOWN_FIELD), tidak dibuang diam-diam.
  * - Satu pembacaan sheet + satu penulisan massal per batch; audit massal (format sama dengan auditPush_).
+ * - [P1] Setiap operasi diperiksa RecordGuard.gs (periode tertutup, integritas bukti/LPJ/komitmen/mutasi,
+ *   rekonsiliasi lewat API khusus) dan deteksi konflik: op.expect = nilai field yang dilihat klien sebelum
+ *   mengubah; bila nilai server sudah berbeda -> CONFLICT, baris tidak diubah. Baris terarsip tidak dapat di-upsert.
  *
  * DEPENDENSI: OperationalAPI.gs (opGate_, opStr_, opNorm_, opJsonSafe_, OP_WRITE_ROLES_),
  *             TransactionEngine.gs (errResult_, okResult_, ss_, sheet_, withLock_, auditPush_,
@@ -92,6 +95,14 @@ function opRecordBatchLocked_(g, cfg, key, ops) {
   rows.forEach(function (r, i) { byId[String(r[idCol])] = i; });
   var aIdx = OP_ARCHIVE_COLS_.map(function (c) { return live.indexOf(c); });
   var results = [], touched = {}, audits = [], cnt = { created: 0, updated: 0, archived: 0, unchanged: 0, failed: 0 };
+  var rg = rgContext_(key, live, rows); // [P1] aturan integritas per-record (RecordGuard.gs)
+  var guard = function (res, op, curObj, nextObj) {
+    var f;
+    try { f = rgCheckOp_(rg, op, curObj, nextObj); } catch (ge) { f = { code: ge.code || 'GUARD_FAILED', message: String(ge.message || ge) }; }
+    if (!f) return false;
+    res.code = f.code; res.message = f.message; cnt.failed++; return true;
+  };
+  var hasExpect = function (o) { return o.expect && typeof o.expect === 'object' && !Array.isArray(o.expect); };
   ops.forEach(function (o) {
     var res = { id: o && o.id, op: o && o.op, ok: false, code: '' };
     results.push(res);
@@ -114,13 +125,25 @@ function opRecordBatchLocked_(g, cfg, key, ops) {
           next[c] = nv;
         });
         if (!changed) { res.ok = true; res.code = 'UNCHANGED'; cnt.unchanged++; return; }
+        if (aIdx[0] !== -1 && opStr_(cur[aIdx[0]]) !== '') { res.code = 'ARCHIVED'; res.message = 'Data sudah diarsipkan dan tidak dapat diubah'; cnt.failed++; return; } // [P1-F]
+        if (hasExpect(o)) { // [P1-F] deteksi konflik: nilai server berubah sejak klien membacanya
+          var conflict = Object.keys(o.expect).filter(function (k) {
+            var c = live.indexOf(k); if (c === -1) return false;
+            var sv = opStr_(opJsonSafe_(cur[c])), nv2 = opStr_(opJsonSafe_(next[c]));
+            return sv !== opStr_(o.expect[k]) && sv !== nv2;
+          });
+          if (conflict.length) { res.code = 'CONFLICT'; res.message = 'Data diubah pengguna lain sejak dimuat (' + conflict.join(', ') + '); muat ulang lalu ulangi perubahan'; res.fields = conflict; res.current = opJsonSafe_(opRowObj_(live, cur)); cnt.failed++; return; }
+        }
+        if (guard(res, 'upsert', before, opRowObj_(live, next))) return;
         rows[idx] = next; if (idx < origLen) touched[idx] = true;
         audits.push(['RECORD_UPDATE:' + key, before, opRowObj_(live, next), id]);
         res.ok = true; res.code = 'UPDATED'; cnt.updated++;
       } else {
+        if (hasExpect(o)) { res.code = 'CONFLICT'; res.message = 'Data yang akan diubah sudah tidak ada di server'; cnt.failed++; return; } // [P1-F]
         var nr = live.map(function () { return ''; });
         nr[idCol] = id;
         keys.forEach(function (k) { nr[live.indexOf(k)] = opCoerce_(cfg, k, row[k]); });
+        if (guard(res, 'upsert', null, opRowObj_(live, nr))) return;
         rows.push(nr); byId[id] = rows.length - 1;
         audits.push(['RECORD_CREATE:' + key, null, opRowObj_(live, nr), id]);
         res.ok = true; res.code = 'CREATED'; cnt.created++;
@@ -131,6 +154,7 @@ function opRecordBatchLocked_(g, cfg, key, ops) {
       var ix = byId[id], rr = rows[ix];
       if (opStr_(rr[aIdx[0]]) !== '') { res.ok = true; res.code = 'UNCHANGED'; cnt.unchanged++; return; }
       var b2 = opRowObj_(live, rr), nx = rr.slice();
+      if (guard(res, 'archive', b2, null)) return; // [P1-A] arsip pada periode tertutup ditolak
       nx[aIdx[0]] = new Date().toISOString();
       if (aIdx[1] !== -1) nx[aIdx[1]] = g.identity.email;
       if (aIdx[2] !== -1) nx[aIdx[2]] = opStr_(o.reason).slice(0, 500);
@@ -198,6 +222,8 @@ function opArchiveTransaction(id, reason) {
       if (!t) return errResult_('SCHEMA_MISMATCH', 'Sheet transaksi tidak ditemukan', null);
       var exists = t.rows.some(function (r) { return String(r[t.live.indexOf('id')]) === id; });
       if (!exists) return errResult_('NOT_FOUND', 'Transaksi tidak ditemukan', 'id', id);
+      var tRaw = getTransactionRaw_(id); // [P1-A] reversal pada periode tertutup ditolak
+      var plT = plGuard_([tRaw && tRaw.tanggal], 'arsip transaksi'); if (plT) return plT;
       var r1 = opArchiveRowsLocked_(g, SHT_TRANSAKSI, function (o) { return String(o.id) === id; }, reason, 'ARCHIVE_TRANSACTION', id);
       if (r1.err) return r1.err;
       var r2 = opArchiveRowsLocked_(g, SHT_ALOKASI, function (o) { return String(o.transaksiId) === id; }, reason, 'ARCHIVE_ALLOCATION', id);
@@ -216,6 +242,8 @@ function opArchiveAllocation(id, reason) {
   if (!id) return errResult_('VALIDATION_ERROR', 'id wajib diisi', 'id');
   try {
     return withLock_(function () {
+      var al = activeAllocationRows_().filter(function (a) { return String(a.id) === id; })[0]; // [P1-A]
+      if (al) { var tA = getTransactionRaw_(String(al.transaksiId)); var plA = plGuard_([tA && tA.tanggal], 'arsip alokasi'); if (plA) return plA; }
       var r = opArchiveRowsLocked_(g, SHT_ALOKASI, function (o) { return String(o.id) === id; }, reason, 'ARCHIVE_ALLOCATION', id);
       if (r.err) return r.err;
       // [P0-B] status alokasi transaksi induk dihitung ulang di server
@@ -272,6 +300,7 @@ function opSettingsUpsert(items) {
     if (!it || !OP_SETTING_KEY_RE_.test(opStr_(it.key))) return errResult_('VALIDATION_ERROR', 'key setting tidak valid', 'key');
     if (typeof it.value !== 'string') return errResult_('VALIDATION_ERROR', 'value harus string (objek di-JSON-kan klien)', 'value');
     if (it.value.length > 45000) return errResult_('VALUE_TOO_LARGE', 'value melebihi batas satu sel (45000)', 'value');
+    if (opStr_(it.key).indexOf(PL_BLOB_PREFIX_) === 0) return errResult_('PERIOD_LOCK_API_REQUIRED', 'Status closing periode hanya dapat diubah lewat Tutup/Buka Kembali Periode (opClosePeriod/opReopenPeriod)', 'key'); // [P1-A]
   }
   try {
     return withLock_(function () {

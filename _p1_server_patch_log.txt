@@ -1,0 +1,10 @@
+header
+RESULT_TYPE_SHEET
+engineAuditBatch_
+create: period lock
+create: steps 6-7 (idempotency -> audit batch)
+alloc: period lock
+alloc: idempotency -> audit batch
+mutasi: period lock
+mutasi: idempotency -> audit batch
+replace fn updateTransaction_

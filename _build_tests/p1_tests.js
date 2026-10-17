@@ -54,7 +54,7 @@ const sync = async c => { await c.sb.centralRunSync(true); await tick(10); await
     rec('P1L-04', 'TC-P1-LOCK-02', r.ok === false && r.code === 'PERIOD_LOCKED' && cnt(srv, '06_ALOKASI') === 0, short(r)); }
   { const srv = makeServer(); applyArchiveCols(srv); setClosed(srv, ['September 2026']);
     const r = safe(() => srv.sb.opArchiveTransaction('imp_trx_2', 'uji'));
-    rec('P1L-05', 'TC-P1-LOCK-02', r.ok === false && r.code === 'PERIOD_LOCKED' && cell(srv, '05_TRANSAKSI', 'imp_trx_2', 'archivedAt') === '', short(r)); }
+    rec('P1L-05', 'TC-P1-LOCK-02', r.ok === false && r.code === 'PERIOD_LOCKED' && (cell(srv, '05_TRANSAKSI', 'imp_trx_2', 'archivedAt') || '') === '', short(r)); }
   { const srv = makeServer(); setClosed(srv, ['September 2026']);
     const m = safe(() => srv.sb.opRecordBatch('mutasiBank', [{ op: 'upsert', id: 'mut_uji_1', row: { tanggal: '2026-09-15', nominal: 5000, keterangan: 'x', status: 'BELUM_DIPROSES' } }]));
     const mr = m.ok ? m.data.results[0] : m;
@@ -88,6 +88,13 @@ const sync = async c => { await c.sb.centralRunSync(true); await tick(10); await
     safe(() => c.sb.closePeriode('September 2026')); await sync(c);
     const au = audits(srv).filter(x => x.aksi === 'CLOSING_PERIODE');
     rec('P1L-11', 'TC-P1-LOCK-03', c.calls.indexOf('opClosePeriod') !== -1 && au.length === 1, J({ calls: c.calls.filter(x => /Period|Settings/.test(x)), audit: au.length })); }
+
+  { // klien: antrean setting lama yang membawa blob closing tidak boleh menggagalkan setting lain / membuka periode
+    const srv = makeServer(); setClosed(srv, ['September 2026']);
+    const store = { draBendaharaV2_central_pending_settings: JSON.stringify({ 'blob.periodClosing.0': { value: '[]' }, 'blob.periodClosing.n': { value: '1' }, namaBendahara: { value: 'Bendahara Uji P1' } }) };
+    const c = await bootClient(srv, { store }); await sync(c);
+    const nb = rows(srv, '15_SETTINGS').find(x => x[0] === 'namaBendahara');
+    rec('P1L-12', 'TC-P1-LOCK-03', !!nb && nb[1] === 'Bendahara Uji P1' && rows(srv, '15_SETTINGS').some(x => x[0] === 'blob.periodClosing.0' && /CLOSED/.test(x[1])), J({ nama: nb && nb[1], calls: c.calls.filter(x => /Settings/.test(x)) })); }
 
   // ================= P1-B: AUDIT ATOMIK & IDEMPOTENSI =================
   { // audit transaksi berhasil, audit alokasi gagal -> tidak boleh tersisa audit parsial
@@ -239,6 +246,17 @@ const sync = async c => { await c.sb.centralRunSync(true); await tick(10); await
     srv.sheets['05_TRANSAKSI'].find(r => r[0] === 'imp_trx_2')[col(srv, '05_TRANSAKSI', 'catatan')] = 'diubah pengguna lain';
     safe(() => c.sb.centralPatchTransaksi('imp_trx_2', { catatan: 'diubah klien A' })); await sync(c);
     rec('P1C-05', 'TC-P1-KON-01', cell(srv, '05_TRANSAKSI', 'imp_trx_2', 'catatan') === 'diubah pengguna lain' && /CONFLICT|konflik/i.test(c.toast()), J({ catatan: cell(srv, '05_TRANSAKSI', 'imp_trx_2', 'catatan'), toast: c.toast() })); }
+
+  // ================= OTORISASI API P1 (pelajaran P0-C: tidak ada jalur tulis tanpa gerbang) =================
+  { const srv = makeServer(); setClosed(srv, ['September 2026']);
+    srv.sheets['11_MUTASI_BANK'].push(['mut_1', '2026-10-05', 200000, 'SPP', '', '', 'BELUM_DIPROSES', '']);
+    srv.state.email = 'auditor@x.id';
+    const w = [safe(() => srv.sb.opReopenPeriod('September 2026', 'alasan cukup panjang')), safe(() => srv.sb.opReconcileAccount({ akunId: 'akun_kas1', periode: 'Oktober 2026', saldoAktual: 0, clientRequestId: 'x1' })), safe(() => srv.sb.opMatchMutasi({ mutasiId: 'mut_1', transaksiId: 'imp_trx_1' }))].map(r => r.code);
+    const rd = safe(() => srv.sb.opRabRealization('Oktober 2026')).code;
+    srv.state.email = 'orang.asing@x.id';
+    const anon = [safe(() => srv.sb.opPeriodLockStatus()), safe(() => srv.sb.opRabRealization('Oktober 2026')), safe(() => srv.sb.opClosePeriod('Oktober 2026'))].map(r => r.ok);
+    rec('P1S-01', 'TC-AUTH-02', w.every(c => c === 'ROLE_NOT_ALLOWED') && rd === 'SUCCESS' && anon.every(x => x === false) && cell(srv, '11_MUTASI_BANK', 'mut_1', 'status') === 'BELUM_DIPROSES' && cnt(srv, '16_REKONSILIASI') === 0,
+      J({ auditorTulis: w, auditorBaca: rd, tanpaAkses: anon })); }
 
   // ================= GAP-028: TRANSFER TETAP DIBLOKIR =================
   { const srv = makeServer(); const c = await bootClient(srv);

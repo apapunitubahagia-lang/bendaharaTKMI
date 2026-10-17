@@ -1,0 +1,16 @@
+CC_PERMANENT_
+replace fn closePeriode
+replace fn reopenPeriode
+ccBlobPut_: periodClosing milik server
+centralSettingsJobs_: buang antrean blob closing
+replace fn submitRekonsiliasi
+replace fn linkMutasiToTransaksi
+replace fn createTransaksiFromMutasi
+replace fn centralCollectionJobs_
+label file bukti
+replace fn submitBukti
+submitDokumen: file wajib
+replace fn centralPatchTransaksi
+centralPushPatch_: crid + _expect
+ccSave_: expect
+ccPush_: expect

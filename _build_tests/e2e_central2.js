@@ -117,13 +117,16 @@ const sync = async (c) => { await c.sb.centralRunSync(true); await tick(5); };
     rec('K2 ubah status komitmen -> PAID di sheet', rows(srv, '09_KOMITMEN').find(r => r[0] === kRow[0])[col(srv, '09_KOMITMEN', 'status')] === 'PAID');
 
     // ===== R: rekonsiliasi, mutasi, lpj, rkat =====
-    A.Store.saveRekonsiliasi(A.Store.loadRekonsiliasi().concat([{ id: 'rek_t1', periode: 'September 2026', akunId: 'akun_bank1', saldoSistem: 100000, saldoAktual: 99000, selisih: -1000, status: 'SELISIH', catatan: 'uji' }]));
+    // [P1-C] rekonsiliasi lewat opReconcileAccount (saldo sistem dihitung server); jalur generik ditolak (p1_tests P1R-02)
+    Object.assign(c.fields, { rk_aktual: '99000', rk_catatan: 'uji' }); await c.sb.submitRekonsiliasi('akun_bank1');
     A.Store.saveMutasiBank(A.Store.loadMutasiBank().concat([{ id: 'mb_t1', tanggal: '2026-09-10', nominal: 50000, keterangan: 'Setoran', namaPengirim: 'Wali A', ftNumber: 'FT1', status: 'BELUM_DIPROSES', transaksiId: null }]));
     A.Store.saveLpj(A.Store.loadLpj().concat([{ id: 'lpj_t1', tanggal: '2026-09-10', unit: 'MI', kategori: 'ATK', item: 'Kertas', volume: 2, satuan: 'rim', nominal: 10000, status: 'DRAFT', transaksiId: null }]));
     A.Store.saveRkat(A.Store.loadRkat().concat([{ id: 'rkat_t1', tahun: 2026, program: 'Program X', pagu: 5000000, docId: 'DOC1' }]));
     await sync(c);
     const hasRow = (sh, id) => rows(srv, sh).some(r => r[0] === id);
-    rec('R1 rekonsiliasi/mutasi bank/LPJ/RKAT tertulis ke 16/11/19/18 (nilai numerik, null -> kosong)', hasRow('16_REKONSILIASI', 'rek_t1') && hasRow('11_MUTASI_BANK', 'mb_t1') && hasRow('19_LPJ', 'lpj_t1') && hasRow('18_RKAT', 'rkat_t1'), { rek: hasRow('16_REKONSILIASI', 'rek_t1'), mb: hasRow('11_MUTASI_BANK', 'mb_t1'), lpj: hasRow('19_LPJ', 'lpj_t1'), rkat: hasRow('18_RKAT', 'rkat_t1'), blk: c.sb.centralBlockedCount(), errs: Object.keys(c.store).filter(k => /central_pending/.test(k)).map(k => k + '=' + String(c.store[k]).replace(/"local":\{[^}]*\},?/g,'').slice(0, 300)) });
+    const rk = rows(srv, '16_REKONSILIASI').find(r => r[col(srv, '16_REKONSILIASI', 'akunId')] === 'akun_bank1');
+    const rekOk = !!rk && rk[col(srv, '16_REKONSILIASI', 'saldoSistem')] === 0 && rk[col(srv, '16_REKONSILIASI', 'saldoAktual')] === 99000 && rk[col(srv, '16_REKONSILIASI', 'selisih')] === 99000 && rk[col(srv, '16_REKONSILIASI', 'status')] === 'PERLU_PENJELASAN';
+    rec('R1 rekonsiliasi (via server, saldo sistem dihitung server)/mutasi bank/LPJ/RKAT tertulis ke 16/11/19/18 (nilai numerik, null -> kosong)', rekOk && hasRow('11_MUTASI_BANK', 'mb_t1') && hasRow('19_LPJ', 'lpj_t1') && hasRow('18_RKAT', 'rkat_t1'), { rek: rk, mb: hasRow('11_MUTASI_BANK', 'mb_t1'), lpj: hasRow('19_LPJ', 'lpj_t1'), rkat: hasRow('18_RKAT', 'rkat_t1'), blk: c.sb.centralBlockedCount(), errs: Object.keys(c.store).filter(k => /central_pending/.test(k)).map(k => k + '=' + String(c.store[k]).replace(/"local":\{[^}]*\},?/g,'').slice(0, 300)) });
     const mbBack = A.Store.loadMutasiBank().find(m => m.id === 'mb_t1');
     rec('R2 mutasi bank dibaca kembali dari server: nominal angka, transaksiId null (bukan "")', mbBack && mbBack.nominal === 50000 && mbBack.transaksiId === null, mbBack);
     // reload server -> tetap tampil
@@ -176,6 +179,9 @@ const sync = async (c) => { await c.sb.centralRunSync(true); await tick(5); };
     A.Store.saveKeringananAssignment([{ id: 'ka1', siswaId: 's1', policy: 'Yatim', persen: 50 }]); c.sb.closePeriode('September 2026'); await sync(c);
     const setRows = rows(srv, '15_SETTINGS').map(r => r[0]);
     rec('I2 blob (keringanan assignment, penutupan periode) -> 15_SETTINGS sebagai kunci terpisah; terbaca kembali', setRows.some(k => /keringananAssignment|KeringananAssignment/i.test(k)) && setRows.some(k => /periodClosing|PeriodClosing/i.test(k)) && A.Store.loadKeringananAssignment().length === 1 && A.Store.loadPeriodClosing()[0].status === 'CLOSED', setRows);
+    // [P1-A] periode CLOSED kini ditegakkan server: buka kembali lewat jalur resmi (alasan wajib) sebelum skenario transaksi September berikutnya
+    Object.assign(c.fields, { rp_alasan: 'uji e2e: lanjutkan skenario transaksi September' }); await c.sb.submitReopenPeriode('September 2026'); await sync(c);
+    rec('I3 [P1-A] buka kembali periode lewat server (alasan wajib, audit REOPEN_PERIODE); status terbaca OPEN', A.Store.loadPeriodClosing()[0].status === 'OPEN' && rows(srv, '13_AUDIT_LOG').some(r => r[2] === 'REOPEN_PERIODE'), A.Store.loadPeriodClosing());
 
     // ===== S: settings =====
     const st = A.Store.loadSettings(); st.namaBendahara = 'Bu Nur'; st.periodeAktif = 'Oktober 2026'; A.Store.saveSettings(st); await sync(c);

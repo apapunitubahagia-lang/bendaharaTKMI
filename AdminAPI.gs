@@ -97,23 +97,41 @@ function opSchemaPlan() {
 function opSchemaApply(confirm) {
   var g = opGate_(OP_WRITE_ROLES_); if (!g.ok) return g;
   if (confirm !== 'TAMBAH_KOLOM_ADITIF') return errResult_('CONFIRM_REQUIRED', 'Konfirmasi eksplisit diperlukan (TAMBAH_KOLOM_ADITIF)', 'confirm');
+  /* [P1-B] Gagal tertutup: rencana penambahan kolom DIAUDIT LEBIH DULU. Audit gagal -> tidak ada kolom yang
+     ditambahkan (bukan lagi "kolom ditambah + auditWarning"). Bila penambahan gagal di tengah jalan, sel header
+     yang baru ditulis dikosongkan kembali dan kegagalan dicatat. */
   try {
     return withLock_(function () {
-      var want = opSchemaWanted_(), added = [], audits = [];
+      var want = opSchemaWanted_(), plan = [], audits = [];
       Object.keys(want).sort().forEach(function (s) {
         var m = opSheetModel_(s); if (!m || m.lastCol < 1) return;
         var add = want[s].cols.filter(function (c) { return m.live.indexOf(c) === -1; });
         if (!add.length) return;
-        if (typeof m.sh.getMaxColumns === 'function' && m.sh.getMaxColumns() < m.lastCol + add.length && typeof m.sh.insertColumnsAfter === 'function') m.sh.insertColumnsAfter(m.sh.getMaxColumns(), m.lastCol + add.length - m.sh.getMaxColumns());
-        var rg = m.sh.getRange(1, m.lastCol + 1, 1, add.length);
-        rg.setValues([add]);
-        try { m.sh.getRange(1, m.lastCol, 1, 1).copyTo(rg, { formatOnly: true }); } catch (e) { /* format opsional */ }
-        added.push({ sheet: s, add: add });
+        plan.push({ m: m, sheet: s, add: add });
         audits.push(['SCHEMA_ADD_COLUMNS', { sheet: s, columnsBefore: m.live }, { sheet: s, added: add }, s]);
       });
-      var out = okResult_(added.length ? 'Kolom aditif ditambahkan' : 'Tidak ada kolom yang perlu ditambah', { added: added });
-      try { opAuditBulk_(audits, g.identity.email); } catch (e) { out.auditWarning = 'AUDIT_FAILED'; }
-      return out;
+      if (!plan.length) return okResult_('Tidak ada kolom yang perlu ditambah', { added: [] });
+      try { opAuditBulk_(audits, g.identity.email); } catch (e) {
+        return errResult_('AUDIT_FAILED', 'Audit gagal ditulis; tidak ada kolom yang ditambahkan', null);
+      }
+      var added = [];
+      try {
+        plan.forEach(function (p) {
+          var m = p.m, add = p.add;
+          if (typeof m.sh.getMaxColumns === 'function' && m.sh.getMaxColumns() < m.lastCol + add.length && typeof m.sh.insertColumnsAfter === 'function') m.sh.insertColumnsAfter(m.sh.getMaxColumns(), m.lastCol + add.length - m.sh.getMaxColumns());
+          var rg = m.sh.getRange(1, m.lastCol + 1, 1, add.length);
+          rg.setValues([add]);
+          added.push(p);
+          try { m.sh.getRange(1, m.lastCol, 1, 1).copyTo(rg, { formatOnly: true }); } catch (e) { /* format opsional */ }
+        });
+      } catch (e) {
+        var undoErr = null;
+        added.forEach(function (p) { try { p.m.sh.getRange(1, p.m.lastCol + 1, 1, p.add.length).setValues([p.add.map(function () { return ''; })]); } catch (ue) { undoErr = ue; } });
+        try { opAuditBulk_([['SCHEMA_ADD_COLUMNS_FAILED', null, { error: String(e && e.message || e), dibatalkan: added.map(function (p) { return p.sheet; }) }, 'schema']], g.identity.email); } catch (e2) { /* sudah gagal; dilaporkan lewat hasil */ }
+        if (undoErr) return errResult_('ROLLBACK_FAILED', 'Penambahan kolom gagal DAN pembatalan header gagal: ' + undoErr.message, null);
+        return errResult_('WRITE_FAILED', 'Penambahan kolom gagal; header yang sempat ditulis dikosongkan kembali', null);
+      }
+      return okResult_('Kolom aditif ditambahkan', { added: added.map(function (p) { return { sheet: p.sheet, add: p.add }; }) });
     });
   } catch (e) { return errResult_('WRITE_FAILED', 'Gagal menambah kolom', null); }
 }

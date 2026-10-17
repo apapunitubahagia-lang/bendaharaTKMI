@@ -105,6 +105,7 @@ async function bootClient(srv, opts) {
     const srv = makeServer(); const ti = col(srv, '05_TRANSAKSI', 'tanggal');
     srv.sheets['05_TRANSAKSI'][2][ti] = new Date(Date.UTC(2026, 8, 5));
     const id = srv.sheets['05_TRANSAKSI'][2][0];
+    srv.sheets['10_BUKTI'].push(['dok_p0b02', 'Kuitansi', id, 'nota', '2026-09-05', 'drv_x', 'https://drive.test/drv_x', '']); // [P1-E] SELESAI wajib bukti berfile
     const r = safe(() => srv.sb.opUpdateTransaction({ id, status: 'SELESAI' }));
     const row = srv.sheets['05_TRANSAKSI'][2];
     rec('P0B-02', 'TC-CRUD-02', r.ok === true && row[col(srv, '05_TRANSAKSI', 'status')] === 'SELESAI' && String(row[ti] instanceof Date ? row[ti].toISOString() : row[ti]).slice(0, 10) === '2026-09-05', J({ ok: r.ok, code: r.code, msg: r.message }).slice(0, 200));

@@ -36,6 +36,10 @@
  * [P0 - 2026-10-17] Patch build apply_p0_server.js: baca/tulis berbasis NAMA header (SchemaGuard.gs),
  * SCHEMA_MISMATCH gagal tertutup, normalisasi tanggal, validasi patch per-field, invarian nominal >= alokasi,
  * status alokasi dihitung server, aktor di audit, fungsi engine/tes dijadikan privat (akhiran _).
+ *
+ * [P1 - 2026-10-17] Patch build apply_p1_server.js: audit engine satu kali append di langkah TERAKHIR (setelah
+ * catatan idempotensi) bersama jejak aktor/role (tanpa audit parsial), idempotensi + deteksi konflik pada
+ * updateTransaction_, penguncian periode (PeriodLock.gs) di dalam lock, status SELESAI wajib bukti berfile.
  */
 
 // ============================================================
@@ -181,7 +185,7 @@ function deleteIdempotencyByClientRequestId_(clientRequestId) {
   return false;
 }
 /* Sheet nama untuk tiap resultType - dipakai untuk verifikasi orphan (bagian F). */
-var RESULT_TYPE_SHEET = { transaction: SHT_TRANSAKSI, allocation: SHT_ALOKASI, bankMutation: SHT_MUTASI };
+var RESULT_TYPE_SHEET = { transaction: SHT_TRANSAKSI, allocation: SHT_ALOKASI, bankMutation: SHT_MUTASI, transactionUpdate: SHT_TRANSAKSI }; // [P1-B] transactionUpdate
 /* Mengembalikan salah satu:
    { status:'none' }                    - tidak ada record idempotency
    { status:'orphan', record }          - record ada tapi target sudah tidak ada
@@ -243,6 +247,23 @@ function writeAuditEntry_(opts, aksi, before, after, sumber, refId) {
   } else {
     auditPush_(aksi, before, after, sumber, refId);
   }
+}
+
+/* [P1-B] Audit engine dalam SATU append (sgAppendMany_): seluruh baris audit wajib satu operasi + baris jejak
+   aktor/role (API_*, bila dipanggil lewat opEngineWrite_) ditulis sekaligus atau tidak sama sekali. Dipanggil
+   sebagai langkah TERAKHIR sebelum sukses, sehingga tidak ada audit yang menyatakan perubahan yang di-rollback.
+   entries = [[aksi, before, after, sumber, refId], ...]. [TEST MODE] tetap ke Logger/collector, tidak ke sheet. */
+function engineAuditBatch_(opts, entries, apiRefId) {
+  if (opts && opts.testMode) { entries.forEach(function (e) { auditPushTest_(opts.auditCollector, e[0], e[1], e[2], e[3], e[4]); }); return; }
+  var ts = new Date().toISOString();
+  var actor = (typeof ENGINE_ACTOR_ !== 'undefined' && ENGINE_ACTOR_) ? 'google:' + ENGINE_ACTOR_ : null;
+  var rows = entries.map(function (e) {
+    return { id: ID_PREFIX_AUDIT + Utilities.getUuid(), timestamp: ts, aksi: e[0], before: e[1] ? JSON.stringify(e[1]) : '', after: e[2] ? JSON.stringify(e[2]) : '', sumber: actor || e[3] || 'write-door', refId: e[4] || '' };
+  });
+  var api = (typeof ENGINE_API_ !== 'undefined' && ENGINE_API_ && !ENGINE_API_.written) ? ENGINE_API_ : null;
+  if (api) rows.push({ id: ID_PREFIX_AUDIT + Utilities.getUuid(), timestamp: ts, aksi: 'API_' + api.action, before: '', after: JSON.stringify({ actorEmail: api.email, actorRole: api.role, refId: apiRefId || '' }), sumber: 'google:' + api.email, refId: apiRefId || '' });
+  sgAppendMany_(SHT_AUDIT, AUDIT_HEADERS, rows);
+  if (api) api.written = true;
 }
 
 // ============================================================
@@ -478,6 +499,7 @@ function createTransactionWithAllocations_(payload, opts) {
       }
       if (payload.akunId && !akunExists_(payload.akunId)) return errResult_('INVALID_ACCOUNT', 'akunId tidak valid (re-check)', 'akunId');
       if (payload.siswaId && !siswaExists_(payload.siswaId)) return errResult_('INVALID_STUDENT', 'siswaId tidak valid (re-check)', 'siswaId');
+      var plC = plGuard_([payload.tanggal], 'transaksi'); if (plC) return plC; // [P1-A] periode tertutup, diperiksa di dalam lock
 
       var trxId = ID_PREFIX_TRX + Utilities.getUuid();
       var now = new Date().toISOString();
@@ -532,34 +554,29 @@ function createTransactionWithAllocations_(payload, opts) {
         return errResult_(engineErrCode_(e), 'Gagal menghitung status alokasi, transaksi sudah di-rollback: ' + e.message, null);
       }
 
-      // --- 6. audit (CREATE_TRANSACTION + CREATE_ALLOCATION per baris) ---
-      // [TEST MODE] writeAuditEntry_ mengarah ke 13_AUDIT_LOG production
-      // kecuali opts.testMode true, baru diarahkan ke Logger/collector.
-      try {
-        writeAuditEntry_(opts, 'CREATE_TRANSACTION', null, trxRecord, payload.sumber || 'write-door', trxId);
-        allocations.forEach(function (a, i) {
-          writeAuditEntry_(opts, 'CREATE_ALLOCATION', null, { transaksiId: trxId, siswaId: a.siswaId, komponenId: a.komponenId, nominal: a.nominal }, payload.sumber || 'write-door', writtenAllocIds[i]);
-        });
-      } catch (e) {
-        // [I] audit gagal SETELAH write bisnis sukses -> rollback transaction+
-        // allocation. Audit yang SUDAH sempat tertulis sebelum exception TIDAK
-        // dihapus (append-only) - hanya dicatat di Logger sebagai kompensasi.
-        Logger.log('createTransactionWithAllocations_: audit gagal setelah write sukses, rollback transaksi+allocation (audit yang sudah tertulis TETAP ada, append-only): ' + e.message);
-        writtenAllocIds.forEach(function (id) { deleteRowById_(SHT_ALOKASI, id); });
-        deleteRowById_(SHT_TRANSAKSI, trxId);
-        return errResult_(engineErrCode_(e), 'Gagal menulis audit, transaksi+allocation sudah di-rollback (audit parsial yang sempat tertulis tetap ada sesuai aturan append-only): ' + e.message, null, trxId);
-      }
-
-      // --- 7. idempotency record ---
+      // --- 6. [P1-B] idempotency record LEBIH DULU (belum ada audit yang ditulis bila langkah ini gagal) ---
       try {
         recordIdempotentResult_(payload.clientRequestId, trxId, 'transaction');
       } catch (e) {
-        // [I] idempotency write gagal SETELAH audit sukses -> rollback
-        // transaction+allocation. Audit yang sudah tertulis TETAP ada.
-        Logger.log('createTransactionWithAllocations_: idempotency record gagal setelah audit sukses, rollback transaksi+allocation (audit TETAP ada, append-only): ' + e.message);
+        Logger.log('createTransactionWithAllocations_: idempotency record gagal, rollback transaksi+allocation: ' + e.message);
         writtenAllocIds.forEach(function (id) { deleteRowById_(SHT_ALOKASI, id); });
         deleteRowById_(SHT_TRANSAKSI, trxId);
-        return errResult_(engineErrCode_(e), 'Gagal menulis idempotency record, transaksi+allocation sudah di-rollback (audit CREATE_TRANSACTION/CREATE_ALLOCATION tetap ada sesuai aturan append-only): ' + e.message, null, trxId);
+        return errResult_(engineErrCode_(e), 'Gagal menulis idempotency record, transaksi+allocation sudah di-rollback (belum ada audit yang tertulis): ' + e.message, null, trxId);
+      }
+
+      // --- 7. [P1-B] audit TERAKHIR, satu append: CREATE_TRANSACTION + CREATE_ALLOCATION + jejak aktor/role ---
+      try {
+        var auditRows = [['CREATE_TRANSACTION', null, trxRecord, payload.sumber || 'write-door', trxId]];
+        allocations.forEach(function (a, i) {
+          auditRows.push(['CREATE_ALLOCATION', null, { transaksiId: trxId, siswaId: a.siswaId, komponenId: a.komponenId, nominal: a.nominal }, payload.sumber || 'write-door', writtenAllocIds[i]]);
+        });
+        engineAuditBatch_(opts, auditRows, trxId);
+      } catch (e) {
+        Logger.log('createTransactionWithAllocations_: audit gagal, rollback transaksi+allocation+idempotency (tidak ada audit parsial): ' + e.message);
+        writtenAllocIds.forEach(function (id) { deleteRowById_(SHT_ALOKASI, id); });
+        deleteRowById_(SHT_TRANSAKSI, trxId);
+        if (payload.clientRequestId) deleteIdempotencyByClientRequestId_(payload.clientRequestId);
+        return errResult_(engineErrCode_(e), 'Gagal menulis audit, transaksi+allocation+idempotency sudah di-rollback (tidak ada audit parsial): ' + e.message, null, trxId);
       }
 
       // --- 8. success ---
@@ -607,6 +624,7 @@ function createAllocation_(payload) {
       if (!transaksiExists_(payload.transaksiId)) return errResult_('INVALID_TRANSACTION', 'transaksiId tidak ditemukan (re-check)', 'transaksiId');
       var trx = getTransactionRaw_(payload.transaksiId);
       if (trx && trx.archivedAt) return errResult_('TRANSACTION_ARCHIVED', 'Transaksi sudah diarsipkan; alokasi baru tidak diterima: ' + payload.transaksiId, 'transaksiId');
+      var plA = plGuard_([trx && trx.tanggal], 'alokasi'); if (plA) return plA; // [P1-A] transaksi induk pada periode tertutup
       var currentSum = sumAllocationsForTransaksi_(payload.transaksiId);
       var newSum = currentSum + Number(payload.nominal);
       if (newSum > Number(trx.nominal)) {
@@ -638,21 +656,23 @@ function createAllocation_(payload) {
         return errResult_(engineErrCode_(e), 'Gagal menghitung status alokasi, allocation sudah di-rollback: ' + e.message, null, alokId);
       }
       if (statusBaru) alokRecord.statusTransaksi = statusBaru;
-      try {
-        auditPush_('CREATE_ALLOCATION', null, alokRecord, payload.sumber || 'write-door', alokId);
-      } catch (e) {
-        Logger.log('createAllocation_: audit gagal setelah write sukses, rollback allocation: ' + e.message);
-        deleteRowById_(SHT_ALOKASI, alokId);
-        if (statusBaru) setTrxStatusCell_(trx.id, statusSebelum);
-        return errResult_(engineErrCode_(e), 'Gagal menulis audit, allocation sudah di-rollback: ' + e.message, null, alokId);
-      }
+      // [P1-B] idempotency LEBIH DULU, audit TERAKHIR (satu append bersama jejak aktor/role)
       try {
         recordIdempotentResult_(payload.clientRequestId, alokId, 'allocation');
       } catch (e) {
-        Logger.log('createAllocation_: idempotency gagal setelah audit sukses, rollback allocation (audit TETAP ada): ' + e.message);
+        Logger.log('createAllocation_: idempotency gagal, rollback allocation: ' + e.message);
         deleteRowById_(SHT_ALOKASI, alokId);
         if (statusBaru) setTrxStatusCell_(trx.id, statusSebelum);
-        return errResult_(engineErrCode_(e), 'Gagal menulis idempotency record, allocation sudah di-rollback (audit tetap ada): ' + e.message, null, alokId);
+        return errResult_(engineErrCode_(e), 'Gagal menulis idempotency record, allocation sudah di-rollback (belum ada audit yang tertulis): ' + e.message, null, alokId);
+      }
+      try {
+        engineAuditBatch_({}, [['CREATE_ALLOCATION', null, alokRecord, payload.sumber || 'write-door', alokId]], alokId);
+      } catch (e) {
+        Logger.log('createAllocation_: audit gagal, rollback allocation+idempotency: ' + e.message);
+        deleteRowById_(SHT_ALOKASI, alokId);
+        if (statusBaru) setTrxStatusCell_(trx.id, statusSebelum);
+        if (payload.clientRequestId) deleteIdempotencyByClientRequestId_(payload.clientRequestId);
+        return errResult_(engineErrCode_(e), 'Gagal menulis audit, allocation+idempotency sudah di-rollback (tidak ada audit parsial): ' + e.message, null, alokId);
       }
       return okResult_('Allocation berhasil dibuat', alokRecord);
     });
@@ -680,6 +700,7 @@ function createBankMutation_(payload) {
       if (idemp2.status === 'orphan') return errResult_('IDEMPOTENCY_ORPHAN', 'clientRequestId menunjuk mutasi yang sudah tidak ada (re-check)', 'clientRequestId', idemp2.record.resultRefId);
       if (idemp2.status === 'found') return okResult_('Request sudah pernah diproses (idempotent replay, terdeteksi saat lock)', { id: idemp2.record.resultRefId });
 
+      var plM = plGuard_([payload.tanggal], 'mutasi bank'); if (plM) return plM; // [P1-A]
       var mutId = ID_PREFIX_MUT + Utilities.getUuid();
       var mutRecord = {
         id: mutId, tanggal: payload.tanggal, nominal: Number(payload.nominal),
@@ -693,19 +714,21 @@ function createBankMutation_(payload) {
         Logger.log('createBankMutation_: write gagal: ' + e2.message);
         return errResult_(engineErrCode_(e2), 'Gagal menulis mutasi bank: ' + e2.message, null);
       }
-      try {
-        auditPush_('CREATE_BANK_MUTATION', null, mutRecord, payload.sumber || 'write-door', mutId);
-      } catch (e2) {
-        Logger.log('createBankMutation_: audit gagal setelah write sukses, rollback mutasi: ' + e2.message);
-        deleteRowById_(SHT_MUTASI, mutId);
-        return errResult_(engineErrCode_(e2), 'Gagal menulis audit, mutasi sudah di-rollback: ' + e2.message, null, mutId);
-      }
+      // [P1-B] idempotency LEBIH DULU, audit TERAKHIR
       try {
         recordIdempotentResult_(payload.clientRequestId, mutId, 'bankMutation');
       } catch (e2) {
-        Logger.log('createBankMutation_: idempotency gagal setelah audit sukses, rollback mutasi (audit TETAP ada): ' + e2.message);
+        Logger.log('createBankMutation_: idempotency gagal, rollback mutasi: ' + e2.message);
         deleteRowById_(SHT_MUTASI, mutId);
-        return errResult_(engineErrCode_(e2), 'Gagal menulis idempotency record, mutasi sudah di-rollback (audit tetap ada): ' + e2.message, null, mutId);
+        return errResult_(engineErrCode_(e2), 'Gagal menulis idempotency record, mutasi sudah di-rollback (belum ada audit yang tertulis): ' + e2.message, null, mutId);
+      }
+      try {
+        engineAuditBatch_({}, [['CREATE_BANK_MUTATION', null, mutRecord, payload.sumber || 'write-door', mutId]], mutId);
+      } catch (e2) {
+        Logger.log('createBankMutation_: audit gagal, rollback mutasi+idempotency: ' + e2.message);
+        deleteRowById_(SHT_MUTASI, mutId);
+        if (payload.clientRequestId) deleteIdempotencyByClientRequestId_(payload.clientRequestId);
+        return errResult_(engineErrCode_(e2), 'Gagal menulis audit, mutasi+idempotency sudah di-rollback (tidak ada audit parsial): ' + e2.message, null, mutId);
       }
       return okResult_('Mutasi bank berhasil dicatat', mutRecord);
     });
@@ -723,17 +746,32 @@ function updateTransaction_(payload) {
   /* [P0-B] Patch PARSIAL: hanya field yang benar-benar berubah yang divalidasi dan ditulis; kolom lain
      (termasuk kolom tambahan/arsip) dipertahankan apa adanya. Field di luar kontrak / immutable ditolak.
      Nominal tidak boleh < total alokasi aktif. Status keluarga alokasi dihitung server. Patch tanpa
-     perubahan = no-op (tanpa tulis, tanpa audit) sehingga retry aman. Audit gagal -> nilai dipulihkan. */
+     perubahan = no-op (tanpa tulis, tanpa audit) sehingga retry aman. Audit gagal -> nilai dipulihkan.
+     [P1-B] clientRequestId (opsional) = idempotensi: replay TIDAK diterapkan ulang (tidak menimpa perubahan yang lebih baru).
+     [P1-F] _expect (opsional) = {field: nilai yang dilihat klien sebelum mengubah}; nilai server berbeda -> CONFLICT.
+     [P1-A] tanggal lama atau baru pada periode tertutup -> PERIOD_LOCKED (diperiksa di dalam lock).
+     [P1-E] transisi ke SELESAI wajib minimal satu bukti berfile (EVIDENCE_REQUIRED).
+     Urutan tulis: baris -> idempotensi -> audit (satu append, terakhir); kegagalan memulihkan langkah sebelumnya. */
   try {
     if (!payload || !payload.id) return errResult_('VALIDATION_ERROR', 'id wajib diisi', 'id');
-    var keys = Object.keys(payload).filter(function (k) { return k !== 'id' && k !== 'clientRequestId'; });
+    var crid = payload.clientRequestId ? String(payload.clientRequestId) : '';
+    var expect = payload._expect;
+    if (expect !== undefined && expect !== null && (typeof expect !== 'object' || Array.isArray(expect))) return errResult_('VALIDATION_ERROR', '_expect harus berupa objek {field: nilai}', '_expect', payload.id);
+    var keys = Object.keys(payload).filter(function (k) { return k !== 'id' && k !== 'clientRequestId' && k !== '_expect'; });
     var bad = keys.filter(function (k) { return TRX_HEADERS.indexOf(k) === -1 || TRX_IMMUTABLE_.indexOf(k) !== -1; });
     if (bad.length) return errResult_('UNKNOWN_FIELD', 'Field tidak dikenal atau tidak boleh diubah: ' + bad.join(', '), bad[0], payload.id);
+    var replayOf = function (idem) {
+      if (idem.record.resultRefId !== payload.id) return errResult_('IDEMPOTENCY_MISMATCH', 'clientRequestId sudah dipakai untuk transaksi lain (' + idem.record.resultRefId + ')', 'clientRequestId', payload.id);
+      var t = getTransactionRaw_(payload.id);
+      return okResult_('Request sudah pernah diproses (idempotent replay) - perubahan tidak diterapkan ulang', t || { id: payload.id });
+    };
+    if (crid) { var idem1 = checkIdempotency_(crid); if (idem1.status !== 'none') return replayOf(idem1); }
     var before = getTransactionRaw_(payload.id);
     if (!before) return errResult_('NOT_FOUND', 'Transaksi tidak ditemukan: ' + payload.id, 'id', payload.id);
     if (before.archivedAt) return errResult_('TRANSACTION_ARCHIVED', 'Transaksi sudah diarsipkan (reversal) dan tidak dapat diubah: ' + payload.id, 'id', payload.id);
 
     return withLock_(function () {
+      if (crid) { var idem2 = checkIdempotency_(crid); if (idem2.status !== 'none') return replayOf(idem2); }
       var m = sgModel_(SHT_TRANSAKSI, TRX_HEADERS);
       var pos = -1;
       for (var i = 0; i < m.values.length; i++) { if (m.values[i][m.idx.id] === payload.id) { pos = i; break; } }
@@ -747,6 +785,18 @@ function updateTransaction_(payload) {
         if (k === 'nominal') return (v === '' || v === null || v === undefined) ? '' : Number(v);
         return (v === null || v === undefined) ? '' : String(v).trim();
       };
+      if (expect) { // [P1-F] deteksi konflik: nilai server berubah sejak klien membacanya (dan bukan nilai tujuan yang sama)
+        var conflict = Object.keys(expect).filter(function (k) {
+          if (TRX_HEADERS.indexOf(k) === -1) return false;
+          if (norm(k, expect[k]) === norm(k, cur[k])) return false;
+          return !(Object.prototype.hasOwnProperty.call(payload, k) && norm(k, payload[k]) === norm(k, cur[k]));
+        });
+        if (conflict.length) {
+          var ce = errResult_('CONFLICT', 'Transaksi diubah pengguna lain sejak dimuat (' + conflict.join(', ') + '); perubahan TIDAK diterapkan - muat ulang lalu ulangi', conflict[0], payload.id);
+          ce.current = {}; conflict.forEach(function (k) { ce.current[k] = cur[k]; });
+          return ce;
+        }
+      }
       var next = Object.assign({}, cur);
       keys.forEach(function (k) {
         if (norm(k, payload[k]) === norm(k, cur[k])) return;
@@ -775,25 +825,37 @@ function updateTransaction_(payload) {
       }
       ch = changed();
       if (!ch.length) {
+        if (crid) recordIdempotentResult_(crid, payload.id, 'transactionUpdate'); // [P1-B] replay berikutnya = no-op juga
         var same = okResult_('Tidak ada perubahan (data server sudah sama)', cur);
         same.data.unchanged = true;
         if (payload.status && payload.status !== cur.status) same.data.statusDihitungServer = true;
         return same;
       }
+      var plU = plGuard_([cur.tanggal, next.tanggal], 'transaksi'); if (plU) return plU; // [P1-A]
+      if (next.status === 'SELESAI' && cur.status !== 'SELESAI' && !rgTrxHasEvidence_(payload.id)) { // [P1-E]
+        return errResult_('EVIDENCE_REQUIRED', 'Status SELESAI memerlukan minimal satu bukti berfile yang tertaut ke transaksi ini - lampirkan bukti lebih dulu', 'status', payload.id);
+      }
       var newRaw = raw.slice();
       ch.forEach(function (k) { newRaw[m.idx[k]] = next[k]; });
       var rowNum = pos + 2;
+      var restore = function () { m.sh.getRange(rowNum, 1, 1, m.live.length).setValues([raw]); };
       try {
         m.sh.getRange(rowNum, 1, 1, m.live.length).setValues([newRaw]);
       } catch (e) {
         Logger.log('updateTransaction_: write gagal: ' + e.message);
         return errResult_(engineErrCode_(e), 'Gagal update transaksi: ' + e.message, null, payload.id);
       }
+      if (crid) {
+        try { recordIdempotentResult_(crid, payload.id, 'transactionUpdate'); } catch (e) {
+          try { restore(); } catch (restoreErr) { return errResult_('ROLLBACK_FAILED', 'Idempotency gagal DAN restore nilai before juga gagal: ' + restoreErr.message, null, payload.id); }
+          return errResult_(engineErrCode_(e), 'Gagal menulis idempotency record, nilai transaksi sudah di-restore: ' + e.message, null, payload.id);
+        }
+      }
       try {
-        auditPush_('UPDATE_TRANSACTION', cur, next, 'write-door', payload.id);
+        engineAuditBatch_({}, [['UPDATE_TRANSACTION', cur, next, 'write-door', payload.id]], payload.id);
       } catch (e) {
         Logger.log('updateTransaction_: audit gagal setelah update sukses, RESTORE nilai before: ' + e.message);
-        try { m.sh.getRange(rowNum, 1, 1, m.live.length).setValues([raw]); } catch (restoreErr) {
+        try { restore(); if (crid) deleteIdempotencyByClientRequestId_(crid); } catch (restoreErr) {
           return errResult_('ROLLBACK_FAILED', 'Audit gagal DAN restore nilai before juga gagal: ' + restoreErr.message, null, payload.id);
         }
         return errResult_('WRITE_FAILED', 'Gagal menulis audit, nilai transaksi sudah di-restore ke sebelum update: ' + e.message, null, payload.id);

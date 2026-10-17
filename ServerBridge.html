@@ -58,7 +58,7 @@
     opCreateExpense: function (payload) { return callServer('opCreateExpense', [payload]); },
     opCreateAllocation: function (payload) { return callServer('opCreateAllocation', [payload]); },
     opUpdateTransaction: function (payload) { return callServer('opUpdateTransaction', [payload]); },
-    opMasterUpsert: function (sheetKey, record, createId) { return callServer('opMasterUpsert', [sheetKey, record, createId]); },
+    opMasterUpsert: function (sheetKey, record, createId, expect) { return callServer('opMasterUpsert', [sheetKey, record, createId, expect]); },
     opRecordBatch: function (key, ops) { return callServer('opRecordBatch', [key, ops]); },
     opRecordUpsert: function (key, record) { return callServer('opRecordUpsert', [key, record]); },
     opArchiveTransaction: function (id, reason) { return callServer('opArchiveTransaction', [id, reason]); },
@@ -76,7 +76,13 @@
     opObligationSnapshot: function (periode, opts) { return callServer('opObligationSnapshot', [periode, opts || {}]); },
     opFinancialControl: function (periode) { return callServer('opFinancialControl', [periode]); },
     opTarifPlan: function () { return callServer('opTarifPlan', []); },
-    opTarifApply: function (confirm) { return callServer('opTarifApply', [confirm]); }
+    opTarifApply: function (confirm) { return callServer('opTarifApply', [confirm]); },
+    opPeriodLockStatus: function () { return callServer('opPeriodLockStatus', []); },
+    opClosePeriod: function (periode) { return callServer('opClosePeriod', [periode]); },
+    opReopenPeriod: function (periode, reason) { return callServer('opReopenPeriod', [periode, reason]); },
+    opReconcileAccount: function (payload) { return callServer('opReconcileAccount', [payload]); },
+    opMatchMutasi: function (payload) { return callServer('opMatchMutasi', [payload]); },
+    opRabRealization: function (periode) { return callServer('opRabRealization', [periode]); }
   };
 })(typeof window !== 'undefined' ? window : globalThis);
 

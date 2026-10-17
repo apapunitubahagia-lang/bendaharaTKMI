@@ -6,10 +6,12 @@ const anchor = "getSettings: function () { return callServer('getSettings', []);
 if (!sb.includes(anchor)) throw new Error('anchor ServerBridge');
 const M = [
   ['opSchemaReport', ''], ['opReadSheet', 'sheetName, opts', 'sheetName, opts || {}'], ['opGetTransactions', 'filters', 'filters || {}'], ['opGetTransaction', 'id'], ['opGetStudentPosition', 'siswaId'],
-  ['opCreateIncome', 'payload'], ['opCreateExpense', 'payload'], ['opCreateAllocation', 'payload'], ['opUpdateTransaction', 'payload'], ['opMasterUpsert', 'sheetKey, record, createId'],
+  ['opCreateIncome', 'payload'], ['opCreateExpense', 'payload'], ['opCreateAllocation', 'payload'], ['opUpdateTransaction', 'payload'], ['opMasterUpsert', 'sheetKey, record, createId, expect'],
   ['opRecordBatch', 'key, ops'], ['opRecordUpsert', 'key, record'], ['opArchiveTransaction', 'id, reason'], ['opArchiveAllocation', 'id, reason'], ['opCreateTxBatch', 'items'],
   ['opMasterBatch', 'sheetKey, records'], ['opSettingsUpsert', 'items'], ['opAuditAppend', 'entries'], ['opUserList', ''], ['opUserUpsert', 'record'],
-  ['opSchemaPlan', ''], ['opSchemaApply', 'confirm'], ['opUploadBukti', 'payload'], ['opObligations', 'opts', 'opts || {}'], ['opObligationSnapshot', 'periode, opts', 'periode, opts || {}'], ['opFinancialControl', 'periode'], ['opTarifPlan', ''], ['opTarifApply', 'confirm']
+  ['opSchemaPlan', ''], ['opSchemaApply', 'confirm'], ['opUploadBukti', 'payload'], ['opObligations', 'opts', 'opts || {}'], ['opObligationSnapshot', 'periode, opts', 'periode, opts || {}'], ['opFinancialControl', 'periode'], ['opTarifPlan', ''], ['opTarifApply', 'confirm'],
+  // [P1] penguncian periode, rekonsiliasi, pencocokan mutasi, pemetaan RAB
+  ['opPeriodLockStatus', ''], ['opClosePeriod', 'periode'], ['opReopenPeriod', 'periode, reason'], ['opReconcileAccount', 'payload'], ['opMatchMutasi', 'payload'], ['opRabRealization', 'periode']
 ];
 const lines = M.map(m => '    ' + m[0] + ': function (' + m[1] + ') { return callServer(\'' + m[0] + '\', [' + (m[2] !== undefined ? m[2] : m[1]) + ']); }');
 sb = sb.replace(anchor, anchor + ',\n    // --- OperationalAPI / RecordEngine / AdminAPI / BuktiDrive / ObligationEngine / FinanceEngine (semua authorized di server) ---\n' + lines.join(',\n'));

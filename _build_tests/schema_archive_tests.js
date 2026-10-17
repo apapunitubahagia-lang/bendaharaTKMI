@@ -83,10 +83,10 @@ const sync = async c => { await c.sb.centralRunSync(true); await tick(5); };
     rec('K6 komitmen tanpa RAB (rabId null) tetap tersimpan dan terbaca (kolom kosong -> null)', rows(S, '09_KOMITMEN').length === 4 && c.a.Store.loadObligasi().find(o => o.uraian === 'Tanpa RAB').rabId === null);
     // sebelum migrasi: komitmen berkait RAB tidak boleh hilang diam-diam
     const S0 = liveLike(); const c0 = makeClient(S0); c0.sb.initializeSeedData(); c0.sb.bootstrapCentralAuth(); await until(() => Object.keys(c0.a.OperationalCache.states).every(k => c0.a.OperationalCache.states[k].loaded));
-    Object.assign(c0.fields, { obf_uraian: 'Uji pra-migrasi', obf_nominal: '5000', obf_status: 'COMMITTED', obf_rab: 'rab_x' }); c0.sb.submitObligasi(); await sync(c0);
+    Object.assign(c0.fields, { obf_uraian: 'Uji pra-migrasi', obf_nominal: '5000', obf_status: 'COMMITTED', obf_rab: 'ang_1' }); c0.sb.submitObligasi(); await sync(c0); // [P1-D] rabId wajib menunjuk 08_ANGGARAN yang ada (semula 'rab_x' fiktif)
     rec('K7 sebelum migrasi: komitmen berkait RAB ditahan (blocked, pesan migrasi), tidak ditulis diam-diam, tetap tampil lokal; setelah migrasi + sinkron tertulis', c0.sb.centralBlockedCount() >= 1 && rows(S0, '09_KOMITMEN').length === 0 && c0.a.Store.loadObligasi().some(o => o.uraian === 'Uji pra-migrasi'));
     await c0.sb.pdSchemaApplyConfirmed(); await sync(c0);
-    rec('K7b setelah migrasi aditif + sinkron: komitmen tertulis dengan rabId, antrean kosong', rows(S0, '09_KOMITMEN').length === 1 && rows(S0, '09_KOMITMEN')[0][S0.sheets['09_KOMITMEN'][0].indexOf('rabId')] === 'rab_x' && c0.sb.centralBlockedCount() === 0, c0.sb.centralBlockedCount());
+    rec('K7b setelah migrasi aditif + sinkron: komitmen tertulis dengan rabId, antrean kosong', rows(S0, '09_KOMITMEN').length === 1 && rows(S0, '09_KOMITMEN')[0][S0.sheets['09_KOMITMEN'][0].indexOf('rabId')] === 'ang_1' && c0.sb.centralBlockedCount() === 0, c0.sb.centralBlockedCount());
 
     // ============ 3 & 4. TRANSAKSI ARSIP ============
     const S2 = liveLike(); const B2 = S2.sb; B2.opSchemaApply('TAMBAH_KOLOM_ADITIF');

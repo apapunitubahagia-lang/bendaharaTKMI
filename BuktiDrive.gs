@@ -7,6 +7,7 @@
  * file dibuat di folder khusus (privat, mengikuti izin Drive pemilik script). Bila penulisan
  * baris 10_BUKTI gagal, file yang BARU dibuat dipindah ke trash (tidak ada orphan); tidak
  * pernah menyentuh file/baris lain. Idempotent berdasarkan id bukti.
+ * [P1-E] transaksiId (bila diisi) wajib transaksi aktif; baris bukti generik (opRecordBatch) diatur RecordGuard.gs.
  *
  * MEMBUTUHKAN IZIN DRIVE (scope drive) - muncul prompt otorisasi saat deploy ulang.
  * STATUS: sandbox lokal dengan DriveApp tiruan. BELUM dijalankan di Apps Script sungguhan.
@@ -33,6 +34,10 @@ function opUploadBukti(p) {
   var trxId = opStr_(p.transaksiId);
   try {
     return withLock_(function () {
+      if (trxId) { // [P1-E] bukti hanya untuk transaksi aktif yang ada; file tidak dibuat bila referensi salah
+        var tb = getTransactionRaw_(trxId);
+        if (!tb || tb.archivedAt) return errResult_('INVALID_TRANSACTION', 'Transaksi untuk bukti tidak ditemukan atau sudah diarsipkan: ' + trxId, 'transaksiId', id);
+      }
       var m = opSheetModel_('10_BUKTI');
       if (!m) return errResult_('SCHEMA_MISMATCH', 'Sheet 10_BUKTI tidak ditemukan', null);
       var c = function (h) { return m.live.indexOf(h); };

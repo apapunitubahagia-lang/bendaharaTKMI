@@ -32,6 +32,10 @@ var OP_WRITE_ROLES_ = ['BENDAHARA'];
 /* [P0-B] Email aktor terverifikasi selama satu panggilan engine; dibaca auditPush_ (TransactionEngine.gs) agar baris
    audit CREATE_x dan UPDATE_x memuat aktor. Selalu di-reset di finally. */
 var ENGINE_ACTOR_ = null;
+/* [P1-B] Jejak aktor+role (baris API_*) untuk panggilan engine yang sedang berjalan. Ditulis engine di dalam
+   SATU append audit bersama audit wajib (engineAuditBatch_, TransactionEngine.gs), sehingga keduanya ada atau
+   tidak ada sama sekali. written=true menandakan baris sudah ikut tertulis. Selalu di-reset di finally. */
+var ENGINE_API_ = null;
 var OP_READ_ROLES_ = ['BENDAHARA', 'KEPALA_SEKOLAH', 'YAYASAN', 'AUDITOR']; // baca-saja; tulis tetap hanya OP_WRITE_ROLES_
 
 // Sheet yang boleh dibaca generik. Sengaja TIDAK termasuk: 24_IDEMPOTENCY_LOG
@@ -95,20 +99,22 @@ function opEngineWrite_(action, payload, engineFn, requireClientRequestId, keepI
   }
   var guard = (typeof opAllocGuard_ === 'function') ? opAllocGuard_(action, p) : null;
   if (guard) return guard;
-  var res;
+  var res, apiWritten = false;
   ENGINE_ACTOR_ = g.identity.email; // [P0-B] aktor masuk ke baris audit wajib engine (atomik dengan perubahan bisnis)
+  ENGINE_API_ = { action: action, email: g.identity.email, role: g.identity.role, written: false }; // [P1-B]
   try {
     res = engineFn(p);
+    apiWritten = ENGINE_API_.written === true;
   } catch (e) {
     return sgErr_(e, 'WRITE_FAILED', 'Gagal memproses permintaan'); // [P0-A] SCHEMA_MISMATCH tidak disamarkan
   } finally {
-    ENGINE_ACTOR_ = null;
+    ENGINE_ACTOR_ = null; ENGINE_API_ = null;
   }
   var isReplay = res && res.message && String(res.message).indexOf('idempotent replay') !== -1;
   var unchanged = res && res.data && res.data.unchanged === true;
-  if (res && res.ok && !isReplay && !unchanged) {
-    // Baris API_* = jejak tambahan (role). Audit WAJIB (dengan aktor) sudah ditulis engine di dalam lock yang sama
-    // dengan perubahan; baris ini ditulis di dalam lock tersendiri agar tidak tumpang-tindih (GAP-013).
+  if (res && res.ok && !isReplay && !unchanged && !apiWritten) {
+    // [P1-B] Cadangan saja: semua engine yang dipanggil di sini (create/alokasi/update) sudah menulis baris API_*
+    // dalam append audit yang sama dengan audit wajib. Jalur ini hanya aktif bila engine lain ditambahkan kelak.
     var refId = res.data && res.data.id ? res.data.id : '';
     var ar = withLock_(function () {
       try {
@@ -288,7 +294,9 @@ function opValidateMaster_(cfg, m) {
   return null;
 }
 
-function opMasterUpsert(sheetKey, record, createId) {
+/* [P1-F] expect (opsional) = {field: nilai yang dilihat klien sebelum mengubah}. Bila nilai server sudah berbeda
+   (dan bukan nilai baru yang sama) -> CONFLICT, data tidak diubah. Tanpa expect perilaku lama dipertahankan. */
+function opMasterUpsert(sheetKey, record, createId, expect) {
   var g = opGate_(OP_WRITE_ROLES_); if (!g.ok) return g;
   var cfg = OP_MASTER_[sheetKey];
   if (!cfg || !Object.prototype.hasOwnProperty.call(OP_MASTER_, sheetKey)) return errResult_('VALIDATION_ERROR', 'sheetKey master tidak dikenal', 'sheetKey');
@@ -327,6 +335,14 @@ function opMasterUpsert(sheetKey, record, createId) {
       if (!isUpdate) {
         var dk = Object.keys(cfg.defaults || {});
         for (i = 0; i < dk.length; i++) { if (live.indexOf(dk[i]) !== -1 && opStr_(merged[dk[i]]) === '') merged[dk[i]] = cfg.defaults[dk[i]]; }
+      }
+      if (isUpdate && expect && typeof expect === 'object' && !Array.isArray(expect)) { // [P1-F]
+        var conflict = Object.keys(expect).filter(function (f) {
+          if (live.indexOf(f) === -1) return false;
+          var sv = opStr_(opJsonSafe_(base[f]));
+          return sv !== opStr_(expect[f]) && sv !== opStr_(opJsonSafe_(merged[f]));
+        });
+        if (conflict.length) return errResult_('CONFLICT', 'Data master diubah pengguna lain sejak dimuat (' + conflict.join(', ') + '); muat ulang lalu ulangi perubahan', conflict[0], base.id);
       }
       var vErr = opValidateMaster_(cfg, merged);
       if (vErr) return vErr;
