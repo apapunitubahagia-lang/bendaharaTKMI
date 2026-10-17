@@ -59,7 +59,7 @@
 | H4 | Satu eksekusi Apps Script berjalan single-threaded | Race antar-permintaan nyata (konflik bersamaan, P1-F) hanya dapat disimulasikan berurutan |
 | H5 | `Session.getActiveUser()` pada deployment nyata (GAP-005) belum diverifikasi | Identitas aktor di audit P1 bergantung pada temuan yang belum diuji ini |
 | H6 | Isi proyek Apps Script produksi tidak diketahui (bisa memuat `MigrationOneTime.gs`, fungsi publik lama, dll.) | Repo ≠ live sampai `clasp pull` read-only dilakukan pengguna |
-| H7 | Dokumen sumber **daftar GAP** dan **rancangan test case audit** (mis. `08_RENCANA_IMPLEMENTASI_BERTAHAP.md`, audit 03) **tidak ada** di arsip maupun di Google Drive yang dapat dicari | Nomor GAP untuk butir P1 (kecuali GAP-028) dan ID TC asli **tidak dapat diverifikasi**. ID `TC-P1-*` di bawah bersifat **sementara** dan harus dipetakan ke dokumen asli |
+| H7 | Dokumen sumber **daftar GAP** dan **rancangan test case audit** (mis. `08_RENCANA_IMPLEMENTASI_BERTAHAP.md`, audit 03) **tidak ada** di arsip maupun di Google Drive yang dapat dicari | Nomor GAP untuk butir P1 (kecuali GAP-028) dan ID TC asli **tidak dapat diverifikasi**. ID `TC-P1-*` di bawah bersifat **sementara** dan harus dipetakan ke dokumen asli  **Pembaruan: teratasi**: dokumen 05/07 diterima (commit `f4f9fd4`); pemetaan di `P1_02_PEMETAAN_GAP_TC.md` |
 
 **Konsekuensi:** Kriteria lulus P1 dibagi dua: **(S)** lulus sandbox dan **(L)** lulus live. Selama H1/H2 belum teratasi, semua kriteria **(L)** berstatus BLOCKED. P1 **tidak boleh** dinyatakan selesai hanya karena (S) lulus.
 

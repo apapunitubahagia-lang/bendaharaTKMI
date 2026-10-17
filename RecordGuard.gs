@@ -5,7 +5,7 @@
  * aturan ditolak dengan kode jelas; operasi lain di batch yang sama tetap diproses (perilaku batch tidak berubah).
  *
  *  [P1-A] Periode tertutup  : mutasiBank.tanggal, rekonsiliasi.periode, lpj.tanggal, anggaran.periode,
- *                             komitmen.tanggal (nilai lama DAN baru) -> PERIOD_LOCKED. Keputusan K-P1-01.
+ *                             komitmen.tanggal, kewajiban.periode (nilai lama DAN baru) -> PERIOD_LOCKED. GAP-015 / K-P1-01.
  *  [P1-C] Rekonsiliasi      : upsert lewat jalur generik ditolak (USE_DEDICATED_API) -> opReconcileAccount.
  *         Mutasi bank       : status/transaksiId hanya lewat opMatchMutasi (MATCH_VIA_API_REQUIRED); baris baru
  *                             berstatus DIPROSES divalidasi dengan aturan pencocokan yang sama (rcCheckLink_).
@@ -18,7 +18,7 @@
  *             (readTrxRows_), SchemaGuard.gs (sgModel_), OperationalAPI.gs (opStr_).
  * STATUS: sandbox lokal saja. BELUM dijalankan di Apps Script sungguhan.
  */
-var RG_LOCK_FIELD_ = { mutasiBank: 'tanggal', rekonsiliasi: 'periode', lpj: 'tanggal', anggaran: 'periode', komitmen: 'tanggal' };
+var RG_LOCK_FIELD_ = { mutasiBank: 'tanggal', rekonsiliasi: 'periode', lpj: 'tanggal', anggaran: 'periode', komitmen: 'tanggal', kewajiban: 'periode' }; // kewajiban: GAP-015
 
 /* Konteks per batch (dibaca sekali, malas). */
 function rgContext_(key, live, rows) {
@@ -30,6 +30,10 @@ function rgContext_(key, live, rows) {
     return ctx.trx;
   };
   ctx.activeTrx = function (id) { var t = ctx.trxById()[String(id)]; return t && !t.archivedAt ? t : null; };
+  ctx.akunIds = function () {
+    if (!ctx.akun) { ctx.akun = {}; var m = sgModel_('07_AKUN', ['id']); (m ? m.values : []).forEach(function (r) { ctx.akun[String(r[m.idx.id])] = true; }); }
+    return ctx.akun;
+  };
   ctx.rabIds = function () {
     if (!ctx.ang) {
       ctx.ang = {};
@@ -55,6 +59,8 @@ function rgCheckOp_(ctx, op, cur, next) {
   }
   if (op === 'archive') return null;
   if (key === 'rekonsiliasi') {
+    var ak = opStr_(next.akunId); // [TC-CRUD-04 / GAP-014] referensi akun divalidasi lebih dulu
+    if (!ak || !ctx.akunIds()[ak]) return rgFail_('VALIDATION_ERROR', 'akunId rekonsiliasi tidak ditemukan di 07_AKUN: ' + (ak || '(kosong)'));
     return rgFail_('USE_DEDICATED_API', 'Rekonsiliasi dicatat lewat opReconcileAccount (saldo sistem dihitung server), bukan jalur record generik');
   }
   if (key === 'mutasiBank') {
@@ -62,7 +68,7 @@ function rgCheckOp_(ctx, op, cur, next) {
       if (opStr_(next.status) !== opStr_(cur.status) || opStr_(next.transaksiId) !== opStr_(cur.transaksiId)) {
         return rgFail_('MATCH_VIA_API_REQUIRED', 'Status/pencocokan mutasi bank hanya lewat opMatchMutasi (tervalidasi server)');
       }
-      if (opStr_(cur.status) === 'DIPROSES' && (opStr_(next.nominal) !== opStr_(cur.nominal) || opStr_(sgDateStr_(next.tanggal)) !== opStr_(sgDateStr_(cur.tanggal)))) {
+      if (rcIsMatched_(cur) && (opStr_(next.nominal) !== opStr_(cur.nominal) || opStr_(sgDateStr_(next.tanggal)) !== opStr_(sgDateStr_(cur.tanggal)))) {
         return rgFail_('MUTASI_LOCKED', 'Mutasi yang sudah dicocokkan tidak dapat diubah nominal/tanggalnya');
       }
       return null;

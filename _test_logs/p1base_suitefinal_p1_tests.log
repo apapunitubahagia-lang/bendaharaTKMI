@@ -1,44 +1,51 @@
-FAIL P1L-01 [TC-P1-LOCK-01] {"ok":true,"code":"SUCCESS","message":"Transaksi berhasil dibuat"}
-PASS P1L-02 [TC-P1-LOCK-01] periode terbuka tetap dapat ditulis: {"ok":true,"code":"SUCCESS","message":"Transaksi berhasil dibuat"}
-FAIL P1L-03 [TC-P1-LOCK-02] {"a":"SUCCESS","b":"SUCCESS"}
-FAIL P1L-04 [TC-P1-LOCK-02] {"ok":true,"code":"SUCCESS","message":"Allocation berhasil dibuat"}
-FAIL P1L-05 [TC-P1-LOCK-02] {"ok":true,"code":"SUCCESS","message":"Transaksi diarsipkan (reversal, data tidak dihapus)"}
-FAIL P1L-06 [TC-P1-LOCK-02] {"mutasi":"CREATED","rekon":"CREATED"}
-FAIL P1L-07 [TC-P1-LOCK-03] reopen lewat setting generik: {"ok":true,"code":"SUCCESS","message":"Setting diproses"}
-FAIL P1L-08 [TC-P1-LOCK-03] {"a":"EXCEPTION","den":"EXCEPTION","w":"SUCCESS","audit":0}
-FAIL P1L-09 [TC-P1-LOCK-03] {"noReason":"EXCEPTION","ok":"EXCEPTION","w":"SUCCESS","audit":0}
-FAIL P1L-10 [TC-P1-LOCK-02] LPJ periode tertutup: "CREATED"
-FAIL P1L-11 [TC-P1-LOCK-03] {"calls":["getSettings","opSettingsUpsert","getSettings"],"audit":0}
-FAIL P1L-12 [TC-P1-LOCK-03] {"nama":"Bendahara Uji P1","calls":["getSettings","opSettingsUpsert","getSettings"]}
-FAIL P1A-01 [TC-P1-AUD-01] {"r":[false,"WRITE_FAILED",null],"trx":2,"audit":["CREATE_TRANSACTION"]}
-FAIL P1A-02 [TC-P1-AUD-01] {"r":"WRITE_FAILED","trx":2,"audit":["CREATE_TRANSACTION"]}
-FAIL P1A-03 [TC-P1-AUD-01] {"r":[true,"SUCCESS","ACTOR_ROLE_AUDIT_FAILED"],"audit":["CREATE_TRANSACTION"]}
-FAIL P1A-04 [TC-P1-AUD-02] {"rp":"{\"ok\":true,\"code\":\"SUCCESS\",\"message\":\"Transaksi berhasil diupdate\"}","catatan":"A"}
-FAIL P1A-05 [TC-P1-AUD-01] {"r":[true,"SUCCESS","AUDIT_FAILED"],"cols":[23,26]}
-PASS P1A-06 [TC-TRX-02] {"a":"gas_trx_e18c407e-92ac-437f-a693-7038dc6cd4c9","b":"gas_trx_e18c407e-92ac-437f-a693-7038dc6cd4c9"}
-FAIL P1R-01 [TC-P1-REK-01] {"ok":false,"code":"EXCEPTION","message":"srv.sb.opReconcileAccount is not a function"}
-FAIL P1R-02 [TC-P1-REK-01] rekonsiliasi rekaan klien lewat jalur generik: "CREATED"
-FAIL P1R-03 [TC-P1-REK-01] {"a":"EXCEPTION","b":["EXCEPTION",null,null]}
-FAIL P1R-04 [TC-P1-REK-02] {"rows":0}
-FAIL P1R-05 [TC-P1-REK-03] {"bad":"EXCEPTION","ok":"EXCEPTION","dbl":"EXCEPTION"}
-FAIL P1R-06 [TC-P1-REK-03] pencocokan tanpa validasi lewat jalur generik: "UPDATED"
-FAIL P1R-07 [TC-P1-REK-03] "CREATED"
-FAIL P1D-01 [TC-P1-RAB-01] "CREATED"
-FAIL P1D-02 [TC-P1-RAB-01] LPJ 30.000+30.000 atas pengeluaran 50.000: ["CREATED","CREATED"]
-FAIL P1D-03 [TC-P1-RAB-01] LPJ atas PENERIMAAN: "CREATED"
-FAIL P1D-04 [TC-P1-RAB-02] "CREATED"
-FAIL P1D-05 [TC-P1-RAB-03] {"line":false,"fcc":40000,"unmapped":false,"code":"EXCEPTION"}
-FAIL P1E-01 [TC-P1-BKT-01] bukti tanpa file: "CREATED"
-FAIL P1E-02 [TC-P1-BKT-01] {"up":"SUCCESS","rr":"UPDATED"}
-FAIL P1E-03 [TC-P1-BKT-01] {"ok":true,"code":"SUCCESS","message":"Bukti diunggah ke Drive"}
-FAIL P1E-04 [TC-P1-BKT-02] {"a":"SUCCESS","b":"SUCCESS"}
-FAIL P1E-05 [TC-P1-BKT-02] {"status":"SELESAI","bukti":1,"toast":"Tersimpan di server (1 perubahan dikonfirmasi)."}
-FAIL P1C-01 [TC-P1-KON-01] {"a":"UNKNOWN_FIELD","b":"UNKNOWN_FIELD"}
-FAIL P1C-02 [TC-P1-KON-01] "UPDATED"
-FAIL P1C-03 [TC-P1-KON-02] upsert atas baris terarsip: "UPDATED"
-FAIL P1C-04 [TC-P1-KON-01] {"ok":true,"code":"SUCCESS","message":"Data master diperbarui"}
-FAIL P1C-05 [TC-P1-KON-01] {"catatan":"diubah klien A","toast":"Tersimpan di server (1 perubahan dikonfirmasi)."}
+FAIL P1L-01 [TC-CRUD-05 / GAP-015] {"ok":true,"code":"SUCCESS","message":"Transaksi berhasil dibuat"}
+PASS P1L-02 [TC-CRUD-05 / GAP-015] periode terbuka tetap dapat ditulis: {"ok":true,"code":"SUCCESS","message":"Transaksi berhasil dibuat"}
+FAIL P1L-03 [TC-CRUD-05 / GAP-015] {"a":"SUCCESS","b":"SUCCESS"}
+FAIL P1L-04 [TC-CRUD-05 / GAP-015] {"ok":true,"code":"SUCCESS","message":"Allocation berhasil dibuat"}
+FAIL P1L-05 [TC-CRUD-05 / GAP-015] {"ok":true,"code":"SUCCESS","message":"Transaksi diarsipkan (reversal, data tidak dihapus)"}
+FAIL P1L-06 [TC-CRUD-05 / GAP-015] {"mutasi":"CREATED","rekon":"CREATED"}
+FAIL P1L-07 [GAP-015 (reopen beralasan)] reopen lewat setting generik: {"ok":true,"code":"SUCCESS","message":"Setting diproses"}
+FAIL P1L-08 [GAP-015 (reopen beralasan)] {"a":"EXCEPTION","den":"EXCEPTION","w":"SUCCESS","audit":0}
+FAIL P1L-09 [GAP-015 (reopen beralasan)] {"noReason":"EXCEPTION","ok":"EXCEPTION","w":"SUCCESS","audit":0}
+FAIL P1L-10 [TC-CRUD-05 / GAP-015] LPJ periode tertutup: "CREATED"
+FAIL P1L-11 [GAP-015 (reopen beralasan)] {"calls":["getSettings","opSettingsUpsert","getSettings"],"audit":0}
+FAIL P1L-12 [GAP-015 (reopen beralasan)] {"nama":"Bendahara Uji P1","calls":["getSettings","opSettingsUpsert","getSettings"]}
+FAIL P1A-01 [TC-FAIL-02, TC-FAIL-03 / GAP-013] {"r":[false,"WRITE_FAILED",null],"trx":2,"audit":["CREATE_TRANSACTION"]}
+FAIL P1A-02 [TC-FAIL-02, TC-FAIL-03 / GAP-013] {"r":"WRITE_FAILED","trx":2,"audit":["CREATE_TRANSACTION"]}
+FAIL P1A-03 [TC-FAIL-02, TC-FAIL-03 / GAP-013] {"r":[true,"SUCCESS","ACTOR_ROLE_AUDIT_FAILED"],"audit":["CREATE_TRANSACTION"]}
+FAIL P1A-04 [TC-FAIL-02 / GAP-031] {"rp":"{\"ok\":true,\"code\":\"SUCCESS\",\"message\":\"Transaksi berhasil diupdate\"}","catatan":"A"}
+FAIL P1A-05 [TC-FAIL-02, TC-FAIL-03 / GAP-013] {"r":[true,"SUCCESS","AUDIT_FAILED"],"cols":[23,26]}
+PASS P1A-06 [TC-TRX-02] {"a":"gas_trx_f4bb9179-608b-4dfe-a06c-1bf90c2e2b8f","b":"gas_trx_f4bb9179-608b-4dfe-a06c-1bf90c2e2b8f"}
+FAIL P1R-01 [TC-REK-03 / GAP-019] {"ok":false,"code":"EXCEPTION","message":"srv.sb.opReconcileAccount is not a function"}
+FAIL P1R-02 [TC-REK-03 / GAP-019] rekonsiliasi rekaan klien lewat jalur generik: "CREATED"
+FAIL P1R-03 [TC-REK-03 / GAP-019] {"a":"EXCEPTION","b":["EXCEPTION",null,null]}
+FAIL P1R-04 [TC-REK-03 / GAP-031] {"rows":0}
+FAIL P1R-05 [TC-REK-02 / GAP-019] {"bad":"EXCEPTION","ok":"EXCEPTION","dbl":"EXCEPTION"}
+FAIL P1R-06 [TC-REK-02 / GAP-019] pencocokan tanpa validasi lewat jalur generik: "UPDATED"
+FAIL P1R-07 [TC-REK-02 / GAP-019] "CREATED"
+FAIL P1D-01 [GAP-020 / GAP-014] "CREATED"
+FAIL P1D-02 [GAP-020 / GAP-014] LPJ 30.000+30.000 atas pengeluaran 50.000: ["CREATED","CREATED"]
+FAIL P1D-03 [GAP-020 / GAP-014] LPJ atas PENERIMAAN: "CREATED"
+FAIL P1D-04 [TC-DSH-06 / GAP-017] "CREATED"
+FAIL P1D-05 [TC-DSH-05 / GAP-018] {"line":false,"fcc":40000,"unmapped":false,"code":"EXCEPTION"}
+FAIL P1E-01 [GAP-024 / GAP-014] bukti tanpa file: "CREATED"
+FAIL P1E-02 [GAP-024 / GAP-014] {"up":"SUCCESS","rr":"UPDATED"}
+FAIL P1E-03 [GAP-024 / GAP-014] {"ok":true,"code":"SUCCESS","message":"Bukti diunggah ke Drive"}
+FAIL P1E-04 [GAP-045 / GAP-024] {"a":"SUCCESS","b":"SUCCESS"}
+FAIL P1E-05 [GAP-045 / GAP-024] {"status":"SELESAI","bukti":1,"toast":"Tersimpan di server (1 perubahan dikonfirmasi)."}
+FAIL P1C-01 [TC-FAIL-07 / GAP-026] {"a":"UNKNOWN_FIELD","b":"UNKNOWN_FIELD"}
+FAIL P1C-02 [TC-FAIL-07 / GAP-026] "UPDATED"
+FAIL P1C-03 [GAP-026] upsert atas baris terarsip: "UPDATED"
+FAIL P1C-04 [TC-FAIL-07 / GAP-026] {"ok":true,"code":"SUCCESS","message":"Data master diperbarui"}
+FAIL P1C-05 [TC-FAIL-07 / GAP-026] {"catatan":"diubah klien A","toast":"Tersimpan di server (1 perubahan dikonfirmasi)."}
+FAIL P1L-13 [TC-CRUD-05 / GAP-015] {"juli":"SUCCESS","okt":"SUCCESS","generik":"SUCCESS","reopen":"EXCEPTION","setelahReopen":"SUCCESS","dataAsli":"TERBUKA"}
+FAIL P1L-14 [GAP-015] ["CREATED","CREATED"]
+FAIL P1R-08 [TC-CRUD-04 / GAP-014] {"generik":"CREATED","api":"EXCEPTION"}
+FAIL P1R-09 [GAP-019 / GAP-031] {"match":"EXCEPTION","ubahNominal":"UPDATED","orphan":"found"}
+FAIL P1A-07 [TC-FAIL-02 / GAP-031] {"master":2,"akses":2,"m2":"Data master diperbarui","u2":"Akses pengguna diperbarui"}
+FAIL P1E-06 [TC-FAIL-05 / GAP-024 / GAP-045] {"bukti":false,"file":0,"status":"TERCATAT","blobMemori":0,"toast":"","r":"EXCEPTION"}
+FAIL P1C-06 [TC-FAIL-07 / GAP-026] {"server":1200000}
 FAIL P1S-01 [TC-AUTH-02] {"auditorTulis":["EXCEPTION","EXCEPTION","EXCEPTION"],"auditorBaca":"EXCEPTION","tanpaAkses":[false,false,false]}
 PASS P1T-01 [GAP-028] {"err":"Transfer antar-akun belum didukung server - TIDAK disimpan.","pub":[]}
 
-PASS=3 FAIL=39 INFO=0
+PASS=3 FAIL=46 INFO=0

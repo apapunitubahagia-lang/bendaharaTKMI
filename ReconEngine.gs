@@ -17,6 +17,11 @@
  */
 var RC_REQ_REKON_ = ['id', 'akunId', 'periode', 'saldoSistem', 'saldoAktual', 'selisih', 'catatan', 'status', 'verifiedBy', 'verifiedAt', 'createdAt'];
 var RC_REQ_MUT_ = ['id', 'tanggal', 'nominal', 'status', 'transaksiId'];
+/* [GAP-019] Mutasi dianggap SUDAH dicocokkan bila transaksiId terisi atau statusnya salah satu status pencocokan.
+   TEREKONSILIASI/TERIDENTIFIKASI = kosakata backend FINAL (544 baris); DIPROSES = kosakata Web V2/KPI BDS02-I02.
+   Penyeragaman enum menunggu keputusan GAP-019; kode ini hanya membaca, tidak mengubah status yang ada. */
+var RC_MATCHED_STATUS_ = ['DIPROSES', 'TEREKONSILIASI', 'TERIDENTIFIKASI'];
+function rcIsMatched_(mut) { return opStr_(mut.transaksiId) !== '' || RC_MATCHED_STATUS_.indexOf(opStr_(mut.status).toUpperCase()) !== -1; }
 
 /* Saldo sistem akun s.d. tanggal akhir (inklusif). Rumus sama dengan akunSaldo() klien untuk PENERIMAAN/PENGELUARAN. */
 function rcSaldoSistem_(akunId, asOf) {
@@ -52,7 +57,7 @@ function opReconcileAccount(p) {
       }
       var pl = plGuard_([periode], 'rekonsiliasi'); if (pl) return pl;
       var saldoSistem = rcSaldoSistem_(akunId, plPeriodEnd_(periode));
-      if (saldoSistem === null) return errResult_('INVALID_ACCOUNT', 'akunId tidak ditemukan di 07_AKUN: ' + akunId, 'akunId');
+      if (saldoSistem === null) return errResult_('VALIDATION_ERROR', 'akunId tidak ditemukan di 07_AKUN: ' + akunId, 'akunId'); // [TC-CRUD-04]
       var selisih = saldoAktual - saldoSistem, nol = Math.abs(selisih) < 0.5;
       if (!nol && !catatan) return errResult_('VALIDATION_ERROR', 'Selisih ditemukan (' + selisih + ') - catatan penjelasan WAJIB diisi', 'catatan');
       var now = new Date().toISOString();
@@ -96,7 +101,7 @@ function opMatchMutasi(p) {
       if (pos === -1) return errResult_('NOT_FOUND', 'Mutasi bank tidak ditemukan: ' + mutId, 'mutasiId');
       var mut = list[pos];
       if (opStr_(mut.archivedAt) !== '') return errResult_('ARCHIVED', 'Mutasi bank sudah diarsipkan', 'mutasiId', mutId);
-      if (opStr_(mut.status) === 'DIPROSES') {
+      if (rcIsMatched_(mut)) { // [GAP-019] termasuk TEREKONSILIASI/TERIDENTIFIKASI dari data FINAL
         if (opStr_(mut.transaksiId) === trxId) { var same = okResult_('Mutasi sudah dicocokkan ke transaksi ini', opJsonSafe_(mut)); same.data.unchanged = true; return same; }
         return errResult_('ALREADY_MATCHED', 'Mutasi sudah dicocokkan ke transaksi lain (' + mut.transaksiId + ')', 'mutasiId', mutId);
       }

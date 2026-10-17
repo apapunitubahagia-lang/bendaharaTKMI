@@ -4,7 +4,11 @@
  * - Sumber status closing: blob klien yang SUDAH ADA di 15_SETTINGS (key 'blob.periodClosing.n' dan
  *   'blob.periodClosing.0..n-1', isi JSON [{periode, status, closedAt, closedBy, ...}]). Tidak ada sheet/kolom
  *   baru dan tidak ada migrasi: riwayat closing yang sudah tercatat langsung berlaku.
- * - Blob itu kini HANYA ditulis lewat opClosePeriod / opReopenPeriod (opSettingsUpsert menolak key-nya).
+ * - [GAP-015] Status bawaan backend FINAL juga dibaca apa adanya: key 15_SETTINGS 'periodeStatus.YYYY-MM' bernilai
+ *   TERKUNCI (atau CLOSED/LOCKED) = periode terkunci. Key itu TIDAK pernah ditulis kode ini (data asli dipertahankan).
+ *   Entri blob closing (keputusan close/reopen lewat server, berjejak waktu) mengalahkan periodeStatus untuk periode
+ *   yang sama, sehingga reopen beralasan atas periode TERKUNCI tetap mungkin tanpa mengubah data asli.
+ * - Blob dan key periodeStatus.* HANYA diubah lewat opClosePeriod / opReopenPeriod (opSettingsUpsert menolak keduanya).
  * - plGuard_ dipanggil di DALAM lock yang sama dengan penulisan (engine, record, arsip, rekonsiliasi).
  * - Status blob rusak (JSON tidak terbaca) -> gagal tertutup (PERIOD_STATE_INVALID), bukan dianggap terbuka.
  * - Label periode = format klien/FinanceEngine: "<Bulan> <Tahun>" (mis. "September 2026").
@@ -15,6 +19,8 @@
  * STATUS: sandbox lokal saja. BELUM dijalankan di Apps Script sungguhan.
  */
 var PL_BLOB_PREFIX_ = 'blob.periodClosing.';
+var PL_STATUS_PREFIX_ = 'periodeStatus.'; // [GAP-015] key backend FINAL, mis. periodeStatus.2026-07 = TERKUNCI (hanya dibaca)
+var PL_STATUS_LOCKED_ = ['TERKUNCI', 'CLOSED', 'LOCKED'];
 var PL_CHUNK_ = 40000; // sama dengan ccBlobPut_ di klien
 var PL_BULAN_ = ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'];
 var PL_LABEL_RE_ = /^(Januari|Februari|Maret|April|Mei|Juni|Juli|Agustus|September|Oktober|November|Desember) \d{4}$/;
@@ -34,12 +40,25 @@ function plPeriodEnd_(periode) {
   var last = new Date(Date.UTC(y, mi + 1, 0)).getUTCDate();
   return y + '-' + ('0' + (mi + 1)).slice(-2) + '-' + ('0' + last).slice(-2);
 }
-/* Membaca blob closing dari 15_SETTINGS. Melempar Error ber-code bila blob rusak. */
+/* "2026-07" -> "Juli 2026"; '' bila tidak valid. */
+function plLabelOfYm_(ym) {
+  var mm = /^(\d{4})-(\d{2})$/.exec(String(ym || ''));
+  if (!mm) return '';
+  var mi = Number(mm[2]) - 1;
+  return (mi >= 0 && mi < 12) ? PL_BULAN_[mi] + ' ' + mm[1] : '';
+}
+/* Membaca blob closing + periodeStatus.* dari 15_SETTINGS. Melempar Error ber-code bila blob rusak. */
 function plRead_() {
   var m = sgModel_(SHT_SETTINGS, ['key', 'value']);
-  if (!m) return { m: null, list: [], rowOf: {} };
+  if (!m) return { m: null, list: [], rowOf: {}, statusLocked: {} };
   var rowOf = {}, val = {};
   m.values.forEach(function (r, i) { var k = String(r[m.idx.key]); rowOf[k] = i; val[k] = r[m.idx.value]; });
+  var statusLocked = {};
+  Object.keys(val).forEach(function (k) {
+    if (k.indexOf(PL_STATUS_PREFIX_) !== 0) return;
+    var lb = plLabelOfYm_(k.slice(PL_STATUS_PREFIX_.length));
+    if (lb && PL_STATUS_LOCKED_.indexOf(String(val[k] === null || val[k] === undefined ? '' : val[k]).trim().toUpperCase()) !== -1) statusLocked[lb] = k;
+  });
   var n = Number(val[PL_BLOB_PREFIX_ + 'n']), list = [];
   if (n > 0) {
     var s = '';
@@ -50,13 +69,19 @@ function plRead_() {
       err.code = 'PERIOD_STATE_INVALID'; throw err;
     }
   }
-  return { m: m, list: list, rowOf: rowOf };
+  return { m: m, list: list, rowOf: rowOf, statusLocked: statusLocked };
 }
-function plClosedMap_() {
+/* Peta periode terkunci: periodeStatus TERKUNCI, lalu ditimpa entri blob (CLOSED menambah, OPEN membuka). */
+function plClosedFrom_(st) {
   var map = {};
-  plRead_().list.forEach(function (c) { if (c && c.status === 'CLOSED' && c.periode) map[String(c.periode)] = true; });
+  Object.keys(st.statusLocked).forEach(function (p) { map[p] = true; });
+  st.list.forEach(function (c) {
+    if (!c || !c.periode) return;
+    if (c.status === 'CLOSED') map[String(c.periode)] = true; else delete map[String(c.periode)];
+  });
   return map;
 }
+function plClosedMap_() { return plClosedFrom_(plRead_()); }
 /* values = tanggal (yyyy-MM-dd / Date) atau label periode. Mengembalikan errResult_ PERIOD_LOCKED atau null.
    closedMap opsional (dipakai ulang dalam satu batch). */
 function plGuard_(values, what, closedMap) {
@@ -76,8 +101,8 @@ function plGuard_(values, what, closedMap) {
 function opPeriodLockStatus() {
   var g = opGate_(OP_READ_ROLES_); if (!g.ok) return g;
   try {
-    var list = plRead_().list;
-    return okResult_('OK', { closed: list.filter(function (c) { return c && c.status === 'CLOSED'; }).map(function (c) { return c.periode; }), entries: list });
+    var st = plRead_(), closed = plClosedFrom_(st);
+    return okResult_('OK', { closed: Object.keys(closed), entries: st.list, periodeStatusTerkunci: st.statusLocked });
   } catch (e) { return sgErr_(e, 'READ_FAILED', 'Gagal membaca status closing'); }
 }
 /* Tulis blob closing (format sama dengan ccBlobPut_) + audit dalam lock. Audit gagal -> baris dipulihkan. */
@@ -117,7 +142,7 @@ function opClosePeriod(periode) {
     return withLock_(function () {
       var st = plRead_(), list = st.list.slice(), idx = -1;
       for (var i = 0; i < list.length; i++) { if (list[i] && list[i].periode === periode) { idx = i; break; } }
-      if (idx >= 0 && list[idx].status === 'CLOSED') { var same = okResult_('Periode sudah ditutup sebelumnya', { entry: list[idx] }); same.data.unchanged = true; return same; }
+      if (plClosedFrom_(st)[periode]) { var same = okResult_('Periode sudah ditutup sebelumnya', { entry: idx >= 0 ? list[idx] : { periode: periode, status: 'TERKUNCI', sumber: st.statusLocked[periode] } }); same.data.unchanged = true; return same; }
       var before = idx >= 0 ? JSON.parse(JSON.stringify(list[idx])) : null;
       var entry = Object.assign({}, idx >= 0 ? list[idx] : {}, { periode: periode, status: 'CLOSED', closedAt: new Date().toISOString(), closedBy: g.identity.email });
       if (idx >= 0) list[idx] = entry; else list.push(entry);
@@ -136,10 +161,11 @@ function opReopenPeriod(periode, reason) {
     return withLock_(function () {
       var st = plRead_(), list = st.list.slice(), idx = -1;
       for (var i = 0; i < list.length; i++) { if (list[i] && list[i].periode === periode) { idx = i; break; } }
-      if (idx < 0 || list[idx].status !== 'CLOSED') { var same = okResult_('Periode tidak dalam status CLOSED', { entry: idx >= 0 ? list[idx] : null }); same.data.unchanged = true; return same; }
-      var before = JSON.parse(JSON.stringify(list[idx]));
-      var entry = Object.assign({}, list[idx], { status: 'OPEN', reopenedAt: new Date().toISOString(), reopenedBy: g.identity.email, reopenReason: reason.slice(0, 500) });
-      list[idx] = entry;
+      if (!plClosedFrom_(st)[periode]) { var same = okResult_('Periode tidak dalam status CLOSED', { entry: idx >= 0 ? list[idx] : null }); same.data.unchanged = true; return same; }
+      // [GAP-015] periode TERKUNCI dari periodeStatus.* tanpa entri blob: entri OPEN baru di blob (key asli tidak diubah)
+      var before = idx >= 0 ? JSON.parse(JSON.stringify(list[idx])) : { periode: periode, status: 'TERKUNCI', sumber: st.statusLocked[periode] };
+      var entry = Object.assign({}, idx >= 0 ? list[idx] : { periode: periode }, { status: 'OPEN', reopenedAt: new Date().toISOString(), reopenedBy: g.identity.email, reopenReason: reason.slice(0, 500) });
+      if (idx >= 0) list[idx] = entry; else list.push(entry);
       var err = plWrite_(g, st, list, 'REOPEN_PERIODE', before, entry, periode);
       if (err) return err;
       return okResult_('Periode dibuka kembali', { entry: entry });

@@ -4503,24 +4503,56 @@ function openLampirkanBukti(trxId){
     '<div class="modal-actions"><button class="btn" onclick="closeModal()">Batal</button><button class="btn primary" onclick="submitBukti(\''+trxId+'\')">Simpan</button></div>');
 }
 function submitBukti(trxId){
-  /* [P1-E] Bukti WAJIB berfile (diunggah ke Drive lewat server). Status transaksi TIDAK lagi diubah otomatis saat
-     bukti dilampirkan: perubahan status pembayaran butuh bukti DAN tindakan eksplisit (Tandai Direkonsiliasi). */
+  /* [P1-E] Bukti WAJIB berfile. [TC-FAIL-05 / GAP-024] Untuk transaksi server, file diunggah SINKRON ke server
+     (opUploadBukti -> Drive + 10_BUKTI) dengan hasil yang jelas - tidak lagi antre di memori yang hilang saat muat ulang.
+     [GAP-045] Status transaksi TIDAK diubah otomatis saat bukti dilampirkan. */
   const fileInput = document.getElementById('bk_file');
   if(!(fileInput && fileInput.files && fileInput.files[0])){ toast('File bukti wajib dilampirkan - bukti TIDAK disimpan.'); return; }
-  const finish = (fileRef)=>{
-    const dok = Store.loadDokumen();
-    const d = {id:uid('dok'), kategori:val('bk_kategori'), transaksiId:trxId, fileRef:fileRef||'', judul:val('bk_judul')||('Bukti '+trxId), tanggal:todayISO()};
-    dok.push(d); Store.saveDokumen(dok);
-    if(!centralIsServerTrx(trxId)){
+  const reader = new FileReader();
+  reader.onload = ()=>{
+    const meta = {kategori:val('bk_kategori'), judul:val('bk_judul')||('Bukti '+trxId)};
+    if(ccIsLegacyLocalTrx_(trxId)){ // baris lokal lama (pra-cutover): perilaku lama tanpa perubahan status
+      const dok = Store.loadDokumen();
+      const d = {id:uid('dok'), kategori:meta.kategori, transaksiId:trxId, fileRef:reader.result||'', judul:meta.judul, tanggal:todayISO()};
+      dok.push(d); Store.saveDokumen(dok);
       const arr = Store.loadTransaksi(); const idx = arr.findIndex(t=>t.id===trxId);
       if(idx>=0){ arr[idx].buktiId = (arr[idx].buktiId||[]).concat([d.id]); Store.saveTransaksi(arr); }
+      auditTrailPush('LAMPIRKAN_BUKTI', null, d, 'manual');
+      closeModal(); toast('Bukti tersimpan (data lokal lama). Status transaksi TIDAK diubah otomatis.'); renderContent();
+      return;
     }
-    auditTrailPush('LAMPIRKAN_BUKTI', null, d, 'manual');
-    closeModal(); toast('Bukti dikirim ke server - menunggu konfirmasi. Status transaksi TIDAK diubah otomatis.'); renderContent();
+    closeModal();
+    buktiUploadNow_(trxId, meta, reader.result);
   };
-  const reader = new FileReader();
-  reader.onload = ()=>finish(reader.result);
   reader.readAsDataURL(fileInput.files[0]);
+}
+/* [P1-E] Transaksi lokal lama yang tidak pernah dikirim ke server (bukan antrean baru). */
+function ccIsLegacyLocalTrx_(id){ return !!id && !centralIsServerTrx(centralResolveTrxId(id)) && Store.loadTransaksi().some(t=>t.id===id && !t._pendingSync); }
+/* [P1-E / TC-FAIL-05] Unggah bukti langsung ke server; hasil (berhasil/gagal) selalu ditampilkan. Selama unggahan
+   berjalan, menutup halaman memunculkan peringatan browser. trxId kosong = dokumen tanpa transaksi. */
+function buktiUploadNow_(trxId, meta, dataUrl){
+  meta = meta || {};
+  const parts = ccDataUrlParts_(dataUrl);
+  if(!parts){ toast('File bukti tidak terbaca - bukti TIDAK disimpan.'); return Promise.resolve({ok:false, code:'VALIDATION_ERROR'}); }
+  if(!(centralReady_() && ServerBridge.opUploadBukti)){ toast('Gagal menyimpan bukti: ' + centralNotReadyText_()); return Promise.resolve({ok:false, code:'NOT_READY'}); }
+  const sid = trxId ? centralResolveTrxId(trxId) : '';
+  if(sid && !centralIsServerTrx(sid)){ toast('Transaksi belum dikonfirmasi server - lampirkan bukti setelah transaksi tersimpan. Bukti TIDAK disimpan.'); return Promise.resolve({ok:false, code:'TRX_NOT_CONFIRMED'}); }
+  const ext = {'application/pdf':'.pdf','image/png':'.png','image/jpeg':'.jpg','image/webp':'.webp','image/gif':'.gif'}[parts.mime] || '';
+  const judul = ccStr_(meta.judul) || ('Bukti ' + (sid || 'dokumen'));
+  globalThis.__buktiUploading = (globalThis.__buktiUploading || 0) + 1; ccBuktiUnloadGuard_();
+  toast('Mengunggah bukti ke server - jangan tutup halaman...');
+  const done = function(){ globalThis.__buktiUploading = Math.max(0, (globalThis.__buktiUploading || 1) - 1); };
+  return ServerBridge.opUploadBukti(JSON.parse(JSON.stringify({id:uid('dok'), mimeType:parts.mime, base64:parts.b64, fileName:judul + ext, transaksiId:sid, kategori:meta.kategori || 'Bukti', judul:judul, tanggal:todayISO()}))).then(function(res){
+    done();
+    if(!res || !res.ok){ toast('GAGAL mengunggah bukti: ' + centralErrText(res) + ' - bukti TIDAK tersimpan, silakan ulangi.'); return res || {ok:false, code:'SERVER_ERROR'}; }
+    auditTrailPush(meta.aksi || 'LAMPIRKAN_BUKTI', null, res.data, 'manual');
+    toast('Bukti tersimpan di server (Drive). Status transaksi TIDAK diubah otomatis.');
+    return loadOperationalData(['bukti']).then(function(){ renderContent(); return res; });
+  }, function(e){ done(); toast('GAGAL mengunggah bukti: ' + ((e && e.message) || e) + ' - bukti TIDAK tersimpan, silakan ulangi.'); return {ok:false, code:'NETWORK_ERROR'}; });
+}
+function ccBuktiUnloadGuard_(){
+  if(globalThis.__buktiUnloadGuard) return; globalThis.__buktiUnloadGuard = true;
+  try{ window.addEventListener('beforeunload', function(ev){ if((globalThis.__buktiUploading || 0) > 0){ ev.preventDefault(); ev.returnValue = 'Unggahan bukti belum selesai'; return ev.returnValue; } }); }catch(e){ /* lingkungan tanpa window */ }
 }
 function markRekonsiliasi(trxId){
   updateTransaksiStatus(trxId, 'SELESAI');
@@ -5591,17 +5623,12 @@ function openDokumenForm(){
     '<div class="modal-actions"><button class="btn" onclick="closeModal()">Batal</button><button class="btn primary" onclick="submitDokumen()">Simpan</button></div>');
 }
 function submitDokumen(){
+  /* [P1-E] 10_BUKTI wajib berfile; [TC-FAIL-05] diunggah sinkron ke server (opUploadBukti), tanpa antrean memori. */
   const fileInput = document.getElementById('dkf_file');
-  if(!(fileInput && fileInput.files && fileInput.files[0])){ toast('File dokumen wajib dilampirkan - dokumen TIDAK disimpan.'); return; } // [P1-E] 10_BUKTI wajib berfile
-  const finish = (fileRef)=>{
-    const arr = Store.loadDokumen();
-    arr.push({id:uid('dok'), judul:val('dkf_judul')||'Dokumen', kategori:val('dkf_kategori'), transaksiId:val('dkf_transaksi')||null, fileRef:fileRef||'', tanggal:todayISO()});
-    Store.saveDokumen(arr);
-    auditTrailPush('TAMBAH_DOKUMEN', null, arr[arr.length-1], 'manual');
-    closeModal(); toast('Dokumen tersimpan'); renderContent();
-  };
-  if(fileInput && fileInput.files && fileInput.files[0]){ const r=new FileReader(); r.onload=()=>finish(r.result); r.readAsDataURL(fileInput.files[0]); }
-  else finish('');
+  if(!(fileInput && fileInput.files && fileInput.files[0])){ toast('File dokumen wajib dilampirkan - dokumen TIDAK disimpan.'); return; }
+  const r = new FileReader();
+  r.onload = ()=>{ const trxId = val('dkf_transaksi') || ''; closeModal(); buktiUploadNow_(trxId, {kategori:val('dkf_kategori'), judul:val('dkf_judul') || 'Dokumen', aksi:'TAMBAH_DOKUMEN'}, r.result); };
+  r.readAsDataURL(fileInput.files[0]);
 }
 function hapusDokumen(id){
   const arr = Store.loadDokumen();

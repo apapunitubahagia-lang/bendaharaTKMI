@@ -4,7 +4,7 @@ PASS S3 tidak ada google.script.run/fetch( langsung di HTML
 PASS S4 tidak ada duplicate function
 PASS S5 tidak ada duplicate variable top-level
 PASS S6 tidak ada fungsi hilang vs sebelum sentralisasi
-PASS S7 semua fungsi central*/cc*/pd* yang dipanggil terdefinisi (118)
+PASS S7 semua fungsi central*/cc*/pd* yang dipanggil terdefinisi (120)
 PASS S8 init() masih memanggil migrateV1ToV2/initializeSeedData/renderShell/bootstrapCentralAuth
 PASS S9 include ServerBridge utuh, BridgeClient tetap dikomentari
 PASS S10 semua method ServerBridge.* yang dipakai HTML ada di ServerBridge.js

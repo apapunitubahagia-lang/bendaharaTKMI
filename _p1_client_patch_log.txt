@@ -9,7 +9,7 @@ replace fn createTransaksiFromMutasi
 replace fn centralCollectionJobs_
 label file bukti
 replace fn submitBukti
-submitDokumen: file wajib
+replace fn submitDokumen
 replace fn centralPatchTransaksi
 centralPushPatch_: crid + _expect
 ccSave_: expect

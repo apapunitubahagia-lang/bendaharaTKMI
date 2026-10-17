@@ -44,6 +44,10 @@ function opUserUpsert(record) {
       if (idx === -1) after.push({ email: email, role: role, status: status });
       if (opNorm_(g.identity.email) === email && (status !== 'ACTIVE' || role !== 'BENDAHARA')) return errResult_('SELF_LOCKOUT', 'Tidak boleh menonaktifkan atau menurunkan akun sendiri', 'status');
       if (!after.some(function (u) { return u.role === 'BENDAHARA' && u.status === 'ACTIVE'; })) return errResult_('SELF_LOCKOUT', 'Harus tersisa minimal satu BENDAHARA aktif', 'role');
+      if (idx >= 0 && opNorm_(m.rows[idx][c('email')]) === email && opStr_(m.rows[idx][c('nama')]) === nama && opStr_(m.rows[idx][c('role')]) === role && opStr_(m.rows[idx][c('unit')]) === unit && opStr_(m.rows[idx][c('status')]) === status) {
+        // [GAP-031] replay tanpa perubahan = satu efek: tidak menulis updatedAt dan tidak mengaudit ulang
+        var same = okResult_('Akses pengguna tidak berubah (sudah sama)', opJsonSafe_(opRowObj_(m.live, m.rows[idx]))); same.data.unchanged = true; return same;
+      }
       var now = new Date().toISOString(), before = null, row;
       if (idx >= 0) { before = opRowObj_(m.live, m.rows[idx]); row = m.rows[idx].slice(); }
       else { row = m.live.map(function () { return ''; }); row[c('id')] = 'gas_usr_' + Utilities.getUuid(); row[c('createdAt')] = now; }

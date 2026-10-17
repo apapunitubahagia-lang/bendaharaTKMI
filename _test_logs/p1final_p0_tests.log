@@ -1,5 +1,5 @@
 PASS P0A-01 [TC-HDR-02] {"id":"imp_trx_1","jenis":"PENERIMAAN","tanggal":"2026-09-05","unit":"MI","nominal":200000,"akunId":"akun_kas1","metode":"Tunai","status":"TERCATAT","createdAt":"2026-09-05T01:00:00.000Z","catatan":""
-PASS P0A-02 [TC-HDR-02] {"ok":true,"code":"SUCCESS","message":"Transaksi berhasil dibuat","data":{"id":"gas_trx_502d14b3-e4f2-4d96-b720-71ca1e3d83f6","transaction":{"id":"gas_trx_502d1
+PASS P0A-02 [TC-HDR-02] {"ok":true,"code":"SUCCESS","message":"Transaksi berhasil dibuat","data":{"id":"gas_trx_3118dca2-a8c4-4b47-9ff4-790647187e42","transaction":{"id":"gas_trx_3118d
 PASS P0A-03 [TC-HDR-02] {"r":[false,"SCHEMA_MISMATCH"],"w":[false,"SCHEMA_MISMATCH"]}
 PASS P0A-04 [TC-HDR-03] {"role":"BENDAHARA","auth":true,"w":"SUCCESS"}
 PASS P0A-05 [TC-HDR-03] {"id":[false,"SCHEMA_MISMATCH"],"w":[false,"SCHEMA_MISMATCH"]}

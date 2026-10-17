@@ -11,8 +11,10 @@
 
 **Status P1: BELUM SELESAI.**
 
-- Kode untuk keenam prioritas P1 sudah diterapkan dan **lulus di sandbox Node** (42/42).
-- Sebelum perbaikan, di kode baseline hasilnya 3/42. Ketiga yang lulus adalah regresi yang wajib dipertahankan.
+> **Pembaruan (setelah `05_DAFTAR_GAP_DAN_RISIKO.xlsx` dan `07_RANCANGAN_TEST_CASE.md` diterima):** implementasi dicocokkan dengan kriteria dokumen. Enam ketidaksesuaian ditemukan dan diperbaiki (periode TERKUNCI FINAL, kunci kewajiban, TC-CRUD-04, mutasi FINAL `TEREKONSILIASI`, replay satu efek, unggah bukti sinkron). Suite kini 49 tes. Rincian, status setiap TC/GAP, dan keputusan yang tersisa ada di **`P1_02_PEMETAAN_GAP_TC.md`**; dokumen itu mengungguli angka dan ID TC di bawah bila berbeda.
+
+- Kode untuk keenam prioritas P1 sudah diterapkan dan **lulus di sandbox Node** (49/49; semula 42 tes sebelum dokumen GAP/TC diterima).
+- Sebelum perbaikan, di kode baseline hasilnya 3/49. Ketiga yang lulus adalah regresi yang wajib dipertahankan.
 - **Belum ada satu pun yang diuji di Apps Script dan Google Sheets sungguhan.** Uji live = BLOCKED, sama dengan P0 (hambatan H1–H7 di `P1_00` §2).
 - **P0 juga masih BELUM SELESAI** (uji live BLOCKED). P1 dibangun di atas P0 yang belum terbukti di lingkungan nyata.
 - **Produksi tidak disentuh.** Tidak ada deployment, migrasi data, perubahan saldo awal, atau perubahan status pembayaran pada data.
@@ -111,7 +113,7 @@ Markup/CSS di luar `<script>` **identik** dengan baseline (P0U-02). 754 fungsi b
 
 - **Sandbox** = dijalankan sungguhan di Node (`srv_env.js`/`client_env.js`).
 - **Live** = Apps Script + Sheets uji. **Seluruh kolom live BLOCKED.**
-- ID TC `TC-P1-*` bersifat **sementara** (H7): dokumen rancangan TC audit asli tidak tersedia.
+- ID `TC-P1-*` di tabel ini adalah ID sementara saat dokumen belum ada. **Pemetaan ke ID asli dokumen 07/05 ada di `P1_02` §2–§3** (juga dipakai sebagai label di `p1_tests.js`).
 - Bukti:
   - Baseline: `_test_logs/p1base_suitefinal_p1_tests.log` (suite final dijalankan pada kode `20d9e55`) dan `_test_logs/p1base_p1_tests.log` (saat `P1_00`, 40 tes).
   - Akhir: `_test_logs/p1final_*.log`.
@@ -139,7 +141,7 @@ Markup/CSS di luar `<script>` **identik** dengan baseline (P0U-02). 754 fungsi b
 | TC-AUTH-02 | P1S-01 | FAIL (API belum ada) | PASS | BLOCKED | AUDITOR → `ROLE_NOT_ALLOWED` untuk reopen, rekonsiliasi, dan pencocokan (baca RAB boleh). Pengguna tak terdaftar ditolak semua |
 | GAP-028 | P1T-01 | PASS | PASS | BLOCKED | `TRANSFER` ditolak klien. 0 fungsi server bertema transfer |
 
-**Baseline (kode `20d9e55`, suite final): PASS=3 FAIL=39. Akhir: PASS=42 FAIL=0.**
+**Baseline (kode `20d9e55`, suite final 49 tes): PASS=3 FAIL=46. P1 versi 1 (`3f9548a`): PASS=43 FAIL=6. Akhir: PASS=49 FAIL=0.** Tes tambahan P1L-13/14, P1R-08/09, P1A-07, P1E-06, P1C-06 dijelaskan di `P1_02` §1.
 
 ### 6.2 Suite lama (regresi)
 
@@ -169,13 +171,13 @@ Setiap perubahan ekspektasi menyangkut perilaku yang **sengaja ditutup P1**. Tid
 | # | Hal | Alasan / tindakan |
 |---|---|---|
 | 1 | **Semua uji live** P0 dan P1 | Tidak ada proyek Apps Script uji, salinan spreadsheet, maupun `clasp` (H1–H2) |
-| 2 | Dokumen daftar GAP dan rancangan TC audit asli tidak tersedia (H7) | Nomor GAP P1 (kecuali GAP-028) dan ID TC asli belum dipetakan. **Mohon kirim dokumennya**; pemetaan dilakukan tanpa mengubah kode |
+| 2 | ~~Dokumen daftar GAP dan rancangan TC audit asli tidak tersedia (H7)~~ **Teratasi** | Lihat `P1_02`. Butir yang belum tuntas per GAP: `P1_02` §3. Catatan lama: pemetaan dilakukan tanpa mengubah kode |
 | 3 | Keputusan K-P1-01..06 (`P1_00` §5) | Diterapkan default konservatif. Semua dapat diubah tanpa migrasi |
 | 4 | Reopen dengan persetujuan ganda (Kepala Sekolah/Yayasan) | Belum diterapkan (K-P1-02). Saat ini BENDAHARA + alasan wajib + audit |
 | 5 | Klien belum mengirim `expect` untuk master (`centralMasterSave`) dan koleksi JSON/kustom (laporan, kewajiban, antrean import) | Server sudah mendukung master (P1C-04). Klien master perlu peta field per jenis master |
 | 6 | Resolusi konflik di UI | Perubahan yang konflik diblokir dan tampil di "gagal sinkron". Pengguna memuat ulang lalu mengulang. Belum ada layar "bandingkan dan pilih" |
 | 7 | Baris lokal **lama** (pra-cutover) untuk rekonsiliasi, dan dokumen tanpa file, tidak dapat dimigrasikan lewat jalur generik | Ditolak dengan sengaja (`USE_DEDICATED_API`, `BUKTI_FILE_REQUIRED`). Butuh keputusan migrasi legacy, yang **tidak dilakukan** di P1 |
-| 8 | `saldoSistem` di form klien (pratinjau, s.d. hari ini) bisa berbeda dari saldo server (s.d. akhir periode) | K-P1-03. Server adalah sumber kebenaran; pesan menampilkan angka server |
+| 8 | `saldoSistem` di form klien (pratinjau, s.d. hari ini) bisa berbeda dari saldo server (s.d. akhir periode) | K-P1-03 (terjawab TC-REK-03: akhir periode). Server adalah sumber kebenaran; pesan menampilkan angka server |
 | 9 | Penggunaan ulang `clientRequestId` dengan isi berbeda tidak terdeteksi untuk create | Butuh kolom hash di `24_IDEMPOTENCY_LOG` (migrasi skema, tidak dilakukan). Untuk update, beda transaksi → `IDEMPOTENCY_MISMATCH` |
 | 10 | Antrean pencocokan mutasi (`central_pending_mutmatch`) belum dihitung di `centralBlockedCount` | Galat tetap tampil lewat toast/`lastError` |
 | 11 | `opSchemaApply` yang gagal setelah audit | Meninggalkan audit rencana + audit `SCHEMA_ADD_COLUMNS_FAILED`. Kedua jejak itu benar, bukan audit palsu |

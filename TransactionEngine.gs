@@ -185,7 +185,7 @@ function deleteIdempotencyByClientRequestId_(clientRequestId) {
   return false;
 }
 /* Sheet nama untuk tiap resultType - dipakai untuk verifikasi orphan (bagian F). */
-var RESULT_TYPE_SHEET = { transaction: SHT_TRANSAKSI, allocation: SHT_ALOKASI, bankMutation: SHT_MUTASI, transactionUpdate: SHT_TRANSAKSI }; // [P1-B] transactionUpdate
+var RESULT_TYPE_SHEET = { transaction: SHT_TRANSAKSI, allocation: SHT_ALOKASI, bankMutation: SHT_MUTASI, mutasiBank: SHT_MUTASI, transactionUpdate: SHT_TRANSAKSI }; // [P1-B] transactionUpdate; [GAP-031] alias resultType impor FINAL 'mutasiBank' (data tidak diubah)
 /* Mengembalikan salah satu:
    { status:'none' }                    - tidak ada record idempotency
    { status:'orphan', record }          - record ada tapi target sudah tidak ada

@@ -346,6 +346,10 @@ function opMasterUpsert(sheetKey, record, createId, expect) {
       }
       var vErr = opValidateMaster_(cfg, merged);
       if (vErr) return vErr;
+      if (isUpdate && live.every(function (h) { return !h || opStr_(opJsonSafe_(base[h])) === opStr_(opJsonSafe_(merged[h])); })) {
+        // [GAP-031] replay/kirim ulang tanpa perubahan = satu efek: tidak menulis dan tidak mengaudit ulang
+        var same = okResult_('Data master tidak berubah (sudah sama)', opJsonSafe_(merged)); same.data.unchanged = true; return same;
+      }
       var key1 = cfg.dupKey(merged);
       for (i = 0; i < rows.length; i++) {
         if (i === idx) continue;

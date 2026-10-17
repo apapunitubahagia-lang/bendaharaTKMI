@@ -16,7 +16,7 @@ L.rep(te, " * status alokasi dihitung server, aktor di audit, fungsi engine/tes 
 
 // ---------- P1-B: idempotensi update + audit batch ----------
 L.rep(te, "var RESULT_TYPE_SHEET = { transaction: SHT_TRANSAKSI, allocation: SHT_ALOKASI, bankMutation: SHT_MUTASI };",
-  "var RESULT_TYPE_SHEET = { transaction: SHT_TRANSAKSI, allocation: SHT_ALOKASI, bankMutation: SHT_MUTASI, transactionUpdate: SHT_TRANSAKSI }; // [P1-B] transactionUpdate", 'RESULT_TYPE_SHEET', log);
+  "var RESULT_TYPE_SHEET = { transaction: SHT_TRANSAKSI, allocation: SHT_ALOKASI, bankMutation: SHT_MUTASI, mutasiBank: SHT_MUTASI, transactionUpdate: SHT_TRANSAKSI }; // [P1-B] transactionUpdate; [GAP-031] alias resultType impor FINAL 'mutasiBank' (data tidak diubah)", 'RESULT_TYPE_SHEET', log);
 
 L.rep(te, "// ============================================================\n// VALIDASI (field-level + referential integrity)",
 `/* [P1-B] Audit engine dalam SATU append (sgAppendMany_): seluruh baris audit wajib satu operasi + baris jejak

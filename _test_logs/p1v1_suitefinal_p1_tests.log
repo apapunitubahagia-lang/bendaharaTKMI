@@ -1,0 +1,51 @@
+PASS P1L-01 [TC-CRUD-05 / GAP-015] {"ok":false,"code":"PERIOD_LOCKED","message":"Periode Oktober 2026 sudah ditutup (closing); transaksi pada periode itu tidak dapat dibuat/diubah. Buka kembali periode"}
+PASS P1L-02 [TC-CRUD-05 / GAP-015] periode terbuka tetap dapat ditulis: {"ok":true,"code":"SUCCESS","message":"Transaksi berhasil dibuat"}
+PASS P1L-03 [TC-CRUD-05 / GAP-015] {"a":"PERIOD_LOCKED","b":"PERIOD_LOCKED"}
+PASS P1L-04 [TC-CRUD-05 / GAP-015] {"ok":false,"code":"PERIOD_LOCKED","message":"Periode September 2026 sudah ditutup (closing); alokasi pada periode itu tidak dapat dibuat/diubah. Buka kembali periode"}
+PASS P1L-05 [TC-CRUD-05 / GAP-015] {"ok":false,"code":"PERIOD_LOCKED","message":"Periode September 2026 sudah ditutup (closing); arsip transaksi pada periode itu tidak dapat dibuat/diubah. Buka kembali"}
+PASS P1L-06 [TC-CRUD-05 / GAP-015] {"mutasi":"PERIOD_LOCKED","rekon":"PERIOD_LOCKED"}
+PASS P1L-07 [GAP-015 (reopen beralasan)] reopen lewat setting generik: {"ok":false,"code":"PERIOD_LOCK_API_REQUIRED","message":"Status closing periode hanya dapat diubah lewat Tutup/Buka Kembali Periode (opClosePeriod/opReopenPeriod)"}
+PASS P1L-08 [GAP-015 (reopen beralasan)] {"a":"SUCCESS","again":true,"den":"ROLE_NOT_ALLOWED","w":"PERIOD_LOCKED","audit":1}
+PASS P1L-09 [GAP-015 (reopen beralasan)] {"noReason":"VALIDATION_ERROR","ok":"SUCCESS","w":"SUCCESS","audit":1}
+PASS P1L-10 [TC-CRUD-05 / GAP-015] LPJ periode tertutup: "PERIOD_LOCKED"
+PASS P1L-11 [GAP-015 (reopen beralasan)] {"calls":["getSettings","opClosePeriod","getSettings"],"audit":1}
+PASS P1L-12 [GAP-015 (reopen beralasan)] {"nama":"Bendahara Uji P1","calls":["getSettings","opSettingsUpsert","getSettings"]}
+PASS P1A-01 [TC-FAIL-02, TC-FAIL-03 / GAP-013] {"r":[true,"SUCCESS",null],"trx":3,"audit":["CREATE_TRANSACTION","CREATE_ALLOCATION","API_CREATE_INCOME"]}
+PASS P1A-02 [TC-FAIL-02, TC-FAIL-03 / GAP-013] {"r":"WRITE_FAILED","trx":2,"audit":[]}
+PASS P1A-03 [TC-FAIL-02, TC-FAIL-03 / GAP-013] {"r":[true,"SUCCESS",null],"audit":["CREATE_TRANSACTION","API_CREATE_EXPENSE"]}
+PASS P1A-04 [TC-FAIL-02 / GAP-031] {"rp":"{\"ok\":true,\"code\":\"SUCCESS\",\"message\":\"Request sudah pernah diproses (idempotent replay) - perubahan tidak diterapkan ulang\"}","catatan":"B"}
+PASS P1A-05 [TC-FAIL-02, TC-FAIL-03 / GAP-013] {"r":[false,"AUDIT_FAILED",null],"cols":[23,23]}
+PASS P1A-06 [TC-TRX-02] {"a":"gas_trx_33d77a00-814a-46da-9212-2f38054d40e4","b":"gas_trx_33d77a00-814a-46da-9212-2f38054d40e4"}
+PASS P1R-01 [TC-REK-03 / GAP-019] {"ok":true,"code":"SUCCESS","message":"Rekonsiliasi selesai, saldo sesuai"}
+PASS P1R-02 [TC-REK-03 / GAP-019] rekonsiliasi rekaan klien lewat jalur generik: "USE_DEDICATED_API"
+PASS P1R-03 [TC-REK-03 / GAP-019] {"a":"VALIDATION_ERROR","b":["SUCCESS","PERLU_PENJELASAN",-10000]}
+PASS P1R-04 [TC-REK-03 / GAP-031] {"rows":1}
+PASS P1R-05 [TC-REK-02 / GAP-019] {"bad":"MATCH_NOMINAL_MISMATCH","ok":"SUCCESS","dbl":"DOUBLE_MATCH","re":true}
+PASS P1R-06 [TC-REK-02 / GAP-019] pencocokan tanpa validasi lewat jalur generik: "MATCH_VIA_API_REQUIRED"
+PASS P1R-07 [TC-REK-02 / GAP-019] "INVALID_TRANSACTION"
+PASS P1D-01 [GAP-020 / GAP-014] "INVALID_TRANSACTION"
+PASS P1D-02 [GAP-020 / GAP-014] LPJ 30.000+30.000 atas pengeluaran 50.000: ["CREATED","LPJ_EXCEEDS_TRANSACTION"]
+PASS P1D-03 [GAP-020 / GAP-014] LPJ atas PENERIMAAN: "INVALID_TRANSACTION"
+PASS P1D-04 [TC-DSH-06 / GAP-017] "INVALID_RAB"
+PASS P1D-05 [TC-DSH-05 / GAP-018] {"line":[40000,1],"fcc":40000,"unmapped":1,"code":"SUCCESS"}
+PASS P1E-01 [GAP-024 / GAP-014] bukti tanpa file: "BUKTI_FILE_REQUIRED"
+PASS P1E-02 [GAP-024 / GAP-014] {"up":"SUCCESS","rr":"BUKTI_IMMUTABLE"}
+PASS P1E-03 [GAP-024 / GAP-014] {"ok":false,"code":"INVALID_TRANSACTION","message":"Transaksi untuk bukti tidak ditemukan atau sudah diarsipkan: trx_tidak_ada"}
+PASS P1E-04 [GAP-045 / GAP-024] {"a":"EVIDENCE_REQUIRED","b":"SUCCESS"}
+PASS P1E-05 [GAP-045 / GAP-024] {"status":"TERCATAT","bukti":0,"toast":"File bukti wajib dilampirkan - bukti TIDAK disimpan."}
+PASS P1C-01 [TC-FAIL-07 / GAP-026] {"a":"CONFLICT","b":"SUCCESS"}
+PASS P1C-02 [TC-FAIL-07 / GAP-026] "CONFLICT"
+PASS P1C-03 [GAP-026] upsert atas baris terarsip: "ARCHIVED"
+PASS P1C-04 [TC-FAIL-07 / GAP-026] {"ok":false,"code":"CONFLICT","message":"Data master diubah pengguna lain sejak dimuat (nama); muat ulang lalu ulangi perubahan"}
+PASS P1C-05 [TC-FAIL-07 / GAP-026] {"catatan":"diubah pengguna lain","toast":"GAGAL menyimpan 1 perubahan ke server: Transaksi diubah pengguna lain sejak dimuat (catatan); perubahan TIDAK diterapkan - muat ulang lalu ulangi [CONFLICT]. Perubahan itu TIDAK dihitung sebagai transaksi resmi; periksa lalu coba lagi lewat tautan \"tertunda\"."}
+FAIL P1L-13 [TC-CRUD-05 / GAP-015] {"juli":"SUCCESS","okt":"SUCCESS","generik":"SUCCESS","status":[],"reopen":"SUCCESS","setelahReopen":"SUCCESS","dataAsli":"TERBUKA"}
+FAIL P1L-14 [GAP-015] ["CREATED","CREATED"]
+FAIL P1R-08 [TC-CRUD-04 / GAP-014] {"generik":"USE_DEDICATED_API","api":"INVALID_ACCOUNT"}
+FAIL P1R-09 [GAP-019 / GAP-031] {"match":"SUCCESS","ubahNominal":"MUTASI_LOCKED","orphan":"found"}
+FAIL P1A-07 [TC-FAIL-02 / GAP-031] {"master":2,"akses":2,"m2":"Data master diperbarui","u2":"Akses pengguna diperbarui"}
+FAIL P1E-06 [TC-FAIL-05 / GAP-024 / GAP-045] {"bukti":false,"file":0,"status":"TERCATAT","blobMemori":0,"toast":"","r":"EXCEPTION"}
+PASS P1C-06 [TC-FAIL-07 / GAP-026] {"server":1100000,"klien2":[true,"Data diubah pengguna lain sejak dimuat (nominal); muat ulang lalu ulangi perubahan [CONFLICT]"]}
+PASS P1S-01 [TC-AUTH-02] {"auditorTulis":["ROLE_NOT_ALLOWED","ROLE_NOT_ALLOWED","ROLE_NOT_ALLOWED"],"auditorBaca":"SUCCESS","tanpaAkses":[false,false,false]}
+PASS P1T-01 [GAP-028] {"err":"Transfer antar-akun belum didukung server - TIDAK disimpan.","pub":[]}
+
+PASS=43 FAIL=6 INFO=0
