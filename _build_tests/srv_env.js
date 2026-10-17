@@ -12,6 +12,7 @@ function makeServer(o) {
   const so = n => {
     const rows = sheets[n]; let maxCols = o.maxCols || 60;
     return {
+      deleteRow(i) { rows.splice(i - 1, 1); }, // [P0] dipakai rollback engine (deleteRowById_)
       getLastRow: () => rows.length, getLastColumn: () => rows.reduce((m, r) => Math.max(m, r.length), 0), setFrozenRows() {}, getMaxColumns: () => maxCols, insertColumnsAfter(a, b) { maxCols += b; },
       getRange(r, c, nr, nc) {
         return {
@@ -28,7 +29,7 @@ function makeServer(o) {
   const sb = {
     console, Date, Math, JSON, Object, Array, Number, String, Boolean, Error, RegExp, isFinite, isNaN, Logger: { log() {} },
     SpreadsheetApp: { getActiveSpreadsheet: () => ssObj, flush() {} }, Session: { getActiveUser: () => ({ getEmail: () => state.email }) },
-    LockService: { getScriptLock: () => ({ waitLock() {}, releaseLock() {} }) },
+    LockService: { getScriptLock: () => ({ waitLock() { if (state.lockFail) throw new Error('simulasi lock timeout'); }, releaseLock() {} }) }, // [P0] state.lockFail -> LOCK_TIMEOUT
     DriveApp: { getFoldersByName: () => ({ hasNext: () => state.drive.folders.length > 0, next: () => folder }), createFolder: n => { state.drive.folders.push(n); return folder; } },
     Utilities: { getUuid: () => crypto.randomUUID(), sleep() {}, computeDigest() { return []; }, DigestAlgorithm: { SHA_256: 1 }, Charset: { UTF_8: 1 }, base64Decode: s => Buffer.from(s, 'base64'), newBlob: (bytes, mime, name) => ({ bytes, mime, name }), formatDate: (d, tz, f) => (f === 'HH:mm:ss' ? d.toISOString().slice(11, 19) : d.toISOString().slice(0, 10)) }
   };
