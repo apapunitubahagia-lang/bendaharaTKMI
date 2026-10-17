@@ -85,6 +85,14 @@ async function bootClient(srv, opts) {
     rec('P0A-08', 'TC-HDR-01', null, 'opSchemaReport atas header FINAL: ' + J(sum));
   }
 
+  { // mesin hitung (kewajiban/FCC) juga gagal tertutup bila kolom wajib hilang
+    const srv = makeServer(); srv.sheets['01_SISWA'][0][col(srv, '01_SISWA', 'kelas')] = 'kelasX';
+    const o = safe(() => srv.sb.opObligations({}));
+    const srv2 = makeServer(); srv2.sheets['07_AKUN'][0][col(srv2, '07_AKUN', 'saldoAwal')] = 'saldo';
+    const f = safe(() => srv2.sb.opFinancialControl('September 2026'));
+    rec('P0A-09', 'GAP-002', o.code === 'SCHEMA_MISMATCH' && f.code === 'SCHEMA_MISMATCH', J([o.code, f.code]));
+  }
+
   // ================= P0-B: penulisan server & konsistensi =================
   { // TC-CRUD-01
     const srv = makeServer();

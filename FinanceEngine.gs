@@ -183,12 +183,12 @@ function opFinancialControl(periode) {
   periode = opStr_(periode);
   if (!periode) return errResult_('VALIDATION_ERROR', 'periode wajib diisi', 'periode');
   try {
-    var mk = function (sheet) { var m = opSheetModel_(sheet); return m ? m.rows.map(function (r) { return opJsonSafe_(opRowObj_(m.live, r)); }) : []; };
+    var mk = function (sheet) { return sgRowsChecked_(sheet); }; // [P0-A] kolom wajib divalidasi
     var D = { transaksi: mk('05_TRANSAKSI'), akun: mk('07_AKUN'), anggaran: mk('08_ANGGARAN'), komitmen: mk('09_KOMITMEN'), rkat: mk('18_RKAT'), rekonsiliasi: mk('16_REKONSILIASI'),
       alokasi: mk('06_ALOKASI'), komponen: mk('02_KOMPONEN'), kategoriPengeluaran: mk('21_KATEGORI_PENGELUARAN') };
     D.tagihan = fccTagihanFor_(D.anggaran, periode);
     var res = fccCompute_(periode, D);
     res.computedAt = new Date().toISOString();
     return okResult_('OK', res);
-  } catch (e) { return errResult_('COMPUTE_FAILED', 'Gagal menghitung kontrol keuangan', null); }
+  } catch (e) { return sgErr_(e, 'COMPUTE_FAILED', 'Gagal menghitung kontrol keuangan'); }
 }

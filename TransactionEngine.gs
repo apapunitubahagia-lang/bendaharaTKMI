@@ -32,6 +32,10 @@
  * payload-nya. Satu-satunya titik yang menyalakan testMode:true adalah
  * createTransactionWithAllocations_ForTest_() - fungsi privat yang hanya
  * dipanggil dari testConcurrentWriteDoor(), tidak pernah dari luar.
+ *
+ * [P0 - 2026-10-17] Patch build apply_p0_server.js: baca/tulis berbasis NAMA header (SchemaGuard.gs),
+ * SCHEMA_MISMATCH gagal tertutup, normalisasi tanggal, validasi patch per-field, invarian nominal >= alokasi,
+ * status alokasi dihitung server, aktor di audit, fungsi engine/tes dijadikan privat (akhiran _).
  */
 
 // ============================================================
@@ -74,6 +78,8 @@ var REGRESSION_BASELINE = {
 // ============================================================
 // ERROR CONTRACT
 // ============================================================
+/* [P0-A] SCHEMA_MISMATCH dibawa apa adanya; galat lain tetap WRITE_FAILED */
+function engineErrCode_(e) { return e && e.code === 'SCHEMA_MISMATCH' ? 'SCHEMA_MISMATCH' : 'WRITE_FAILED'; }
 function errResult_(code, message, field, refId) {
   return { ok: false, code: code, message: message, field: field || null, refId: refId || null };
 }
@@ -91,23 +97,19 @@ function sheet_(name) {
   return sh;
 }
 function readAllRows_(sheetName, headers) {
-  var sh = ss_().getSheetByName(sheetName);
-  if (!sh) return [];
-  var lastRow = sh.getLastRow();
-  if (lastRow < 2) return [];
-  var values = sh.getRange(2, 1, lastRow - 1, headers.length).getValues();
-  return values.map(function (r) {
-    var o = {};
-    headers.forEach(function (h, i) { o[h] = r[i]; });
-    return o;
-  });
+  // [P0-A] berbasis NAMA header; kolom wajib hilang -> Error SCHEMA_MISMATCH (bukan data bergeser)
+  var m = sgModel_(sheetName, headers);
+  if (!m) return [];
+  return m.values.map(function (r) { return sgObj_(m, r, headers); });
 }
 function findRowIndexById_(sheetName, id) {
-  var sh = ss_().getSheetByName(sheetName);
-  if (!sh) return -1;
-  var lastRow = sh.getLastRow();
+  // [P0-A] kolom kunci dicari berdasarkan nama ('id', atau PK khusus di SG_PK_)
+  var pk = SG_PK_[sheetName] || 'id';
+  var hm = sgHeaderModel_(sheetName, [pk]);
+  if (!hm) return -1;
+  var lastRow = hm.sh.getLastRow();
   if (lastRow < 2) return -1;
-  var ids = sh.getRange(2, 1, lastRow - 1, 1).getValues();
+  var ids = hm.sh.getRange(2, hm.idx[pk] + 1, lastRow - 1, 1).getValues();
   for (var i = 0; i < ids.length; i++) {
     if (ids[i][0] === id) return i + 2; // 1-based sheet row number
   }
@@ -150,21 +152,20 @@ function ensureIdempotencyLogSheet_() {
 // ============================================================
 function findIdempotentResult_(clientRequestId) {
   if (!clientRequestId) return null;
-  var sh = ensureIdempotencyLogSheet_();
-  var lastRow = sh.getLastRow();
-  if (lastRow < 2) return null;
-  var rows = sh.getRange(2, 1, lastRow - 1, IDEMP_HEADERS.length).getValues();
-  for (var i = 0; i < rows.length; i++) {
-    if (rows[i][0] === clientRequestId) {
-      return { rowIndex: i + 2, clientRequestId: rows[i][0], resultRefId: rows[i][1], resultType: rows[i][2], createdAt: rows[i][3] };
+  ensureIdempotencyLogSheet_();
+  var m = sgModel_(SHT_IDEMPOTENCY, IDEMP_HEADERS); // [P0-A] berbasis nama
+  for (var i = 0; i < m.values.length; i++) {
+    var o = sgObj_(m, m.values[i], IDEMP_HEADERS);
+    if (o.clientRequestId === clientRequestId) {
+      return { rowIndex: i + 2, clientRequestId: o.clientRequestId, resultRefId: o.resultRefId, resultType: o.resultType, createdAt: o.createdAt };
     }
   }
   return null;
 }
 function recordIdempotentResult_(clientRequestId, resultRefId, resultType) {
   if (!clientRequestId) return;
-  var sh = ensureIdempotencyLogSheet_();
-  sh.getRange(sh.getLastRow() + 1, 1, 1, 4).setValues([[clientRequestId, resultRefId, resultType, new Date().toISOString()]]);
+  ensureIdempotencyLogSheet_();
+  sgAppend_(SHT_IDEMPOTENCY, IDEMP_HEADERS, { clientRequestId: clientRequestId, resultRefId: resultRefId, resultType: resultType, createdAt: new Date().toISOString() }); // [P0-A]
 }
 /* [P] Helper cleanup - HANYA dipakai oleh:
    (1) test cleanup (testConcurrentWriteDoor), dan
@@ -174,16 +175,9 @@ function recordIdempotentResult_(clientRequestId, resultRefId, resultType) {
    disiplin ini dijaga lewat konvensi pemanggilan, bukan mekanisme bahasa. */
 function deleteIdempotencyByClientRequestId_(clientRequestId) {
   if (!clientRequestId) return false;
-  var sh = ensureIdempotencyLogSheet_();
-  var lastRow = sh.getLastRow();
-  if (lastRow < 2) return false;
-  var ids = sh.getRange(2, 1, lastRow - 1, 1).getValues();
-  for (var i = 0; i < ids.length; i++) {
-    if (ids[i][0] === clientRequestId) {
-      sh.deleteRow(i + 2);
-      return true;
-    }
-  }
+  ensureIdempotencyLogSheet_();
+  var rowIdx = findRowIndexById_(SHT_IDEMPOTENCY, clientRequestId); // [P0-A] kolom clientRequestId dicari berdasarkan nama
+  if (rowIdx > 0) { ss_().getSheetByName(SHT_IDEMPOTENCY).deleteRow(rowIdx); return true; }
   return false;
 }
 /* Sheet nama untuk tiap resultType - dipakai untuk verifikasi orphan (bagian F). */
@@ -207,17 +201,16 @@ function checkIdempotency_(clientRequestId) {
 // oleh fungsi apa pun di file ini.
 // ============================================================
 function auditPush_(aksi, before, after, sumber, refId) {
-  var sh = sheet_(SHT_AUDIT);
-  var row = [
-    ID_PREFIX_AUDIT + Utilities.getUuid(),
-    new Date().toISOString(), // timestamp SELALU server-side, tidak pernah dari browser
-    aksi,
-    before ? JSON.stringify(before) : '',
-    after ? JSON.stringify(after) : '',
-    sumber || 'write-door',
-    refId || ''
-  ];
-  sh.getRange(sh.getLastRow() + 1, 1, 1, AUDIT_HEADERS.length).setValues([row]);
+  // [P0-A] kolom audit dipetakan berdasarkan nama header; [P0-B] aktor terverifikasi (ENGINE_ACTOR_) dicatat di kolom sumber
+  sgAppend_(SHT_AUDIT, AUDIT_HEADERS, {
+    id: ID_PREFIX_AUDIT + Utilities.getUuid(),
+    timestamp: new Date().toISOString(), // timestamp SELALU server-side, tidak pernah dari browser
+    aksi: aksi,
+    before: before ? JSON.stringify(before) : '',
+    after: after ? JSON.stringify(after) : '',
+    sumber: (typeof ENGINE_ACTOR_ !== 'undefined' && ENGINE_ACTOR_) ? 'google:' + ENGINE_ACTOR_ : (sumber || 'write-door'),
+    refId: refId || ''
+  });
 }
 
 /* [TEST MODE] Audit untuk test SAJA - TIDAK PERNAH menyentuh 13_AUDIT_LOG.
@@ -324,36 +317,28 @@ function validateAllocationsForIncome_(allocations, trxSiswaId, trxNominal) {
 // Row writers (dipanggil HANYA setelah validasi lengkap + lock diperoleh)
 // ============================================================
 function writeTransactionRow_(trx) {
-  var sh = sheet_(SHT_TRANSAKSI);
-  var row = TRX_HEADERS.map(function (h) { return trx[h] !== undefined ? trx[h] : ''; });
-  sh.getRange(sh.getLastRow() + 1, 1, 1, TRX_HEADERS.length).setValues([row]);
+  var o = {}; TRX_HEADERS.forEach(function (h) { o[h] = trx[h] !== undefined ? trx[h] : ''; });
+  sgAppend_(SHT_TRANSAKSI, TRX_HEADERS, o); // [P0-A] kolom dipetakan berdasarkan nama header live
 }
 function writeAllocationRow_(alok) {
-  var sh = sheet_(SHT_ALOKASI);
-  var row = ALOK_HEADERS.map(function (h) { return alok[h] !== undefined ? alok[h] : ''; });
-  sh.getRange(sh.getLastRow() + 1, 1, 1, ALOK_HEADERS.length).setValues([row]);
+  var o = {}; ALOK_HEADERS.forEach(function (h) { o[h] = alok[h] !== undefined ? alok[h] : ''; });
+  sgAppend_(SHT_ALOKASI, ALOK_HEADERS, o); // [P0-A]
 }
 function writeMutasiRow_(mut) {
-  var sh = sheet_(SHT_MUTASI);
-  var row = MUT_HEADERS.map(function (h) { return mut[h] !== undefined ? mut[h] : ''; });
-  sh.getRange(sh.getLastRow() + 1, 1, 1, MUT_HEADERS.length).setValues([row]);
+  var o = {}; MUT_HEADERS.forEach(function (h) { o[h] = mut[h] !== undefined ? mut[h] : ''; });
+  sgAppend_(SHT_MUTASI, MUT_HEADERS, o); // [P0-A]
 }
 /* [PATCH ADITIF - arsip/reversal] Alokasi yang sudah diarsipkan (kolom archivedAt terisi) TIDAK dihitung.
    Sheet tanpa kolom archivedAt berperilaku persis seperti sebelumnya. Hanya fungsi ini + getStudentPosition yang berubah. */
 function activeAllocationRows_() {
-  var sh = ss_().getSheetByName(SHT_ALOKASI);
-  if (!sh) return [];
-  var lastRow = sh.getLastRow(), lastCol = sh.getLastColumn();
-  if (lastRow < 2 || lastCol < 1) return [];
-  var hdr = sh.getRange(1, 1, 1, lastCol).getValues()[0];
-  var ai = hdr.indexOf('archivedAt');
-  var values = sh.getRange(2, 1, lastRow - 1, Math.max(lastCol, ALOK_HEADERS.length)).getValues();
+  // [P0-A] berbasis nama; alokasi berkolom archivedAt terisi tidak dihitung
+  var m = sgModel_(SHT_ALOKASI, ALOK_HEADERS);
+  if (!m) return [];
   var out = [];
-  values.forEach(function (r) {
-    if (ai >= 0 && r[ai] !== '' && r[ai] !== null && r[ai] !== undefined) return;
-    var o = {};
-    ALOK_HEADERS.forEach(function (h, i) { o[h] = r[i]; });
-    out.push(o);
+  m.values.forEach(function (r) {
+    var a = sgGet_(m, r, 'archivedAt');
+    if (a !== undefined && a !== '' && a !== null) return;
+    out.push(sgObj_(m, r, ALOK_HEADERS));
   });
   return out;
 }
@@ -405,7 +390,7 @@ function healthCheck() {
       serverTime: new Date().toISOString()
     });
   } catch (e) {
-    return errResult_('WRITE_FAILED', 'healthCheck gagal: ' + e.message, null);
+    return errResult_(engineErrCode_(e), 'healthCheck gagal: ' + e.message, null);
   }
 }
 
@@ -482,7 +467,7 @@ function createTransactionWithAllocations_(payload, opts) {
         writeTransactionRow_(trxRecord);
       } catch (e) {
         Logger.log('createTransactionWithAllocations_: write transaction gagal: ' + e.message);
-        return errResult_('WRITE_FAILED', 'Gagal menulis transaksi: ' + e.message, null);
+        return errResult_(engineErrCode_(e), 'Gagal menulis transaksi: ' + e.message, null);
       }
 
       // --- 5b. write allocation(s) - rollback eksplisit kalau gagal ---
@@ -501,7 +486,7 @@ function createTransactionWithAllocations_(payload, opts) {
         Logger.log('createTransactionWithAllocations_: write allocation gagal, rollback transaksi+allocation parsial: ' + e.message);
         writtenAllocIds.forEach(function (id) { deleteRowById_(SHT_ALOKASI, id); });
         deleteRowById_(SHT_TRANSAKSI, trxId);
-        return errResult_('WRITE_FAILED', 'Gagal menulis allocation, transaksi sudah di-rollback: ' + e.message, null);
+        return errResult_(engineErrCode_(e), 'Gagal menulis allocation, transaksi sudah di-rollback: ' + e.message, null);
       }
 
       // --- 6. audit (CREATE_TRANSACTION + CREATE_ALLOCATION per baris) ---
@@ -519,7 +504,7 @@ function createTransactionWithAllocations_(payload, opts) {
         Logger.log('createTransactionWithAllocations_: audit gagal setelah write sukses, rollback transaksi+allocation (audit yang sudah tertulis TETAP ada, append-only): ' + e.message);
         writtenAllocIds.forEach(function (id) { deleteRowById_(SHT_ALOKASI, id); });
         deleteRowById_(SHT_TRANSAKSI, trxId);
-        return errResult_('WRITE_FAILED', 'Gagal menulis audit, transaksi+allocation sudah di-rollback (audit parsial yang sempat tertulis tetap ada sesuai aturan append-only): ' + e.message, null, trxId);
+        return errResult_(engineErrCode_(e), 'Gagal menulis audit, transaksi+allocation sudah di-rollback (audit parsial yang sempat tertulis tetap ada sesuai aturan append-only): ' + e.message, null, trxId);
       }
 
       // --- 7. idempotency record ---
@@ -531,7 +516,7 @@ function createTransactionWithAllocations_(payload, opts) {
         Logger.log('createTransactionWithAllocations_: idempotency record gagal setelah audit sukses, rollback transaksi+allocation (audit TETAP ada, append-only): ' + e.message);
         writtenAllocIds.forEach(function (id) { deleteRowById_(SHT_ALOKASI, id); });
         deleteRowById_(SHT_TRANSAKSI, trxId);
-        return errResult_('WRITE_FAILED', 'Gagal menulis idempotency record, transaksi+allocation sudah di-rollback (audit CREATE_TRANSACTION/CREATE_ALLOCATION tetap ada sesuai aturan append-only): ' + e.message, null, trxId);
+        return errResult_(engineErrCode_(e), 'Gagal menulis idempotency record, transaksi+allocation sudah di-rollback (audit CREATE_TRANSACTION/CREATE_ALLOCATION tetap ada sesuai aturan append-only): ' + e.message, null, trxId);
       }
 
       // --- 8. success ---
@@ -539,7 +524,7 @@ function createTransactionWithAllocations_(payload, opts) {
     });
   } catch (e) {
     Logger.log('createTransactionWithAllocations_: error tak terduga: ' + e.message + '\n' + e.stack);
-    return errResult_('WRITE_FAILED', 'createTransactionWithAllocations_ error tak terduga: ' + e.message, null);
+    return errResult_(engineErrCode_(e), 'createTransactionWithAllocations_ error tak terduga: ' + e.message, null);
   }
 }
 
@@ -596,27 +581,27 @@ function createAllocation(payload) {
         writeAllocationRow_(alokRecord);
       } catch (e) {
         Logger.log('createAllocation: write gagal: ' + e.message);
-        return errResult_('WRITE_FAILED', 'Gagal menulis allocation: ' + e.message, null);
+        return errResult_(engineErrCode_(e), 'Gagal menulis allocation: ' + e.message, null);
       }
       try {
         auditPush_('CREATE_ALLOCATION', null, alokRecord, payload.sumber || 'write-door', alokId);
       } catch (e) {
         Logger.log('createAllocation: audit gagal setelah write sukses, rollback allocation: ' + e.message);
         deleteRowById_(SHT_ALOKASI, alokId);
-        return errResult_('WRITE_FAILED', 'Gagal menulis audit, allocation sudah di-rollback: ' + e.message, null, alokId);
+        return errResult_(engineErrCode_(e), 'Gagal menulis audit, allocation sudah di-rollback: ' + e.message, null, alokId);
       }
       try {
         recordIdempotentResult_(payload.clientRequestId, alokId, 'allocation');
       } catch (e) {
         Logger.log('createAllocation: idempotency gagal setelah audit sukses, rollback allocation (audit TETAP ada): ' + e.message);
         deleteRowById_(SHT_ALOKASI, alokId);
-        return errResult_('WRITE_FAILED', 'Gagal menulis idempotency record, allocation sudah di-rollback (audit tetap ada): ' + e.message, null, alokId);
+        return errResult_(engineErrCode_(e), 'Gagal menulis idempotency record, allocation sudah di-rollback (audit tetap ada): ' + e.message, null, alokId);
       }
       return okResult_('Allocation berhasil dibuat', alokRecord);
     });
   } catch (e) {
     Logger.log('createAllocation: error tak terduga: ' + e.message + '\n' + e.stack);
-    return errResult_('WRITE_FAILED', 'createAllocation error tak terduga: ' + e.message, null);
+    return errResult_(engineErrCode_(e), 'createAllocation error tak terduga: ' + e.message, null);
   }
 }
 
@@ -649,27 +634,27 @@ function createBankMutation(payload) {
         writeMutasiRow_(mutRecord);
       } catch (e2) {
         Logger.log('createBankMutation: write gagal: ' + e2.message);
-        return errResult_('WRITE_FAILED', 'Gagal menulis mutasi bank: ' + e2.message, null);
+        return errResult_(engineErrCode_(e2), 'Gagal menulis mutasi bank: ' + e2.message, null);
       }
       try {
         auditPush_('CREATE_BANK_MUTATION', null, mutRecord, payload.sumber || 'write-door', mutId);
       } catch (e2) {
         Logger.log('createBankMutation: audit gagal setelah write sukses, rollback mutasi: ' + e2.message);
         deleteRowById_(SHT_MUTASI, mutId);
-        return errResult_('WRITE_FAILED', 'Gagal menulis audit, mutasi sudah di-rollback: ' + e2.message, null, mutId);
+        return errResult_(engineErrCode_(e2), 'Gagal menulis audit, mutasi sudah di-rollback: ' + e2.message, null, mutId);
       }
       try {
         recordIdempotentResult_(payload.clientRequestId, mutId, 'bankMutation');
       } catch (e2) {
         Logger.log('createBankMutation: idempotency gagal setelah audit sukses, rollback mutasi (audit TETAP ada): ' + e2.message);
         deleteRowById_(SHT_MUTASI, mutId);
-        return errResult_('WRITE_FAILED', 'Gagal menulis idempotency record, mutasi sudah di-rollback (audit tetap ada): ' + e2.message, null, mutId);
+        return errResult_(engineErrCode_(e2), 'Gagal menulis idempotency record, mutasi sudah di-rollback (audit tetap ada): ' + e2.message, null, mutId);
       }
       return okResult_('Mutasi bank berhasil dicatat', mutRecord);
     });
   } catch (e) {
     Logger.log('createBankMutation: error tak terduga: ' + e.message + '\n' + e.stack);
-    return errResult_('WRITE_FAILED', 'createBankMutation error tak terduga: ' + e.message, null);
+    return errResult_(engineErrCode_(e), 'createBankMutation error tak terduga: ' + e.message, null);
   }
 }
 
@@ -703,7 +688,7 @@ function updateTransaction(payload) {
         sheet_(SHT_TRANSAKSI).getRange(rowIdx, 1, 1, TRX_HEADERS.length).setValues([afterRow]);
       } catch (e) {
         Logger.log('updateTransaction: write gagal: ' + e.message);
-        return errResult_('WRITE_FAILED', 'Gagal update transaksi: ' + e.message, null, payload.id);
+        return errResult_(engineErrCode_(e), 'Gagal update transaksi: ' + e.message, null, payload.id);
       }
 
       try {
@@ -717,14 +702,14 @@ function updateTransaction(payload) {
           Logger.log('updateTransaction: RESTORE gagal juga: ' + restoreErr.message);
           return errResult_('ROLLBACK_FAILED', 'Audit gagal DAN restore nilai before juga gagal: ' + restoreErr.message, null, payload.id);
         }
-        return errResult_('WRITE_FAILED', 'Gagal menulis audit, nilai transaksi sudah di-restore ke sebelum update: ' + e.message, null, payload.id);
+        return errResult_(engineErrCode_(e), 'Gagal menulis audit, nilai transaksi sudah di-restore ke sebelum update: ' + e.message, null, payload.id);
       }
 
       return okResult_('Transaksi berhasil diupdate', afterRecord);
     });
   } catch (e) {
     Logger.log('updateTransaction: error tak terduga: ' + e.message + '\n' + e.stack);
-    return errResult_('WRITE_FAILED', 'updateTransaction error tak terduga: ' + e.message, null);
+    return errResult_(engineErrCode_(e), 'updateTransaction error tak terduga: ' + e.message, null);
   }
 }
 
@@ -735,23 +720,21 @@ function updateTransaction(payload) {
    archivedAt/archivedBy/archiveReason (bila ada di header live). Field arsip hanya ditempel bila archivedAt terisi, jadi bentuk
    baris transaksi aktif IDENTIK dengan sebelumnya. Sheet tanpa kolom arsip berperilaku persis seperti sebelumnya. */
 function readTrxRows_() {
-  var rows = readAllRows_(SHT_TRANSAKSI, TRX_HEADERS);
-  var sh = ss_().getSheetByName(SHT_TRANSAKSI);
-  var lastRow = sh ? sh.getLastRow() : 0, lastCol = sh ? sh.getLastColumn() : 0;
-  if (!rows.length || lastRow < 2 || lastCol < 1) return rows;
-  var hdr = sh.getRange(1, 1, 1, lastCol).getValues()[0].map(function (h) { return String(h).trim(); });
-  var ai = hdr.indexOf('archivedAt'), bi = hdr.indexOf('archivedBy'), ri = hdr.indexOf('archiveReason');
-  if (ai === -1) return rows;
-  var vals = sh.getRange(2, 1, lastRow - 1, lastCol).getValues();
-  for (var i = 0; i < rows.length && i < vals.length; i++) {
-    var a = vals[i][ai];
-    if (a !== '' && a !== null && a !== undefined) {
-      rows[i].archivedAt = a;
-      rows[i].archivedBy = bi === -1 ? '' : vals[i][bi];
-      rows[i].archiveReason = ri === -1 ? '' : vals[i][ri];
+  // [P0-A] berbasis nama header; [P0-B] tanggal sel Date dinormalisasi ke yyyy-MM-dd, createdAt ke ISO
+  var m = sgModel_(SHT_TRANSAKSI, TRX_HEADERS);
+  if (!m) return [];
+  return m.values.map(function (r) {
+    var o = sgObj_(m, r, TRX_HEADERS);
+    o.tanggal = sgDateStr_(o.tanggal);
+    o.createdAt = sgIsoStr_(o.createdAt);
+    var a = sgGet_(m, r, 'archivedAt');
+    if (a !== undefined && a !== '' && a !== null) {
+      o.archivedAt = a;
+      o.archivedBy = sgGet_(m, r, 'archivedBy') || '';
+      o.archiveReason = sgGet_(m, r, 'archiveReason') || '';
     }
-  }
-  return rows;
+    return o;
+  });
 }
 function getTransactionRaw_(id) {
   var rows = readTrxRows_();

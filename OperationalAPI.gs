@@ -96,7 +96,7 @@ function opEngineWrite_(action, payload, engineFn, requireClientRequestId, keepI
   try {
     res = engineFn(p);
   } catch (e) {
-    return errResult_('WRITE_FAILED', 'Gagal memproses permintaan', null);
+    return sgErr_(e, 'WRITE_FAILED', 'Gagal memproses permintaan'); // [P0-A] SCHEMA_MISMATCH tidak disamarkan
   }
   var isReplay = res && res.message && String(res.message).indexOf('idempotent replay') !== -1;
   if (res && res.ok && !isReplay) {
@@ -118,15 +118,15 @@ function opUpdateTransaction(payload) { return opEngineWrite_('UPDATE_TRANSACTIO
 
 function opGetTransactions(filters) {
   var g = opGate_(OP_READ_ROLES_); if (!g.ok) return g;
-  return opJsonSafe_(getTransactions(filters && typeof filters === 'object' ? filters : {}));
+  try { return opJsonSafe_(getTransactions(filters && typeof filters === 'object' ? filters : {})); } catch (e) { return sgErr_(e, 'READ_FAILED', 'Gagal membaca transaksi'); } // [P0-A]
 }
 function opGetTransaction(id) {
   var g = opGate_(OP_READ_ROLES_); if (!g.ok) return g;
-  return opJsonSafe_(getTransaction(id));
+  try { return opJsonSafe_(getTransaction(id)); } catch (e) { return sgErr_(e, 'READ_FAILED', 'Gagal membaca transaksi'); } // [P0-A]
 }
 function opGetStudentPosition(siswaId) {
   var g = opGate_(OP_READ_ROLES_); if (!g.ok) return g;
-  return opJsonSafe_(getStudentPosition(siswaId));
+  try { return opJsonSafe_(getStudentPosition(siswaId)); } catch (e) { return sgErr_(e, 'READ_FAILED', 'Gagal membaca posisi siswa'); } // [P0-A]
 }
 
 // ============================================================

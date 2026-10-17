@@ -28,17 +28,12 @@
    (kolom tambahan hasil migrasi aditif, mis. status di 03_TARIF/07_AKUN, ikut terbaca; urutan kolom tidak lagi
    berpengaruh). Bila tidak, jatuh ke pembacaan posisional lama persis seperti sebelumnya. */
 function readMasterRows_(sheetName, headers) {
-  var sh = ss_().getSheetByName(sheetName);
-  if (!sh) return [];
-  var lastRow = sh.getLastRow(), lastCol = sh.getLastColumn();
-  if (lastRow < 2 || lastCol < 1) return [];
-  var live = sh.getRange(1, 1, 1, lastCol).getValues()[0].map(function (h) { return String(h).trim(); });
-  var complete = headers.every(function (h) { return live.indexOf(h) !== -1; });
-  if (!complete) return readAllRows_(sheetName, headers);
-  var values = sh.getRange(2, 1, lastRow - 1, lastCol).getValues();
-  return values.map(function (r) {
-    var o = {};
-    live.forEach(function (h, i) { if (h) o[h] = r[i]; });
+  // [P0-A] Kolom wajib dicari berdasarkan NAMA header live. Bila ada yang hilang -> Error SCHEMA_MISMATCH.
+  // Fallback posisional lama DIHAPUS: data dengan kolom bergeser tidak pernah dikembalikan.
+  var m = sgModel_(sheetName, headers);
+  if (!m) return [];
+  return m.values.map(function (r) {
+    var o = sgObj_(m, r);
     return typeof opJsonSafe_ === 'function' ? opJsonSafe_(o) : o;
   });
 }
@@ -48,66 +43,102 @@ var SISWA_HEADERS_ = ['id', 'nama', 'nis', 'nisn', 'kelas', 'unit', 'tahunAjaran
 function getStudents(deps) {
   var auth = authorizeCurrentUser_(null, deps);
   if (!auth.authorized) return auth;
-  return { ok: true, code: 'SUCCESS', data: readMasterRows_('01_SISWA', SISWA_HEADERS_) };
+  try { // [P0-A] SCHEMA_MISMATCH -> hasil terstruktur
+    return { ok: true, code: 'SUCCESS', data: readMasterRows_('01_SISWA', SISWA_HEADERS_) };
+  } catch (e) {
+    return sgErr_(e, 'READ_FAILED', 'Gagal membaca data master');
+  }
 }
 
 function getGuardians(deps) {
   var auth = authorizeCurrentUser_(null, deps);
   if (!auth.authorized) return auth;
-  var siswaRows = readMasterRows_('01_SISWA', SISWA_HEADERS_);
-  var seen = {};
-  var out = [];
-  siswaRows.forEach(function (s) {
-    if (!s.waliId || seen[s.waliId]) return;
-    seen[s.waliId] = true;
-    out.push({ waliId: s.waliId, namaWali: s.namaWali, kontakWali: s.kontakWali });
-  });
-  return {
-    ok: true, code: 'SUCCESS', data: out,
-    note: 'Diturunkan dari 01_SISWA (tidak ada sheet wali independen) - satu baris per waliId unik.'
-  };
+  try { // [P0-A] SCHEMA_MISMATCH -> hasil terstruktur
+    var siswaRows = readMasterRows_('01_SISWA', SISWA_HEADERS_);
+    var seen = {};
+    var out = [];
+    siswaRows.forEach(function (s) {
+      if (!s.waliId || seen[s.waliId]) return;
+      seen[s.waliId] = true;
+      out.push({ waliId: s.waliId, namaWali: s.namaWali, kontakWali: s.kontakWali });
+    });
+    return {
+      ok: true, code: 'SUCCESS', data: out,
+      note: 'Diturunkan dari 01_SISWA (tidak ada sheet wali independen) - satu baris per waliId unik.'
+    };
+  } catch (e) {
+    return sgErr_(e, 'READ_FAILED', 'Gagal membaca data master');
+  }
 }
 
 function getComponents(deps) {
   var auth = authorizeCurrentUser_(null, deps);
   if (!auth.authorized) return auth;
-  return { ok: true, code: 'SUCCESS', data: readMasterRows_('02_KOMPONEN', ['id', 'nama', 'unit', 'frekuensi', 'status', 'aliasOf']) };
+  try { // [P0-A] SCHEMA_MISMATCH -> hasil terstruktur
+    return { ok: true, code: 'SUCCESS', data: readMasterRows_('02_KOMPONEN', ['id', 'nama', 'unit', 'frekuensi', 'status', 'aliasOf']) };
+  } catch (e) {
+    return sgErr_(e, 'READ_FAILED', 'Gagal membaca data master');
+  }
 }
 
 function getTariffs(deps) {
   var auth = authorizeCurrentUser_(null, deps);
   if (!auth.authorized) return auth;
-  return { ok: true, code: 'SUCCESS', data: readMasterRows_('03_TARIF', ['id', 'komponenId', 'unit', 'kelas', 'tahunAjaran', 'nominal']) };
+  try { // [P0-A] SCHEMA_MISMATCH -> hasil terstruktur
+    return { ok: true, code: 'SUCCESS', data: readMasterRows_('03_TARIF', ['id', 'komponenId', 'unit', 'kelas', 'tahunAjaran', 'nominal']) };
+  } catch (e) {
+    return sgErr_(e, 'READ_FAILED', 'Gagal membaca data master');
+  }
 }
 
 function getAccounts(deps) {
   var auth = authorizeCurrentUser_(null, deps);
   if (!auth.authorized) return auth;
-  return { ok: true, code: 'SUCCESS', data: readMasterRows_('07_AKUN', ['id', 'nama', 'jenis', 'saldoAwal']) };
+  try { // [P0-A] SCHEMA_MISMATCH -> hasil terstruktur
+    return { ok: true, code: 'SUCCESS', data: readMasterRows_('07_AKUN', ['id', 'nama', 'jenis', 'saldoAwal']) };
+  } catch (e) {
+    return sgErr_(e, 'READ_FAILED', 'Gagal membaca data master');
+  }
 }
 
 function getIncomeCategories(deps) {
   var auth = authorizeCurrentUser_(null, deps);
   if (!auth.authorized) return auth;
-  return { ok: true, code: 'SUCCESS', data: readMasterRows_('20_KATEGORI_PENERIMAAN', ['id', 'kode', 'kategori', 'status']) };
+  try { // [P0-A] SCHEMA_MISMATCH -> hasil terstruktur
+    return { ok: true, code: 'SUCCESS', data: readMasterRows_('20_KATEGORI_PENERIMAAN', ['id', 'kode', 'kategori', 'status']) };
+  } catch (e) {
+    return sgErr_(e, 'READ_FAILED', 'Gagal membaca data master');
+  }
 }
 
 function getExpenseCategories(deps) {
   var auth = authorizeCurrentUser_(null, deps);
   if (!auth.authorized) return auth;
-  return { ok: true, code: 'SUCCESS', data: readMasterRows_('21_KATEGORI_PENGELUARAN', ['id', 'kode', 'kategori', 'status']) };
+  try { // [P0-A] SCHEMA_MISMATCH -> hasil terstruktur
+    return { ok: true, code: 'SUCCESS', data: readMasterRows_('21_KATEGORI_PENGELUARAN', ['id', 'kode', 'kategori', 'status']) };
+  } catch (e) {
+    return sgErr_(e, 'READ_FAILED', 'Gagal membaca data master');
+  }
 }
 
 function getSubcategories(deps) {
   var auth = authorizeCurrentUser_(null, deps);
   if (!auth.authorized) return auth;
-  return { ok: true, code: 'SUCCESS', data: readMasterRows_('22_SUBKATEGORI', ['id', 'kategoriId', 'nama', 'status']) };
+  try { // [P0-A] SCHEMA_MISMATCH -> hasil terstruktur
+    return { ok: true, code: 'SUCCESS', data: readMasterRows_('22_SUBKATEGORI', ['id', 'kategoriId', 'nama', 'status']) };
+  } catch (e) {
+    return sgErr_(e, 'READ_FAILED', 'Gagal membaca data master');
+  }
 }
 
 function getAcademicYears(deps) {
   var auth = authorizeCurrentUser_(null, deps);
   if (!auth.authorized) return auth;
-  return { ok: true, code: 'SUCCESS', data: readMasterRows_('23_TAHUN_AJARAN', ['id', 'label', 'status']) };
+  try { // [P0-A] SCHEMA_MISMATCH -> hasil terstruktur
+    return { ok: true, code: 'SUCCESS', data: readMasterRows_('23_TAHUN_AJARAN', ['id', 'label', 'status']) };
+  } catch (e) {
+    return sgErr_(e, 'READ_FAILED', 'Gagal membaca data master');
+  }
 }
 
 /* 15_SETTINGS berbentuk KEY-VALUE PER BARIS di Sheets (header: key, value,
@@ -119,11 +150,15 @@ function getAcademicYears(deps) {
 function getSettings(deps) {
   var auth = authorizeCurrentUser_(null, deps);
   if (!auth.authorized) return auth;
-  var rows = readMasterRows_('15_SETTINGS', ['key', 'value', 'updatedAt']);
-  var out = {};
-  rows.forEach(function (r) { out[r.key] = r.value; });
-  return {
-    ok: true, code: 'SUCCESS', data: out,
-    note: '15_SETTINGS berbentuk key-value per baris di Sheets - ditransform ke objek {key:value} di sini.'
-  };
+  try { // [P0-A] SCHEMA_MISMATCH -> hasil terstruktur
+    var rows = readMasterRows_('15_SETTINGS', ['key', 'value', 'updatedAt']);
+    var out = {};
+    rows.forEach(function (r) { out[r.key] = r.value; });
+    return {
+      ok: true, code: 'SUCCESS', data: out,
+      note: '15_SETTINGS berbentuk key-value per baris di Sheets - ditransform ke objek {key:value} di sini.'
+    };
+  } catch (e) {
+    return sgErr_(e, 'READ_FAILED', 'Gagal membaca data master');
+  }
 }

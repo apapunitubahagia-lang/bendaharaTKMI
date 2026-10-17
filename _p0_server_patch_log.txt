@@ -1,0 +1,32 @@
+1. header P0
+2. replace fn readAllRows_
+3. replace fn findRowIndexById_
+4. replace fn findIdempotentResult_
+5. replace fn recordIdempotentResult_
+6. replace fn deleteIdempotencyByClientRequestId_
+7. replace fn writeTransactionRow_
+8. replace fn writeAllocationRow_
+9. replace fn writeMutasiRow_
+10. replace fn activeAllocationRows_
+11. replace fn readTrxRows_
+12. replace fn auditPush_
+13. engineErrCode_ pada 17 jalur galat
+14. engineErrCode_ def
+15. oblLoadContext_ mk
+16. opObligations err
+17. snapshot err
+18. FCC mk
+19. FCC err
+20. replace fn tpReadSheet_
+21. tarif plan err
+22. replace fn readMasterRows_
+23. replace fn getStudents
+24. replace fn getGuardians
+25. replace fn getComponents
+26. replace fn getTariffs
+27. replace fn getAccounts
+28. replace fn getIncomeCategories
+29. replace fn getExpenseCategories
+30. replace fn getSubcategories
+31. replace fn getAcademicYears
+32. replace fn getSettings

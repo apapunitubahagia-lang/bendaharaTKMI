@@ -43,6 +43,6 @@ function opAllocGuard_(action, p) {
     }
     return null;
   } catch (e) {
-    return errResult_('COMPUTE_FAILED', 'Gagal memeriksa kewajiban untuk alokasi', null);
+    return sgErr_(e, 'COMPUTE_FAILED', 'Gagal memeriksa kewajiban untuk alokasi'); // [P0-A]
   } finally { OBL_CTX_ = null; }
 }

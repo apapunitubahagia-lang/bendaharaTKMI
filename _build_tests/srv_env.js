@@ -3,8 +3,9 @@ const G = require('./paths').G;
 const AB = require('./paths').AB;
 const OUT = require('./paths').OUT;
 const rd = f => fs.readFileSync(f, 'utf8');
-const SERVER_FILES = ['TransactionEngine.gs', 'AuthCentral.gs', 'MasterDataRead.gs', 'CreateDatabaseStructure.gs', 'Code.gs', 'OperationalAPI.gs', 'RecordEngine.gs', 'AdminAPI.gs', 'BuktiDrive.gs', 'ObligationEngine.gs', 'FinanceEngine.gs', 'TarifPlan.gs', 'AllocationGuard.gs'];
-function srcOf(f) { return f === 'AuthCentral.gs' ? rd(AB + f) : f === 'CreateDatabaseStructure.gs' ? rd(G + f) : rd(OUT + f); }
+const SERVER_FILES = ['TransactionEngine.gs', 'SchemaGuard.gs', 'AuthCentral.gs', 'MasterDataRead.gs', 'CreateDatabaseStructure.gs', 'Code.gs', 'OperationalAPI.gs', 'RecordEngine.gs', 'AdminAPI.gs', 'BuktiDrive.gs', 'ObligationEngine.gs', 'FinanceEngine.gs', 'TarifPlan.gs', 'AllocationGuard.gs'];
+// [P0] AuthCentral.gs & CreateDatabaseStructure.gs kini berkas deploy di root repo (GAP-029); deps/ hanya basis build.
+function srcOf(f) { return rd(OUT + f); }
 
 function makeServer(o) {
   o = o || {};

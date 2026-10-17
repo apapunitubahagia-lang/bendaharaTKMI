@@ -186,7 +186,7 @@ function oblBlob_(map, name, fb) {
   return n ? oblJson_(parts.join(''), fb) : fb;
 }
 function oblLoadContext_() {
-  var mk = function (sheet) { var m = opSheetModel_(sheet); return m ? m.rows.map(function (r) { return opJsonSafe_(opRowObj_(m.live, r)); }).filter(function (o) { return !o.archivedAt; }) : []; };
+  var mk = function (sheet) { return sgRowsChecked_(sheet).filter(function (o) { return !o.archivedAt; }); }; // [P0-A] kolom wajib divalidasi
   var map = {}; mk('15_SETTINGS').forEach(function (r) { map[oblS_(r.key)] = r.value; });
   var now = new Date();
   var settings = {
@@ -228,7 +228,7 @@ function opObligations(opts) {
     var tot = rows.reduce(function (t, r) { t.bruto += r.bruto; t.netto += r.netto; t.terbayar += r.terbayar; t.sisa += r.sisa; return t; }, { bruto: 0, netto: 0, terbayar: 0, sisa: 0 });
     return okResult_('OK', { rows: rows, count: rows.length, totals: tot, periodeAktif: OBL_CTX_.settings.periodeAktif, computedAt: new Date().toISOString() });
   } catch (e) {
-    return errResult_('COMPUTE_FAILED', 'Gagal menghitung kewajiban', null);
+    return sgErr_(e, 'COMPUTE_FAILED', 'Gagal menghitung kewajiban');
   } finally { OBL_CTX_ = null; }
 }
 function oblHash_(s) { var h = 2166136261, h2 = 5381; for (var i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = (h * 16777619) >>> 0; h2 = ((h2 << 5) + h2 + s.charCodeAt(i)) >>> 0; } return h.toString(16) + h2.toString(16); }
@@ -280,7 +280,7 @@ function oblSnapshotCore_(opts) {
     }
     return okResult_('Kewajiban dibekukan', { dihitung: obls.length, dibuat: created, diperbarui: updated, gagal: failed, tidakBerubah: obls.length - ops.length });
   } catch (e) {
-    return errResult_('COMPUTE_FAILED', 'Gagal membuat snapshot kewajiban', null);
+    return sgErr_(e, 'COMPUTE_FAILED', 'Gagal membuat snapshot kewajiban');
   } finally { OBL_CTX_ = null; }
 }
 function opObligationSnapshot(periode, opts) {

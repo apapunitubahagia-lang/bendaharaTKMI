@@ -225,8 +225,7 @@ function tpImpact_(ctx, plan, spec) {
 var TP_CONFIRM_ = 'TERAPKAN_RENCANA_TARIF';
 function tpS_(v) { return (v === null || v === undefined) ? '' : String(v); }
 function tpReadSheet_(name) {
-  var m = opSheetModel_(name);
-  return m ? m.rows.map(function (r) { return opJsonSafe_(opRowObj_(m.live, r)); }).filter(function (o) { return !o.archivedAt; }) : [];
+  return sgRowsChecked_(name).filter(function (o) { return !o.archivedAt; }); // [P0-A] kolom wajib divalidasi
 }
 function tpContext_() {
   return {
@@ -264,7 +263,7 @@ function opTarifPlan() {
   try {
     var ctx = tpContext_(), spec = tpSpec_(), plan = tpCompute_(ctx.komponen, ctx.tarif, spec);
     return okResult_('OK', { plan: plan, impact: tpImpact_(ctx, plan, spec), bentrok: tpBentrok_(ctx, spec), schema: tpSchemaStatus_(), computedAt: new Date().toISOString() });
-  } catch (e) { return errResult_('COMPUTE_FAILED', 'Gagal menyusun rencana tarif', null); }
+  } catch (e) { return sgErr_(e, 'COMPUTE_FAILED', 'Gagal menyusun rencana tarif'); }
 }
 function tpBatch_(key, records) {
   var summary = { ok: 0, sudahAda: 0, gagal: [] }, i, j;
