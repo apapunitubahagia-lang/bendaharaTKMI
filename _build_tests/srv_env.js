@@ -18,7 +18,8 @@ function makeServer(o) {
       getRange(r, c, nr, nc) {
         return {
           getValues() { const out = []; for (let i = 0; i < nr; i++) { const row = []; for (let j = 0; j < nc; j++) { const v = (rows[r - 1 + i] || [])[c - 1 + j]; row.push(v === undefined ? '' : v); } out.push(row); } return out; },
-          setValues(v) { if (state.failSetValuesOn === n) { state.failSetValuesOn = null; throw new Error('simulasi gagal tulis'); } for (let i = 0; i < v.length; i++) { while (rows.length < r + i) rows.push([]); for (let j = 0; j < v[i].length; j++) rows[r - 1 + i][c - 1 + j] = v[i][j]; } return this; },
+          setValues(v) { if (state.failSetValuesOn === n) { if (state.failSetValuesSkip > 0) state.failSetValuesSkip--; else { state.failSetValuesOn = null; throw new Error('simulasi gagal tulis'); } } // [P1] failSetValuesSkip: gagal pada tulis ke-(skip+1)
+ for (let i = 0; i < v.length; i++) { while (rows.length < r + i) rows.push([]); for (let j = 0; j < v[i].length; j++) rows[r - 1 + i][c - 1 + j] = v[i][j]; } return this; },
           setFontWeight() { return this; }, setBackground() { return this; }, setFontColor() { return this; }, copyTo() { return this; }
         };
       }

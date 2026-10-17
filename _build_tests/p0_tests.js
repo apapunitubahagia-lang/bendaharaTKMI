@@ -292,7 +292,8 @@ async function bootClient(srv, opts) {
     rec('P0D-03', 'TC-KPI-02', s.overall === null && /DATA TIDAK TERSEDIA/.test(s.overallStatus), J([s.overall, s.overallStatus]));
   }
   { // regresi KPI: data lengkap -> hasil identik dengan baseline (branch main)
-    let baseHtml = ''; try { baseHtml = cp.execFileSync('git', ['show', 'main:Bendahara_V2.html'], { cwd: OUT, maxBuffer: 64 << 20 }).toString().replace(/\r/g, ''); } catch (e) { }
+    let baseHtml = ''; // [P1] baseline = commit 802cbed (main lokal asli); di repo GitHub 'main' hanya berisi arsip RAR
+    for (const ref of [process.env.P0_BASELINE_REF, 'main', '802cbed'].filter(Boolean)) { if (baseHtml) break; try { baseHtml = cp.execFileSync('git', ['show', ref + ':Bendahara_V2.html'], { cwd: OUT, maxBuffer: 64 << 20, stdio: ['ignore', 'pipe', 'ignore'] }).toString().replace(/\r/g, ''); } catch (e) { } }
     const baseJs = baseHtml && baseHtml.match(/\n<script>\n([\s\S]*?)\n<\/script>/)[1];
     if (!baseJs) rec('P0D-04', 'regresi KPI', false, 'baseline main tidak terbaca');
     else {
