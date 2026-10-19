@@ -36,3 +36,12 @@ Tambahan P1-RAB (2026-10-19; keputusan K-RAB-01..06, 08; paket terpisah dari P1-
   node readiness_tests.js       # kesiapan live: harness _live_tests/LiveReadiness.gs di sandbox, GAP-005, aturan 62 hari, tanggal (P1_15)
   node import_audit_tests.js    # karakterisasi wizard impor yang ada (P1_16 §1.3); INFO = temuan
   node run_all_tests.js <prefix> # seluruh suite -> ../_test_logs/<prefix>_*.log (jangan pakai prefix 'final')
+
+Tambahan P1-IMP (2026-10-19; D-IMP-1..8, D-T4b F7/F8; laporan P1_17):
+  Sumber tunggal aturan impor: ../_import_rules.js (-> ImportRules.gs oleh build_import_rules.js; disuntikkan ke HTML oleh
+  apply_import_client.js bersama ../_import_client.js). Berkas server tulisan tangan baru: ../ImportEngine.gs,
+  ../PeriodeAktifAdmin.gs, ../SiswaMasterAudit.gs. ImportRules.gs DIHASILKAN - jangan diedit tangan.
+  node t4b_tests.js             # F8 gerbang periodeAktif + normalisasi eksplisit, F7 kolom siswa, KPI-DIFF terhadap 25d258b (git)
+  node import_engine_tests.js   # mesin impor server: skala 10/50/100/500 x 5 modul, idempotensi, putus koneksi, konflik, rekonsiliasi
+  node import_client_tests.js   # wizard Impor V2: isi tabel, tempel, CSV, XLSX (stored & deflate), lanjut setelah putus
+  Hasil terakhir: node run_all_tests.js p1impA -> 15 suite, 513 PASS, 0 FAIL, 42 INFO (sandbox; BELUM uji live).

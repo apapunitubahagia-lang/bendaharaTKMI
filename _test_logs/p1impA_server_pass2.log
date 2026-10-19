@@ -1,0 +1,60 @@
+PASS S syntax RecordEngine.gs
+PASS S syntax AdminAPI.gs
+PASS S syntax BuktiDrive.gs
+PASS S syntax ObligationEngine.gs
+PASS S syntax FinanceEngine.gs
+PASS S syntax TarifPlan.gs
+PASS S syntax AllocationGuard.gs
+PASS S syntax OperationalAPI.gs
+PASS S syntax TransactionEngine.gs
+PASS S syntax MasterDataRead.gs
+PASS S tidak ada naming collision lintas SELURUH file server (419 nama)
+PASS S referensi fungsi terdefinisi di RecordEngine.gs
+PASS S referensi fungsi terdefinisi di AdminAPI.gs
+PASS S referensi fungsi terdefinisi di BuktiDrive.gs
+PASS S referensi fungsi terdefinisi di ObligationEngine.gs
+PASS S referensi fungsi terdefinisi di FinanceEngine.gs
+PASS S referensi fungsi terdefinisi di TarifPlan.gs
+PASS S referensi fungsi terdefinisi di AllocationGuard.gs
+PASS S tidak ada API hapus/clear permanen di file baru
+PASS S tidak ada &lt;/&gt; atau "<?" di file server baru
+PASS S ObligationEngine: fungsi bisnis = salinan verbatim dari HTML (dihasilkan, bukan ditulis ulang)
+PASS R1 create record anggaran (kolom sesuai header live): CREATED, nominal numerik
+PASS R2 field di luar header live ditolak eksplisit (UNKNOWN_FIELD), tidak dibuang diam-diam
+PASS R3 arsip tanpa kolom aditif -> SCHEMA_ADDITIVE_REQUIRED (tidak menebak/menambah kolom sendiri)
+PASS R4 opSchemaPlan: 03_TARIF butuh status (seed sempit), 07_AKUN dan 10_BUKTI TIDAK ditambah (tidak ada jalur aplikasi yang memerlukan), 09_KOMITMEN butuh rabId, sheet record butuh kolom arsip; read-only
+PASS R5 opSchemaApply tanpa token konfirmasi ditolak (CONFIRM_REQUIRED)
+PASS R6 migrasi aditif: kolom ditambah di UJUNG header, data & kolom lama tidak berubah
+PASS R7 migrasi aditif idempotent (kedua kali: tidak ada kolom baru) + audit SCHEMA_ADD_COLUMNS
+PASS R8 setelah migrasi: kolom baru diterima; kirim ulang data sama -> UNCHANGED (idempotent)
+PASS R9 update/arsip/arsip-ulang/NOT_FOUND/id tidak valid dalam satu batch: UPDATED,ARCHIVED,UNCHANGED,NOT_FOUND,VALIDATION_ERROR
+PASS R10 arsip = isi kolom archivedAt/By/Reason, baris TIDAK dihapus; audit RECORD_ARCHIVE/UPDATE/CREATE
+PASS R11 AUDITOR: tulis ditolak (ROLE_NOT_ALLOWED), BACA diizinkan
+PASS R12 engine: alokasi yang melebihi nominal ditolak (sebelum arsip)
+PASS R13 reversal alokasi: diarsipkan (bukan dihapus) lalu alokasi pengganti DITERIMA (engine arsip-aware)
+PASS R14 reversal transaksi: transaksi + SEMUA alokasinya diarsipkan, tidak ada baris hilang; ulangi -> idempotent
+PASS R15 opArchiveTransaction untuk id tak ada -> NOT_FOUND
+PASS R16 getStudentPosition mengabaikan alokasi arsip
+PASS R17 batch transaksi: ok / INVALID_ACCOUNT / replay idempotent (ID sama, tanpa baris ganda) / kind salah
+PASS R18 batch master dengan ID klien: dibuat (ID = ID klien), kirim ulang tidak menggandakan, validasi tetap berlaku
+PASS R19 settings: key baru ditambah, key lama diperbarui; audit SETTING_CREATE/UPDATE
+PASS R20 settings: kirim ulang sama -> unchanged; key/value tidak valid & terlalu besar ditolak
+PASS R21 audit mirror UI_ tercatat append-only
+PASS R22 daftar pengguna
+PASS R23 tambah pengguna: email dinormalisasi lowercase, id server, audit ACCESS_CREATE
+PASS R24 email duplikat / role tak dikenal / email tak valid ditolak
+PASS R25 proteksi lockout: tidak bisa nonaktifkan/turunkan akun sendiri
+PASS R26 nonaktifkan pengguna lain berhasil + audit ACCESS_UPDATE; pengguna nonaktif otomatis ditolak sistem (USER_INACTIVE)
+PASS R27 upload bukti: file di Drive (nama disanitasi), baris 10_BUKTI berisi driveFileId/driveFileUrl, fileRef kosong, audit BUKTI_UPLOAD
+PASS R28 upload ulang id sama: idempotent (tidak membuat file/baris kedua)
+PASS R29 tipe file berbahaya / terlalu besar / kosong ditolak
+PASS R30 gagal tulis baris: file yang BARU dibuat dipindah ke trash (tanpa orphan), baris lain tidak tersentuh
+PASS R31 server menghitung kewajiban (3 siswa MI aktif: s1 lunas via alokasi, s2 & ANI belum)
+PASS R32 snapshot kewajiban ke 04_KEWAJIBAN: ID deterministik kw_*, tagihanId = id (BEKU, terbaca sebagai snapshot), tarif/kelas/unit tersimpan
+PASS R33 snapshot ulang idempotent: kewajiban yang sudah beku TIDAK dihitung ulang/ditimpa (tidak ada baris baru/berubah)
+PASS R34 Financial Control (server): struktur ACTUAL/COMMITTED/PLANNED/EXPECTED/MISSING + completeness; label bukan "Surplus"
+PASS R35 FCC: angka benar (income 200000, expense 50000 pada September; RAB ATK 1.000.000 tanpa realisasi sesuai kategori? -> realisasi ATK 50000 ada)
+PASS R36 07_AKUN tidak diberi kolom status (tidak ada jalur central yang memerlukan): menulis status ditolak jelas (tidak dibuang diam-diam), akun tanpa status tetap tertulis; 03_TARIF status terbaca dari kolom live
+PASS R37 regresi: getStudents/getComponents tetap mengembalikan data seperti sebelumnya
+
+PASS=58 FAIL=0
