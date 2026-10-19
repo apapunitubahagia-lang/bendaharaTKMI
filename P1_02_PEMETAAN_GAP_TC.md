@@ -9,6 +9,13 @@
 
 > **Pembaruan 19-10-2026 (paket P1-RAB, commit `44e14f0`):** keputusan K-RAB-01..06 dan 08 diimplementasikan di sandbox (pencocokan pengeluaran → RAB disetujui, sheet aditif `30_ALOKASI_PENGELUARAN` dengan setup/uji kering/impor eksplisit, BDS03-I03/I04/I05 dan Financial Control memakai satu aturan). K-RAB-07 **tidak** diimplementasikan. Rincian: `P1_09_RAB_IMPLEMENTATION_REPORT.md`. Status tetap `READY_FOR_INTEGRATION_TEST`.
 
+> **Pembaruan 19-10-2026 (lanjutan):**
+> - Keputusan 2 (Kartu Beranda A/B/C) diimplementasikan di commit `30eec8a`; TC-DSH-08/09 PASS di sandbox (RAB-29..31).
+> - Keputusan 1 (`PERIOD_MISMATCH`) **ditangguhkan** karena bertentangan dengan instruksi kebijakan lintas bulan yang lebih baru; diaudit di `P1_12` (TC-LB-01..10, usulan U-1..U-5).
+> - K-RAB-07 dianalisis ulang di `P1_11` (rekomendasi C+B; tidak diimplementasikan).
+> - GAP-020 (LPJ): temuan baru T1 (risiko hitung ganda lewat "Buat Transaksi dari LPJ") dan T3 (tidak ada status diterima/diverifikasi).
+> - GAP-014: temuan T4 (`validateTanggal_` menerima tanggal kalender yang tidak mungkin).
+
 **Status P1: tetap BELUM SELESAI.** Uji live (Apps Script + salinan Sheets) masih BLOCKED.
 
 Hambatan H7 di `P1_00` (dokumen tidak tersedia) **teratasi**. ID TC sementara `TC-P1-*` diganti dengan ID dokumen di `p1_tests.js`.
@@ -62,6 +69,9 @@ Suite lama tetap PASS (server_pass2 58, e2e_central2 82, tarif_server 52, tarif_
 | TC-FAIL-07 | 2 klien mengubah anggaran yang sama → klien kedua `CONFLICT` | P1C-06 (+ P1C-01..05) | PASS | — |
 | TC-DSH-05 | Pengeluaran ter-map RAB (ITEM) lulus BDS03-I03 | P1D-05; RAB-01..13, RAB-18..24 | **SANDBOX PASS** (19-10-2026) | Pemetaan eksplisit ITEM (`30_ALOKASI_PENGELUARAN`) atau aturan kategori ke RAB **DISETUJUI** → I03 lulus; DIAJUKAN/tanpa status, pemetaan sebagian, dan Σ alokasi > nominal → tidak lulus. Belum diuji pada salinan FINAL (data `30_REF` belum diperiksa) → uji live `P1_07` |
 | TC-DSH-06 | Komitmen COMMITTED 1 jt pada RAB X → FCC COMMITTED = 1 jt | P1D-04; schema_archive K3; RAB-13 | **SEBAGIAN** | `rabId` divalidasi; perhitungan komitmen per garis tidak diubah P1-RAB (tetap atas semua baris garis), RAB-13 memastikan klien = server. FINAL 09_KOMITMEN belum punya kolom `rabId` (perlu `opSchemaApply`, aditif, butuh persetujuan). Relasi komitmen ↔ transaksi = K-RAB-07, belum disetujui |
+| TC-DSH-08 | Kartu Beranda: A/B/C terpisah, C = pengeluaran aktual, B + rincian = C | RAB-29, RAB-30, RAB-32 | **SANDBOX PASS** (19-10-2026) | Definisi `P1_10`; belum diuji live |
+| TC-DSH-09 | Beranda = laporan Anggaran = ekspor | RAB-31 | **SANDBOX PASS** (19-10-2026) | Fungsi bersama `rabRingkasanPeriode_` |
+| TC-LB-01..10 | Lintas bulan RAB/pencairan/transaksi/LPJ | RAB-32..36 (karakterisasi + LPJ) | **SEBAGIAN**; TC-LB-04/06..10 menunggu kebijakan U-1..U-5 | `P1_12` |
 | TC-AUTH-02 | AUDITOR memanggil API tulis → `ROLE_NOT_ALLOWED` | P1S-01 (API P1) | PASS | — |
 | TC-AUTH-08 | `driveFileUrl` bukti diakses akun lain → ditolak | — | **BLOCKED** | Izin Drive nyata. Folder per tahun ajaran belum diterapkan |
 | TC-DUP-01 | Impor ulang mutasi → 0 baris baru | — | **BELUM** | GAP-041 (lihat TC-REK-01) |
@@ -81,13 +91,13 @@ Butir yang langsung menjadi enam prioritas P1 ditebalkan.
 |---|---|---|---|
 | GAP-012 | Integritas alokasi | Sandbox (P0) | Nominal < alokasi ditolak; status dihitung server |
 | **GAP-013** | Audit trail | Sandbox | P0: lock + idempoten. P1: audit engine satu append di langkah terakhir; aktor (email) di setiap baris; baris role dalam append yang sama. TC-FAIL-06 BLOCKED |
-| **GAP-014** | Validasi server | **Sebagian** | FK/integritas: rekonsiliasi.akunId, mutasi, LPJ, komitmen.rabId, bukti, periode. **Belum:** enum status per sheet, nominal ≥ 0 di semua record, 14_KPI hanya oleh server (bergantung GAP-007 KPI server) |
+| **GAP-014** | Validasi server | **Sebagian** | FK/integritas: rekonsiliasi.akunId, mutasi, LPJ, komitmen.rabId, bukti, periode. **Belum:** enum status per sheet, nominal ≥ 0 di semua record, 14_KPI hanya oleh server (bergantung GAP-007 KPI server) **Temuan T4 (19-10-2026):** tanggal transaksi hanya dicek format (`2026-13-40` diterima, RAB-35) → usulan U-4 |
 | **GAP-015** | Penutupan periode | Sandbox | Ditegakkan di semua write-door, termasuk kewajiban; reopen hanya dengan alasan + audit. **Menyimpang dari rekomendasi:** tidak membuat sheet `30_PERIODE` (larangan migrasi). Status dibaca dari `periodeStatus.*` FINAL + blob closing. Alokasi dikunci berdasarkan tanggal transaksi induk, bukan periode kewajiban (agar tunggakan lama tetap dapat dibayar) |
 | GAP-016 | Skema aditif | Belum (di luar prioritas) | `opSchemaApply` kini gagal tertutup bila audit gagal. Penerapan kolom aditif butuh persetujuan |
 | **GAP-017** | Komitmen-RAB | **Sebagian** | `rabId` wajib valid. Header dan enum CANCELLED = perubahan skema → keputusan. Relasi persetujuan ↔ transaksi dianalisis di `P1_08` (rekomendasi B); **belum disetujui, tidak diimplementasikan** |
 | **GAP-018** | RAB & pengendalian biaya | **Sandbox selesai (P1-RAB)** | Satu aturan `rabMatchAll_` (klien = server) berbasis `anggaranId` eksplisit lalu aturan kategori; FCC/`opRabRealization`/KPI memakai hasil yang sama; sheet `30_ALOKASI_PENGELUARAN` + uji kering/impor dari `30_REF_ALOKASI_PENGELUARAN`. Sisa: uji kering + impor pada salinan FINAL (`P1_07`) |
 | **GAP-019** | Mutasi & rekonsiliasi | **Sebagian** (KEPUTUSAN_DIPERLUKAN) | Saldo sistem dari server per akhir periode; SELESAI hanya bila selisih 0; pencocokan tervalidasi dan memahami status FINAL. **Belum:** penyeragaman enum (keputusan), mutasi debit + saldo rekening, write-door `createBankMutation` |
-| **GAP-020** | LPJ | **Sebagian** | `transaksiId` wajib PENGELUARAN aktif; total LPJ ≤ nominal. **Belum:** perbaikan isi `satuan`/`hargaSatuan` 200 baris = perubahan data (dilarang tanpa persetujuan); enum LPJ |
+| **GAP-020** | LPJ | **Sebagian** | `transaksiId` wajib PENGELUARAN aktif; total LPJ ≤ nominal. **Belum:** perbaikan isi `satuan`/`hargaSatuan` 200 baris = perubahan data (dilarang tanpa persetujuan); enum LPJ **Audit 19-10-2026 (`P1_12`):** LPJ bulan berikutnya diterima dan tidak mengubah pengeluaran/saldo (RAB-36); temuan T1 hitung ganda lewat "Buat Transaksi dari LPJ", T3 tanpa status diterima/diverifikasi → usulan U-2/U-3 |
 | GAP-021 | Kewajiban beku | Sebagian | Hanya kunci periode. Selebihnya di luar prioritas |
 | GAP-022 | Master komponen & tarif | Belum | Di luar prioritas P1 ini |
 | GAP-023 | Unit | Belum | KEPUTUSAN_DIPERLUKAN |

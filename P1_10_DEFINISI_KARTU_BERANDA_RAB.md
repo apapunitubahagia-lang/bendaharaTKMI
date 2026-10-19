@@ -2,7 +2,7 @@
 
 **Tanggal:** 19 Oktober 2026
 **Dasar:** `f955416` (HEAD = remote, working tree bersih saat diperiksa).
-**Status:** definisi ditetapkan **sebelum** UI diubah. Implementasi berada di commit terpisah (lihat `P1_09` §11).
+**Status:** definisi ditetapkan **sebelum** UI diubah (commit `b26de58`). Implementasi berada di commit terpisah `30eec8a` (tes RAB-29..32, RAB-37; hasil di `P1_09` §11).
 
 ## 1. Masalah pada versi `44e14f0`
 

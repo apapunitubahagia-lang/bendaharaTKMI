@@ -161,3 +161,79 @@ Di **salinan** spreadsheet (ID ≠ produksi `1QRibka0YHU0BhRsGV4DoIpnWhdb2Lp3ZL2
 | Tidak menghapus tes | Dipatuhi |
 | K-RAB-07 tanpa persetujuan tertulis | Tidak diimplementasikan |
 | Status maksimum | `READY_FOR_INTEGRATION_TEST` |
+
+---
+
+## 11. Lanjutan 19-10-2026: Keputusan 1–3 dan kebijakan lintas bulan
+
+**Verifikasi awal:** branch lokal `p1/implementasi` = `claude/vigilant-bell-967cih` = remote `f955416`, working tree bersih.
+
+| Commit | Isi |
+|---|---|
+| `b26de58` | Dokumen saja: definisi Kartu Beranda (`P1_10`), analisis K-RAB-07 lanjutan (`P1_11`), audit lintas bulan (`P1_12`) |
+| `30eec8a` | **Kode Keputusan 2** (satu commit, dapat di-revert: revert + build ulang = tree `b26de58`, diperiksa) |
+| (commit dokumen berikutnya) | `P1_09` §11, `P1_02`, `07_RANCANGAN_TEST_CASE.md`, rujukan tes di `P1_10`/`P1_12` |
+
+### 11.1 Status keputusan
+
+| Keputusan | Status | Alasan |
+|---|---|---|
+| **1. Alokasi lintas periode (`PERIOD_MISMATCH`)** | **DITANGGUHKAN, tidak diimplementasikan** | Instruksi kebijakan lintas bulan yang datang sesudahnya meminta `PERIOD_MISMATCH` tidak diterapkan "secara membabi buta", kasus "RAB Sep, transaksi Okt" ditandai `NEEDS_POLICY_DECISION`, dan tahap ini dibatasi pada audit/usulan. Aturan Keputusan 1 dirumuskan sebagai opsi U-1(a) di `P1_12` §6. Perilaku sekarang diuji sebagai karakterisasi (RAB-33/34/35), tanpa diubah |
+| **2. Kartu Beranda A/B/C** | **Diimplementasikan (sandbox)** | Definisi `P1_10`; fungsi tunggal `rabRingkasanPeriode_` dipakai Beranda, laporan Anggaran, ekspor, dan FCC (`ringkasanPeriode`) |
+| **3. K-RAB-07** | **Analisis saja** (`P1_11`) | Rekomendasi berubah dari B (`P1_08`) menjadi **C+B**. Alasannya: hanya BENDAHARA yang dapat menulis, sehingga persetujuan lewat komitmen adalah persetujuan oleh pihak yang sama. BDS03-I05 tidak diubah dan tidak dipaksa lulus |
+
+### 11.2 Hasil suite (`run_all_tests.js p1rab2`, log `_test_logs/p1rab2_*.log`)
+
+| Suite | PASS | FAIL | INFO |
+|---|---|---|---|
+| server_pass2 | 58 | 0 | 0 |
+| e2e_central2 | 83 | 0 | 0 |
+| tarif_server_tests | 52 | 0 | 0 |
+| tarif_client_tests | 40 | 0 | 0 |
+| schema_archive_tests | 27 | 0 | 0 |
+| p0_tests | 45 | 0 | 1 |
+| p1_tests | 60 | 0 | 0 |
+| rab_tests | 35 | 0 | 2 |
+| **Total** | **400** | **0** | **3** |
+
+Tes baru:
+
+| Tes | Isi |
+|---|---|
+| RAB-29 | Ukuran A/B/C + rincian; klien = server; C = tile "Pengeluaran (Aktual)" |
+| RAB-30 | Kartu Beranda menampilkan ukuran terpisah |
+| RAB-31 | Beranda = laporan = ekspor |
+| RAB-32 | Satu transaksi dengan dua alokasi periode sama: C bertambah sekali |
+| RAB-33 | Karakterisasi alokasi lintas periode: diterima, tampil sebagai "garis periode lain" |
+| RAB-34 | RAB Sep + transaksi Okt → TANPA RAB |
+| RAB-35 | Karakterisasi tanggal tidak valid (T4) |
+| RAB-36 | LPJ bulan berikutnya |
+| RAB-37 | Seluruh KPI identik vs `b26de58` (fixture RAB dan default) |
+
+Tidak ada tes yang dihapus atau diubah ekspektasinya.
+
+**Catatan INFO P0A-08** (belum dilaporkan di §5): sejak `44e14f0`, `opSchemaReport` atas header FINAL mencatat `MISSING_SHEET: 1`, yaitu `30_ALOKASI_PENGELUARAN`. Ini diharapkan, karena sheet itu sengaja tidak dibuat otomatis (K-RAB-08). Pada uji live, baris ini akan muncul sampai `opAlokasiPengeluaranSetup` dijalankan di salinan.
+
+### 11.3 Nilai Kartu Beranda pada fixture RAB (Oktober 2026)
+
+| Ukuran | Nilai |
+|---|---|
+| A Total Anggaran Disetujui | 1.240.000 |
+| B Realisasi terhadap Anggaran Disetujui | 1.100.000 |
+| Sisa (A − B) | 140.000 |
+| C Total Pengeluaran Aktual | 1.650.000 (= tile) |
+| C − B | 550.000 = RAB belum disetujui 200.000 + garis periode lain 0 + sisa tidak terpetakan 300.000 + tanpa RAB 50.000 |
+
+Sebelum (`44e14f0`), kartu menampilkan "Realisasi" 1.300.000, yaitu realisasi ke garis periode **berstatus apa pun** (termasuk Konsumsi tanpa status 80.000 dan Listrik diajukan 120.000), dan "Sisa Anggaran" −60.000. Pengeluaran aktual tidak tampil di kartu.
+
+### 11.4 Keterbatasan yang tetap berlaku
+
+- Data FINAL tidak tersedia; Apps Script dan salinan Sheets belum dijalankan.
+- Temuan `P1_12` T1–T6, terutama:
+  - T1: "Buat Transaksi dari LPJ" dapat menggandakan pengeluaran bila pencairan sudah dicatat;
+  - T4: tanggal kalender yang tidak mungkin diterima server.
+
+  Keduanya tidak diperbaiki karena menunggu keputusan U-3/U-4.
+- Pada tanggal tidak mungkin seperti `2026-02-30`, periode server (Februari) dapat berbeda dari parser tanggal klien. Kasus ini hanya terjadi pada data T4.
+
+Status: **READY_FOR_INTEGRATION_TEST**.

@@ -124,6 +124,25 @@
 | TC-DSH-05 | DU | Pengeluaran yang ter-map ke RAB (ITEM) | Realisasi RAB muncul di FCC dan lulus BDS03-I03 | P1 | 018 |
 | TC-DSH-06 | DU | Komitmen COMMITTED 1.000.000 pada RAB X | FCC COMMITTED = 1.000.000. Sisa pagu = RAB − realisasi − komitmen | P1 | 017 |
 | TC-DSH-07 | Laporan September dikirim dua kali | – | Dua versi tersimpan. KPI BDS06-I02 memakai tanggal kirim pertama sesuai keputusan | P1 | 044 |
+| TC-DSH-08 | DU + RAB disetujui, diajukan, tanpa status; pengeluaran terpetakan penuh, sebagian, tanpa RAB | Buka kartu Realisasi RAB di Beranda | Tampil terpisah: A Total Anggaran Disetujui, B Realisasi terhadap Anggaran Disetujui, Sisa (A − B), C Total Pengeluaran Aktual (= tile Pengeluaran Aktual), C − B dengan rincian (RAB belum disetujui, garis periode lain, sisa tidak terpetakan, tanpa RAB). B + rincian = C. Definisi `P1_10` | P1 | 018 |
+| TC-DSH-09 | Seperti TC-DSH-08 | Bandingkan kartu Beranda, Laporan → Anggaran, dan ekspor "Laporan Anggaran & Realisasi" | Nilai A/B/C/C − B per periode sama di ketiganya | P1 | 018 |
+
+## K. Lintas bulan: RAB, pencairan, transaksi, LPJ (ditambahkan 19-10-2026; audit `P1_12`)
+
+Status kebijakan setiap kasus: `P1_12` §4. TC bertanda **(menunggu kebijakan)** baru dapat dinilai setelah keputusan U-1..U-5.
+
+| ID | Kondisi awal | Langkah | Hasil diharapkan | Prio | GAP |
+|---|---|---|---|---|---|
+| TC-LB-01 | Pengeluaran September tertaut LPJ | Catat LPJ bertanggal Oktober (`transaksiId` valid, Σ ≤ nominal) | Diterima. Pengeluaran, saldo, KPI, dan ringkasan September tidak berubah | P1 | 020 |
+| TC-LB-02 | Seperti TC-LB-01 | LPJ tambahan sehingga Σ LPJ > nominal | `LPJ_EXCEEDS_TRANSACTION` | P1 | 020 |
+| TC-LB-03 | RAB September disetujui | Pengeluaran Oktober kategori sama, tanpa alokasi | Tidak dicocokkan ke RAB September (TANPA RAB); tidak otomatis diterima | P1 | 018 |
+| TC-LB-04 | RAB September disetujui | Alokasi eksplisit pengeluaran Oktober ke RAB September | **(menunggu kebijakan U-1)**. Perilaku sekarang: diterima, tampil sebagai "garis periode lain", bukan realisasi disetujui Oktober | P1 | 018 |
+| TC-LB-05 | RAB Oktober disetujui | Satu pengeluaran Oktober dengan dua alokasi eksplisit dalam periode sama | Diterima. Total pengeluaran aktual bertambah sekali, realisasi disetujui bertambah sebesar Σ alokasi | P1 | 018 |
+| TC-LB-06 | Pencairan September dicatat sebagai PENGELUARAN | "Buat Transaksi dari LPJ" untuk rincian LPJ Oktober | **(menunggu kebijakan U-3)**. Harus tidak menghasilkan pengeluaran kedua | P1 | 020 |
+| TC-LB-07 | – | Buat pengeluaran bertanggal `2026-13-40` / `2026-02-30` | **(menunggu kebijakan U-4)**: ditolak. Perilaku sekarang: diterima | P1 | 014 |
+| TC-LB-08 | LPJ diterima, belum diverifikasi | Lihat status pertanggungjawaban | **(menunggu U-2)**: "menunggu verifikasi", bukan selesai | P1 | 020 |
+| TC-LB-09 | RAB disetujui setelah tanggal transaksi | Lihat penilaian I03 | **(menunggu U-5)** | P2 | 018 |
+| TC-LB-10 | Uang muka September, sisa dikembalikan Oktober | Catat pengembalian | **(menunggu U-3 + GAP-028)** | P2 | 028 |
 
 ## Riwayat revisi
 
@@ -131,6 +150,7 @@
 |---|---|---|---|---|
 | 17-10-2026 | TC-CRUD-05 | `opCreateIncome` pada periode TERKUNCI → `PERIOD_LOCKED` | Diterima pada tanggal aktual, ditandai dan diaudit secara atomik. Kegagalan audit tidak meninggalkan keadaan parsial. Otorisasi dan validasi tetap berlaku. Status periode dan riwayat closing tetap tersedia | Keputusan kebijakan pengguna 17-10-2026: status CLOSED/TERKUNCI adalah **penanda administratif, bukan hard lock** pencatatan rutin, karena pembayaran orang tua sering terlambat. Implementasi: commit `79e2b66`. Audit: `P1_03_POLICY_CHANGE_AUDIT.md`. Laporan: `P1_03_IMPLEMENTATION_REPORT.md`. Uji sandbox: P1L-01, P1L-13, P1P-06, P1P-10 |
 | 19-10-2026 | TC-REK-02 | Status mutasi teridentifikasi = `TERIDENTIFIKASI` | Status = `DIPROSES` | `TERIDENTIFIKASI` tidak ada di kontrak Web V2 (`DB_SCHEMA 11_MUTASI_BANK`: `BELUM_DIPROSES`, `DIPROSES`); KPI BDS02-I02/I03 memakai `DIPROSES`. Keputusan pengguna atas `P1_04`: **Opsi C**, yaitu tidak mengubah data maupun rumus KPI. 544 baris `TEREKONSILIASI` (angka dari dokumen 05, belum dihitung ulang terhadap data FINAL) tetap apa adanya; masalah pemetaan status **belum terselesaikan** |
+| 19-10-2026 | TC-DSH-08/09, TC-LB-01..10 (baru) | – | Lihat tabel J dan K | Keputusan 2 (Kartu Beranda) dan audit lintas bulan `P1_12`. Tidak ada TC yang dihapus atau diubah |
 
-Kedua revisi **tidak menghapus** test case; langkah dan ekspektasinya diperluas agar tetap memeriksa kontrol keamanan dan integritas.
+Revisi tersebut **tidak menghapus** test case; langkah dan ekspektasinya diperluas agar tetap memeriksa kontrol keamanan dan integritas.
 

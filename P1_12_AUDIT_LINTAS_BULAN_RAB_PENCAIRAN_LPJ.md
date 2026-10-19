@@ -18,7 +18,7 @@ Dua instruksi tertanggal 19-10-2026 saling bertentangan:
   - kasus "RAB September, transaksi aktual Oktober" ditandai `NEEDS_POLICY_DECISION`;
   - tahap ini dibatasi pada audit dan usulan.
 
-**Tindakan:** Keputusan 1 **ditangguhkan, tidak diimplementasikan**. Aturan yang diminta Keputusan 1 dirumuskan sebagai usulan U-1 (§6), menunggu keputusan final. Perilaku sekarang dicatat apa adanya dan diuji sebagai karakterisasi (RAB-30), tanpa diubah.
+**Tindakan:** Keputusan 1 **ditangguhkan, tidak diimplementasikan**. Aturan yang diminta Keputusan 1 dirumuskan sebagai usulan U-1 (§6), menunggu keputusan final. Perilaku sekarang dicatat apa adanya dan diuji sebagai karakterisasi (RAB-33/34/35, commit `30eec8a`), tanpa diubah.
 
 ## 1. Audit: apa yang benar-benar tersimpan
 
@@ -124,13 +124,13 @@ Semua usulan bersifat aditif. **Tidak ada** pengisian data historis otomatis. Ba
 
 | ID | Kasus | Hasil yang diharapkan | Status |
 |---|---|---|---|
-| TC-LB-01 | Transaksi Sep + LPJ Okt tertaut, Σ ≤ nominal | LPJ diterima; KPI/saldo Sep tidak berubah | **Diuji sandbox (RAB-31)** |
-| TC-LB-02 | LPJ Okt > nominal transaksi Sep | `LPJ_EXCEEDS_TRANSACTION` | Diuji (P1D-02 + RAB-31) |
-| TC-LB-03 | RAB Sep, transaksi Okt, tanpa alokasi | TANPA RAB, I03 gagal (perilaku sekarang) | **Diuji sandbox (RAB-30)** |
-| TC-LB-04 | RAB Sep, transaksi Okt, alokasi eksplisit | Sekarang: diterima, B2 (bukan B). Setelah U-1: sesuai keputusan | Karakterisasi (RAB-30) |
-| TC-LB-05 | Alokasi dalam periode sama | Diterima, masuk B | Diuji (RAB-29) |
+| TC-LB-01 | Transaksi Sep + LPJ Okt tertaut, Σ ≤ nominal | LPJ diterima; pengeluaran/saldo/ringkasan Sep tidak berubah | **Diuji sandbox (RAB-36)** |
+| TC-LB-02 | LPJ Okt > nominal transaksi Sep | `LPJ_EXCEEDS_TRANSACTION` | Diuji (P1D-02 + RAB-36) |
+| TC-LB-03 | RAB Sep, transaksi Okt, tanpa alokasi | TANPA RAB, I03 gagal (perilaku sekarang) | **Diuji sandbox (RAB-34)** |
+| TC-LB-04 | RAB Sep, transaksi Okt, alokasi eksplisit | Sekarang: diterima, B2 (bukan B). Setelah U-1: sesuai keputusan | Karakterisasi (RAB-33) |
+| TC-LB-05 | Alokasi dalam periode sama | Diterima, masuk B | Diuji (RAB-32) |
 | TC-LB-06 | Pencairan Sep + LPJ diubah jadi transaksi | Sekarang: transaksi kedua (hitung ganda). Setelah U-3: ditolak | Belum (butuh U-3) |
-| TC-LB-07 | Tanggal transaksi `2026-13-40` | Sekarang: diterima (T4). Setelah U-4: ditolak | Karakterisasi (RAB-32) |
+| TC-LB-07 | Tanggal transaksi `2026-13-40` | Sekarang: diterima (T4). Setelah U-4: ditolak | Karakterisasi (RAB-35) |
 | TC-LB-08 | LPJ diterima, belum diverifikasi → laporan "menunggu verifikasi" | — | Belum (butuh U-2) |
 | TC-LB-09 | RAB disetujui setelah transaksi | — | Belum (butuh U-5) |
 | TC-LB-10 | Sisa uang muka dikembalikan bulan berikutnya | — | Belum (butuh U-3 + GAP-028) |
