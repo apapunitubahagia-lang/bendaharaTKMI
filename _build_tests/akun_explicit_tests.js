@@ -64,9 +64,12 @@ const html = c => c.el('modalBody').innerHTML;
     await run(['tanggal', 'nominal', 'penerima', 'unit'], [['2026-09-02', '6100', 'Toko L1', 'MI']]);
     await run(['tanggal', 'nominal', 'penerima', 'unit', 'akun', 'kategori'], [['2026-09-02', '6200', 'Toko L2', 'MI', 'Kasir', 'Kategori Fiktif']]);
     await run(['tanggal', 'nominal', 'penerima', 'unit', 'akun', 'kategori'], [['2026-09-02', '6300', 'Toko L3', 'MI', 'BNI', 'ATK']]);
-    const T = rows(srv, '05_TRANSAKSI').slice(n0), q = c.a.Store.loadImportQueue().filter(x => /wajib disebut eksplisit/.test(x.reason || ''));
-    rec('AK-08', 'wizard impor lama (fungsi global, masih dapat dipanggil): tanpa akun / kategori tak dikenal -> tidak tersimpan (HOLD beralasan); akun & kategori eksplisit -> tersimpan', T.length === 1 && T[0][col(srv, '05_TRANSAKSI', 'nominal')] === 6300 && T[0][col(srv, '05_TRANSAKSI', 'akunId')] === 'akun_bank1' && q.length === 2,
-      'tersimpan ' + J(T.map(t => [t[col(srv, '05_TRANSAKSI', 'nominal')], t[col(srv, '05_TRANSAKSI', 'akunId')]])) + ', HOLD ' + q.length); }
+    const T = rows(srv, '05_TRANSAKSI').slice(n0), q = c.a.Store.loadImportQueue().filter(x => x.importType === 'pengeluaran');
+    const tolak = c.a.Store.loadAuditTrail().filter(a => a.aksi === 'IMPOR_LAMA_DITOLAK').length;
+    /* [P1_21 D-4, ekspektasi diubah atas keputusan D-4] Sebelumnya: tanpa akun / kategori tak dikenal -> HOLD, akun & kategori eksplisit
+       -> tersimpan. Kini wizard impor lama pengeluaran dinonaktifkan: KETIGA berkas ditolak sebelum simpan/antre (impor resmi = Impor V2). */
+    rec('AK-08', 'wizard impor lama pengeluaran (fungsi global) DINONAKTIFKAN [P1_21 D-4]: berkas tanpa akun, kategori fiktif, maupun akun & kategori eksplisit -> 0 tersimpan, 0 antrean, ditolak JALUR_IMPOR_LAMA_DINONAKTIFKAN (3 audit IMPOR_LAMA_DITOLAK)', T.length === 0 && q.length === 0 && tolak === 3 && /dinonaktifkan/.test(c.toast()),
+      'tersimpan ' + T.length + ', antrean ' + q.length + ', ditolak ' + tolak); }
   { const srv = makeServer(); const c = await boot(srv); const n0 = rows(srv, '05_TRANSAKSI').length; c.sb.openPengeluaranForm(); const h = html(c);
     Object.assign(c.fields, { gf_nominal: '4200', gf_penerima: 'Toko K', gf_unit: 'MI', gf_tanggal: '2026-09-12', gf_kategori: '', gf_subkategori: '', gf_akun: 'akun_kas1', gf_metode: 'Tunai', gf_catatan: '' });
     c.sb.submitPengeluaran(); const t1 = c.toast(); await sync(c);

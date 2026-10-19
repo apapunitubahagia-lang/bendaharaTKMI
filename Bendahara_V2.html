@@ -6897,8 +6897,12 @@ function importWizardProceedToPreview(){
   auditTrailPush('IMPORT_PREVIEW', null, {type:s.type, total:results.total, valid:results.valid.length, invalid:results.invalid.length, duplicate:results.duplicate.length, ambiguous:results.ambiguous.length, hold:(results.hold||[]).length}, 'import-wizard');
   openModal(importWizardHtml(), true);
 }
+/* [P1_21 D-4] jalur impor lama 4 modul Impor V2 (penerimaan, pengeluaran, rab, lpj) dinonaktifkan pada fungsi (bukan hanya tombol). */
+function impLamaNonaktif_(type){ return !!IMPORT_V2_MODUL_[type] && type !== 'siswa'; } // siswa: belum (lihat catatan di atas)
+function impLamaTolak_(type){ auditTrailPush('IMPOR_LAMA_DITOLAK', null, {type:type}, 'import-wizard'); toast('Wizard impor lama untuk modul ini dinonaktifkan. Gunakan Impor V2 (validasi & simpan oleh server).'); return {ok:false, code:'JALUR_IMPOR_LAMA_DINONAKTIFKAN', message:'Wizard impor lama untuk modul ini dinonaktifkan. Gunakan Impor V2 (validasi & simpan oleh server).'}; }
 function importWizardConfirm(){
   const s = State.importSession;
+  if(s && impLamaNonaktif_(s.type)) return impLamaTolak_(s.type); // [P1_21 D-4]
   const committerMap = {penerimaan:commitPenerimaanRow, mutasibank:commitMutasiBankRow, pengeluaran:commitPengeluaranRow, rkat:commitRkatRow, rab:commitRabRow, lpj:commitLpjRow};
   const committer = committerMap[s.type];
   let created=0;
@@ -7082,6 +7086,7 @@ function buildAllocListForRow(siswaId, headerMap, rawRow, get, nominal){
   return [];
 }
 function commitPenerimaanRow(get, extra, res, rawRow, headerMap){
+  throw new Error('Wizard impor lama untuk modul ini dinonaktifkan. Gunakan Impor V2 (validasi & simpan oleh server).' + ' [JALUR_IMPOR_LAMA_DINONAKTIFKAN]'); // [P1_21 D-4] modul penerimaan
   const s = Store.loadSettings();
   const t = postTransaksi({jenis:'PENERIMAAN', tanggal:res.tanggal, sumber: get('namaSiswa')?'Pembayaran Siswa':(get('uraian')||'Import'), siswaId:res.siswaId||null,
     akunId:impLamaAkun_(get), unit:res.unit, nominal:res.nominal, metode:get('metode')||(numFromStr(get('transfer'))>0?'Transfer Bank':'Tunai'), // [P1_19 C] tanpa akun pertama
@@ -7149,6 +7154,7 @@ function validatePengeluaranRow(get, rawRow, headerMap){
 function impLamaAkun_(get){ const n = String(get('akun')||'').trim().toLowerCase(); const a = n ? akunList().filter(x=>(x.jenis==='Kas'||x.jenis==='Bank') && (String(x.nama).toLowerCase()===n || String(x.id).toLowerCase()===n)) : []; if(a.length!==1) throw new Error('Akun Kas/Bank wajib disebut eksplisit dan cocok dengan master (tidak ada akun bawaan): "' + (get('akun')||'') + '"'); return a[0].id; }
 function impLamaKategori_(get){ const n = String(get('kategori')||'').trim(); const k = kategoriPengeluaranNames().find(x=>x.toLowerCase()===n.toLowerCase()); if(!k) throw new Error('Kategori pengeluaran wajib disebut eksplisit dan dikenal (tidak ada kategori bawaan): "' + n + '"'); return k; }
 function commitPengeluaranRow(get, extra, res){
+  throw new Error('Wizard impor lama untuk modul ini dinonaktifkan. Gunakan Impor V2 (validasi & simpan oleh server).' + ' [JALUR_IMPOR_LAMA_DINONAKTIFKAN]'); // [P1_21 D-4] modul pengeluaran
   const s = Store.loadSettings();
   const t = postTransaksi({jenis:'PENGELUARAN', tanggal:res.tanggal, kategori:impLamaKategori_(get), penerima:get('penerima')||get('uraian')||'-', // [P1_19 C] tanpa kategori/akun pertama
     akunId:impLamaAkun_(get), unit:res.unit, nominal:res.nominal, metode:get('metode')||'Tunai',
@@ -7215,6 +7221,7 @@ function validateRabRow(get){
   return {status:'VALID', reason:uraian+' - '+fmtRp(total), nominal:total, uraian, periode};
 }
 function commitRabRow(get, extra, res, rawRow){
+  throw new Error('Wizard impor lama untuk modul ini dinonaktifkan. Gunakan Impor V2 (validasi & simpan oleh server).' + ' [JALUR_IMPOR_LAMA_DINONAKTIFKAN]'); // [P1_21 D-4] modul rab
   const arr = Store.loadAnggaran();
   const row = Object.assign({id:uid('rab'), program:res.uraian, periode:res.periode, nominal:res.nominal, status:'Diajukan',
     unit:get('unit'), kategori:get('kategori'), subkategori:get('subkategori'), volume:numFromStr(get('qty')), satuan:get('satuan'),
@@ -7242,6 +7249,7 @@ function validateLpjRow(get){
   return {status:'VALID', reason:item+' - '+fmtRp(nominal), tanggal, nominal, item};
 }
 function commitLpjRow(get, extra, res, rawRow){
+  throw new Error('Wizard impor lama untuk modul ini dinonaktifkan. Gunakan Impor V2 (validasi & simpan oleh server).' + ' [JALUR_IMPOR_LAMA_DINONAKTIFKAN]'); // [P1_21 D-4] modul lpj
   const arr = Store.loadLpj();
   const row = Object.assign({id:uid('lpj'), tanggal:res.tanggal, kategori:get('kategori'), subkategori:get('subkategori'), item:res.item,
     volume:numFromStr(get('qty')), satuan:get('satuan'), hargaSatuan:numFromStr(get('hargaSatuan')), diskon:numFromStr(get('diskon')),

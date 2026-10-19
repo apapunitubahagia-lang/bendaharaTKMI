@@ -47,13 +47,16 @@ const pendErrors = (c, name) => Object.values(c.sb.ccPend_(name)).filter(p => p.
     const a = await runImport(c, 'pengeluaran', ['tanggal', 'nominal', 'uraian', 'unit', 'akun', 'kategori'], [['2026-10-02', '75000', 'Spidol', 'MI', 'Kasir', 'ATK']]);
     const b = await runImport(c, 'pengeluaran', ['tanggal', 'nominal', 'uraian', 'unit', 'akun', 'kategori'], [['2026-10-02', '75000', 'Spidol', 'MI', 'Kasir', 'ATK']]);
     const n = rows(srv, '05_TRANSAKSI').filter(x => x[col(srv, '05_TRANSAKSI', 'nominal')] === 75000).length;
-    rec('IA-05', 'impor ulang berkas sama', a.valid.length === 1 && b.duplicate.length === 1 && n === 1, 'impor kedua: duplikat ' + b.duplicate.length + ', transaksi di server ' + n + ' (deteksi sidik jari klien, bukan idempotensi server)'); }
+    /* [P1_21 D-4, ekspektasi diubah atas keputusan D-4] Sebelumnya: impor pertama tersimpan, impor kedua terdeteksi duplikat (n === 1).
+       Kini konfirmasi wizard lama pengeluaran ditolak: pratinjau tetap jalan (baca-saja), tidak ada yang tersimpan pada kedua impor. */
+    rec('IA-05', 'impor ulang berkas sama lewat wizard lama [P1_21 D-4: dinonaktifkan] -> pratinjau valid, kedua konfirmasi ditolak, 0 transaksi di server', a.valid.length === 1 && b.valid.length === 1 && n === 0 && /dinonaktifkan/.test(c.toast()), 'pratinjau valid ' + a.valid.length + '/' + b.valid.length + ', transaksi di server ' + n); }
   { const srv = makeServer(); const c = await boot(srv);
     const r = await runImport(c, 'pengeluaran', ['tanggal', 'nominal', 'uraian', 'unit', 'akun', 'kategori'], [['2026-10-04', '33000', 'Air galon', 'MI', 'Kasir', 'ATK'], ['2026-10-04', '33000', 'Air galon', 'MI', 'Kasir', 'ATK']]);
     const n = rows(srv, '05_TRANSAKSI').filter(x => x[col(srv, '05_TRANSAKSI', 'nominal')] === 33000).length;
     rec('IA-06', 'duplikat di dalam satu berkas (TEMUAN)', null, 'dua baris identik dalam satu berkas: valid ' + r.valid.length + ', duplikat ' + r.duplicate.length + ', tersimpan ' + n + ' (sidik jari hanya dibandingkan dengan data yang SUDAH ada)'); }
   { const srv = makeServer(); srv.sb.opSchemaApply('TAMBAH_KOLOM_ADITIF'); const c = await boot(srv); const n0 = rows(srv, '05_TRANSAKSI').length;
     const r = await runImport(c, 'lpj', ['tanggal', 'uraian', 'nominal'], [['2026-10-05', 'Nota A', '10000'], ['2026-02-30', 'Nota B', '5000']]);
+    // [P1_21 D-4] ditinjau, ekspektasi TETAP: wizard lama LPJ kini ditolak sehingga tetap tidak ada transaksi (dan tidak ada LPJ, lihat IA-08 INFO)
     rec('IA-07', 'LPJ tidak membuat transaksi', rows(srv, '05_TRANSAKSI').length === n0, 'impor LPJ: transaksi baru ' + (rows(srv, '05_TRANSAKSI').length - n0));
     rec('IA-08', 'LPJ validasi klien vs server (TEMUAN)', null, 'pratinjau valid ' + r.valid.length + ' (termasuk 2026-02-30), tersimpan ' + rows(srv, '19_LPJ').length + ', gagal sinkron ' + J(pendErrors(c, 'lpj')) + ' -> pratinjau menyatakan valid, server menolak SETELAH konfirmasi'); }
   { const srv = makeServer(); const c = await boot(srv);

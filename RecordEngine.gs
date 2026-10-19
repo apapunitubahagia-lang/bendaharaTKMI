@@ -79,7 +79,7 @@ function opRecordBatch(key, ops) {
   if (!Array.isArray(ops) || !ops.length) return errResult_('VALIDATION_ERROR', 'ops wajib berupa array tidak kosong', 'ops');
   if (ops.length > 200) return errResult_('VALIDATION_ERROR', 'maksimal 200 operasi per panggilan', 'ops');
   try {
-    return withLock_(function () { return opRecordBatchLocked_(g, cfg, key, ops); });
+    return withLock_(function () { return opRecordBatchLocked_(g, cfg, key, ops, null, { jalurPublik: true }); }); // [P1_21 D-4] jalur publik (bukan ImportEngine/RabAllocation)
   } catch (e) {
     return errResult_('WRITE_FAILED', 'Gagal memproses batch record', null);
   }
@@ -90,8 +90,13 @@ function opRecordUpsert(key, record) {
   return opRecordBatch(key, [{ op: 'upsert', id: record.id, row: record }]);
 }
 
-/* extraAudits (opsional) = baris audit tambahan yang ikut append audit yang SAMA dengan batch (dipakai impor P1-RAB). */
-function opRecordBatchLocked_(g, cfg, key, ops, extraAudits) {
+/* extraAudits (opsional) = baris audit tambahan yang ikut append audit yang SAMA dengan batch (dipakai impor P1-RAB).
+   opts.jalurPublik (opsional) = dipanggil dari opRecordBatch publik; dipakai [P1_21 D-4]. */
+/* [P1_21 D-4] Wizard impor lama RAB/LPJ dinonaktifkan di server: baris BARU bertanda impor (importBatchId / source RAB_IMPORT)
+   yang datang lewat opRecordBatch publik ditolak. Impor resmi = ImportEngine (opImportCommit) yang memanggil opRecordBatchLocked_
+   langsung. Baris yang sudah ada (termasuk hasil impor V2) tetap dapat diubah seperti biasa. */
+var REC_IMPOR_LAMA_KEYS_ = { anggaran: true, lpj: true };
+function opRecordBatchLocked_(g, cfg, key, ops, extraAudits, opts) {
   var m = opSheetModel_(cfg.sheet);
   if (!m) return errResult_('SCHEMA_MISMATCH', 'Sheet tidak ditemukan', 'key');
   var live = m.live, idCol = live.indexOf('id');
@@ -153,6 +158,9 @@ function opRecordBatchLocked_(g, cfg, key, ops, extraAudits) {
         res.ok = true; res.code = 'UPDATED'; cnt.updated++;
       } else {
         if (hasExpect(o)) { res.code = 'CONFLICT'; res.message = 'Data yang akan diubah sudah tidak ada di server'; cnt.failed++; return; } // [P1-F]
+        if (opts && opts.jalurPublik && REC_IMPOR_LAMA_KEYS_[key] && (opStr_(row.importBatchId) !== '' || opStr_(row.source).toUpperCase() === 'RAB_IMPORT')) { // [P1_21 D-4]
+          res.code = 'JALUR_IMPOR_LAMA_DINONAKTIFKAN'; res.message = 'Impor ' + key + ' lewat wizard lama dinonaktifkan; gunakan Impor V2 (validasi & simpan oleh server)'; cnt.failed++; return;
+        }
         var nr = live.map(function () { return ''; });
         nr[idCol] = id;
         keys.forEach(function (k) { nr[live.indexOf(k)] = opCoerce_(cfg, k, row[k]); });
