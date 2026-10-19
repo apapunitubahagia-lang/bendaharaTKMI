@@ -407,7 +407,12 @@ function sumAllocationsForTransaksi_(transaksiId) {
 // waitLock() TIDAK mengembalikan boolean: berhasil = tidak throw, gagal =
 // throw. Return value-nya TIDAK PERNAH dibaca sebagai sinyal sukses/gagal.
 // ============================================================
+var LOCK_DEPTH_ = 0; // [P1-IMP Prioritas A] kedalaman kunci dalam eksekusi ini (reentran)
 function withLock_(fn) {
+  if (LOCK_DEPTH_ > 0) { // sudah memegang kunci skrip di eksekusi ini: jangan ambil/lepas lagi (melepas akan membuka kunci luar)
+    LOCK_DEPTH_++;
+    try { return fn(); } finally { LOCK_DEPTH_--; }
+  }
   var lock = LockService.getScriptLock();
   var acquired = false;
   try {
@@ -419,9 +424,11 @@ function withLock_(fn) {
   if (!acquired) {
     return errResult_('LOCK_TIMEOUT', 'Gagal mendapatkan lock dalam 10 detik - sistem sedang sibuk, coba lagi', null);
   }
+  LOCK_DEPTH_ = 1;
   try {
     return fn();
   } finally {
+    LOCK_DEPTH_ = 0;
     lock.releaseLock();
   }
 }

@@ -283,9 +283,9 @@ function impV2Confirm(){
 function impV2RunChunks(mulai){
   const s = State.impV2, total = s.plan.rows.filter(r=>r.dipilih).length;
   s.progres = 'Menyimpan baris ' + (mulai + 1) + ' dari ' + total + '...'; s.terputus = null; impV2Render();
-  return ServerBridge.opImportCommit(Object.assign(impV2Payload_(), {planHash:s.plan.planHash, konfirmasi:'IMPOR_DATA', mulai})).then(res=>{
+  return ServerBridge.opImportCommit(Object.assign(impV2Payload_(), {planHash:s.plan.planHash, konfirmasi:'IMPOR_DATA', mulai, pratinjau:Object.fromEntries(s.plan.rows.map(r=>[r.kunci, r.sidik]))})).then(res=>{
     if(!res || !res.ok){
-      if(res && res.code === 'CONFLICT'){ s.pesan = 'Data server berubah sejak pratinjau (CONFLICT). Baris yang sudah tersimpan aman; jalankan pratinjau ulang lalu konfirmasi lagi.'; s.step = 'pratinjau'; s.stale = true; impV2Render(); return false; }
+      if(res && res.code === 'CONFLICT'){ s.pesan = 'CONFLICT: ' + (res.message || 'data berubah sejak pratinjau') + ' Baris yang sudah tersimpan aman; jalankan pratinjau ulang lalu konfirmasi lagi.'; s.step = 'pratinjau'; s.stale = true; impV2Render(); return false; }
       if(res && ['VALIDATION_ERROR', 'CONFIRM_REQUIRED', 'ROLE_NOT_ALLOWED', 'SCHEMA_ADDITIVE_REQUIRED', 'SCHEMA_MISMATCH', 'AUDIT_FAILED'].indexOf(res.code) !== -1){ s.pesan = 'Impor dihentikan: ' + res.code + ' - ' + res.message; s.step = 'selesai'; impV2Render(); return false; }
       s.terputus = {mulai}; s.progres = 'Terputus pada baris ' + (mulai + 1) + ' (' + ((res && res.code) || 'tanpa respons') + ')'; impV2Render(); return false;
     }

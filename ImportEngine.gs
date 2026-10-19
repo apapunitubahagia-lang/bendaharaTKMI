@@ -161,6 +161,7 @@ function impPlanCore_(p) {
   var cols = D.kolom[p.modul], tidakAda = {};
   if (p.modul !== 'pemasukan' && p.modul !== 'pengeluaran') plan.rows.forEach(function (x) { Object.keys(x.payload || {}).forEach(function (f) { if (opStr_(x.payload[f]) !== '' && cols.indexOf(f) === -1) tidakAda[f] = (tidakAda[f] || 0) + 1; }); });
   plan.kolomTidakTersedia = tidakAda;
+  plan.rows.forEach(function (x) { x.sidik = impHash_(impCanon_([x.kelas, x.dipilih, x.payload, x.targetId || ''])); });
   plan.batchId = batchId;
   plan.planHash = impHash_([p.modul, src, p.modeSiswa || '', impCanon_(p.keputusan || {}), impCanon_(Array.isArray(p.pilih) ? p.pilih : null), impCanon_(cols),
     impCanon_(plan.rows.map(function (x) { return [x.kunci, x.kelas, x.dipilih, x.payload, x.targetId || '']; }))].join('#'));
@@ -294,34 +295,52 @@ function opImportCommit(p) {
   var mulai = Math.max(0, Number(p.mulai) || 0), uk = Math.min(IMP_CHUNK_[p.modul], Math.max(1, Number(p.ukuran) || IMP_CHUNK_[p.modul]));
   try {
     if (!impLogsReady_()) return errResult_('SCHEMA_ADDITIVE_REQUIRED', 'Sheet log impor belum ada - jalankan opImportSetup (eksplisit) di salinan uji lebih dulu', null);
-    var plan, sel, batchId, written = null;
+    /* [Prioritas A] SATU kunci untuk seluruh potongan: hitung ulang pratinjau (duplikat, data, sisa kewajiban, header) ->
+       bandingkan planHash -> tulis lewat jalur yang ada -> log/audit. withLock_ reentran (TransactionEngine.gs) sehingga
+       kunci engine di dalamnya tidak melepas kunci luar; eksekusi lain menunggu/LOCK_TIMEOUT dan saat masuk melihat data terbaru. */
+    var plan, sel, batchId, written = null, sebelumMap = {}, lr = null;
     var r0 = withLock_(function () {
       plan = impPlanCore_(p);
-      if (plan.planHash !== opStr_(p.planHash)) return errResult_('CONFLICT', 'Data server, header sheet, atau isi impor berubah sejak pratinjau; jalankan pratinjau ulang', 'planHash');
+      if (plan.planHash !== opStr_(p.planHash)) return impConflict_(plan, p);
       batchId = plan.batchId;
       plan.kolomLive = sgHeaderModel_(IMP_TARGET_[p.modul], ['id']).live;
       sel = plan.rows.filter(function (x) { return x.dipilih; }).slice(mulai, mulai + uk);
-      if (IMP_RECORD_KEY_[p.modul]) { // rab/lpj: tulis + audit di dalam lock yang sama dengan pemeriksaan planHash
+      if (IMP_RECORD_KEY_[p.modul]) {
         written = impWriteRecords_(g, p, plan, sel, batchId);
         if (written.err) return written.err;
+      } else {
+        written = { hasil: sel.map(function (x) {
+          if (x.sudahTersimpan) return { x: x, status: 'TIDAK_BERUBAH', kode: 'UNCHANGED', refId: '' };
+          var w = impWriteOne_(p, x, sebelumMap); return { x: x, status: w.status, kode: w.kode, pesan: w.pesan, refId: w.refId };
+        }) };
       }
+      lr = impWriteLogs_(g, p, plan, written.hasil, batchId, sebelumMap, !!written.auditDitulis);
       return null;
     });
     if (r0) return r0;
-    var sebelumMap = {};
-    if (!written) {
-      written = { hasil: sel.map(function (x) {
-        if (x.sudahTersimpan) return { x: x, status: 'TIDAK_BERUBAH', kode: 'UNCHANGED', refId: '' };
-        var w = impWriteOne_(p, x, sebelumMap); return { x: x, status: w.status, kode: w.kode, pesan: w.pesan, refId: w.refId };
-      }) };
-    }
-    var lr = withLock_(function () { return impWriteLogs_(g, p, plan, written.hasil, batchId, sebelumMap, !!written.auditDitulis); });
     var totalDipilih = plan.rows.filter(function (x) { return x.dipilih; }).length, next = mulai + uk < totalDipilih ? mulai + uk : null;
     return opJsonSafe_(okResult_('Potongan impor diproses', {
       batchId: batchId, planHash: plan.planHash, mulai: mulai, ukuran: uk, berikut: next, totalDipilih: totalDipilih,
       hasil: written.hasil.map(function (h) { return { i: h.x.i, baris: h.x.baris, kunci: h.x.kunci, status: h.status, kode: opStr_(h.kode), pesan: opStr_(h.pesan), refId: opStr_(h.refId), nominal: h.x.nominal }; }),
       logStatus: lr && lr.ok ? 'OK' : 'GAGAL' + (lr && lr.code ? ' (' + lr.code + ')' : ''), job: lr && lr.ok ? lr.job : null }));
   } catch (e) { return sgErr_(e, 'WRITE_FAILED', 'Gagal memproses impor'); }
+}
+
+/* CONFLICT dengan alasan per baris. p.pratinjau (opsional, dari klien) = {kunci: sidik baris saat pratinjau}; hanya dipakai untuk
+   menjelaskan perbedaan, bukan untuk keputusan (keputusan tetap planHash hasil hitung ulang server). */
+function impConflict_(plan, p) {
+  var lama = p.pratinjau && typeof p.pratinjau === 'object' && !Array.isArray(p.pratinjau) ? p.pratinjau : null, ubah = [];
+  if (lama) {
+    plan.rows.forEach(function (x) {
+      if (lama[x.kunci] === undefined || lama[x.kunci] === x.sidik) return;
+      ubah.push({ baris: x.baris, kunci: x.kunci, kelasSekarang: x.kelas, kode: x.kode.slice(0, 6), pesan: ('kelas/nilai/alokasi berbeda dari pratinjau' + (x.nilai && x.nilai.alokasi ? ' (alokasi sekarang: ' + x.nilai.alokasi + ')' : '') + '; ' + x.pesan.concat(x.peringatan).join('; ')).slice(0, 300) });
+    });
+  }
+  var msg = ubah.length ? ubah.length + ' baris berubah sejak pratinjau: ' + ubah.slice(0, 3).map(function (u) { return 'baris ' + u.baris + ' -> ' + u.kelasSekarang + (u.kode.length ? ' (' + u.kode.join(',') + ')' : '') + (u.pesan ? ': ' + u.pesan.slice(0, 120) : ''); }).join(' | ')
+    : 'Data server, header sheet, keputusan, atau isi impor berubah sejak pratinjau';
+  var r = errResult_('CONFLICT', msg + '. Tidak ada yang disimpan pada potongan ini; jalankan pratinjau ulang.', 'planHash');
+  r.perubahan = ubah.slice(0, 50); r.jumlahBerubah = ubah.length;
+  return opJsonSafe_(r);
 }
 
 /* ---------- baca & tinjauan ---------- */
