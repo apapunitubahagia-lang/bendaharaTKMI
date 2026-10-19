@@ -493,6 +493,7 @@ function createIncome_(payload) {
   return createTransactionWithAllocations_(Object.assign({}, payload, { jenis: 'PENERIMAAN' }));
 }
 function createExpense_(payload) {
+  if (payload && Array.isArray(payload.allocations) && payload.allocations.length) return errResult_('INVALID_ALLOCATION', 'Transaksi PENGELUARAN tidak menerima alokasi kewajiban siswa (alokasi tidak dibuang diam-diam)', 'allocations'); // [P1_21 D-2]
   return createTransactionWithAllocations_(Object.assign({}, payload, { jenis: 'PENGELUARAN', allocations: null }));
 }
 function createTransaction_(payload) {
@@ -514,6 +515,7 @@ function createTransactionWithAllocations_(payload, opts) {
     if (vErr) return vErr;
     if (payload.jenis === 'PENGELUARAN') { payload = Object.assign({}, payload); var kErr = expenseKategoriCheck_(payload); if (kErr) return kErr; } // [P1_20 D]
 
+    if (payload.jenis !== 'PENERIMAAN' && Array.isArray(payload.allocations) && payload.allocations.length) return errResult_('INVALID_ALLOCATION', 'Transaksi PENGELUARAN tidak menerima alokasi kewajiban siswa (alokasi tidak dibuang diam-diam)', 'allocations'); // [P1_21 D-2]
     var allocations = (payload.jenis === 'PENERIMAAN') ? (payload.allocations || []) : [];
     var allocErr = validateAllocationsForIncome_(allocations, payload.siswaId, payload.nominal);
     if (allocErr) return allocErr;
