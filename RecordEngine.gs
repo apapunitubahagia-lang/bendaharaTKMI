@@ -122,6 +122,7 @@ function opRecordBatchLocked_(g, cfg, key, ops, extraAudits) {
     if (o.op === 'upsert') {
       var row = o.row;
       if (!row || typeof row !== 'object' || Array.isArray(row)) { res.code = 'VALIDATION_ERROR'; res.message = 'row wajib objek'; cnt.failed++; return; }
+      if (key === 'anggaran') row = rabApprovalStrip_(row); // [P1_21 U-5] metadata persetujuan hanya diisi server
       var keys = Object.keys(row).filter(function (k) { return k !== 'id'; });
       var unknown = keys.filter(function (k) { return live.indexOf(k) === -1; });
       if (unknown.length) { res.code = 'UNKNOWN_FIELD'; res.message = 'Kolom tidak ada di sheet: ' + unknown.join(','); res.fields = unknown; cnt.failed++; return; }
@@ -134,6 +135,7 @@ function opRecordBatchLocked_(g, cfg, key, ops, extraAudits) {
           if (opStr_(next[c]) !== opStr_(nv)) changed = true;
           next[c] = nv;
         });
+        var apv = key === 'anggaran' ? rabApprovalStamp_(live, cur, next, g.identity.email, new Date().toISOString()) : null; // [P1_21 U-5]
         if (!changed) { res.ok = true; res.code = 'UNCHANGED'; cnt.unchanged++; return; }
         if (aIdx[0] !== -1 && opStr_(cur[aIdx[0]]) !== '') { res.code = 'ARCHIVED'; res.message = 'Data sudah diarsipkan dan tidak dapat diubah'; cnt.failed++; return; } // [P1-F]
         if (hasExpect(o)) { // [P1-F] deteksi konflik: nilai server berubah sejak klien membacanya
@@ -147,15 +149,18 @@ function opRecordBatchLocked_(g, cfg, key, ops, extraAudits) {
         if (guard(res, 'upsert', before, opRowObj_(live, next))) return;
         rows[idx] = next; if (idx < origLen) touched[idx] = true;
         audits.push(['RECORD_UPDATE:' + key, before, opRowObj_(live, next), id]);
+        if (apv) { audits.push(['RAB_PERSETUJUAN', null, apv, id]); res.persetujuan = apv.transisi; if (!apv.metadataTersimpan) res.peringatan = 'METADATA_PERSETUJUAN_TIDAK_TERSIMPAN'; } // [P1_21 U-5]
         res.ok = true; res.code = 'UPDATED'; cnt.updated++;
       } else {
         if (hasExpect(o)) { res.code = 'CONFLICT'; res.message = 'Data yang akan diubah sudah tidak ada di server'; cnt.failed++; return; } // [P1-F]
         var nr = live.map(function () { return ''; });
         nr[idCol] = id;
         keys.forEach(function (k) { nr[live.indexOf(k)] = opCoerce_(cfg, k, row[k]); });
+        var apv2 = key === 'anggaran' ? rabApprovalStamp_(live, null, nr, g.identity.email, new Date().toISOString()) : null; // [P1_21 U-5]
         if (guard(res, 'upsert', null, opRowObj_(live, nr))) return;
         rows.push(nr); byId[id] = rows.length - 1;
         audits.push(['RECORD_CREATE:' + key, null, opRowObj_(live, nr), id]);
+        if (apv2) { audits.push(['RAB_PERSETUJUAN', null, apv2, id]); res.persetujuan = apv2.transisi; if (!apv2.metadataTersimpan) res.peringatan = 'METADATA_PERSETUJUAN_TIDAK_TERSIMPAN'; } // [P1_21 U-5]
         res.ok = true; res.code = 'CREATED'; cnt.created++;
       }
     } else if (o.op === 'archive') {
