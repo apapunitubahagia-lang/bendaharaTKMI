@@ -2965,6 +2965,7 @@ function pwSubmit(){
   const w = ensurePenerimaanWizard();
   const can = pwCanSubmit();
   if(!can.ok){ toast(can.reason); return; }
+  { const kd_ = kewajibanDataStatus_(); if(!kd_.ok && w.rows.some(r=>r.siswaId)){ toast('DIBLOKIR - ' + kd_.alasan[0] + '. Pembayaran siswa tidak disimpan agar tidak tercatat tanpa alokasi kewajiban yang benar.'); return; } } // [P1_19 D]
   const filled = w.rows.filter(r=>r.siswaId);
   const tanggal = val('pw_tanggal'), akunId = val('pw_akun'), unit = val('pw_unit'), catatan = val('pw_catatan');
   const metode = (typeof document!=='undefined' && document.querySelector && document.querySelector('input[name="pw_metode"]:checked')) ? document.querySelector('input[name="pw_metode"]:checked').value : (w.data.metode||'Tunai');
@@ -3104,6 +3105,7 @@ function renderCatatPenerimaanWizard(){
   const isEdit = !!w.editTrxId;
   const metode = w.data.metode||'Tunai';
   let html = '<div class="card"><h3>Catat Penerimaan'+(isEdit?' <span class="badge amber">MODE EDIT</span>':'')+'</h3>';
+  { const kd_ = kewajibanDataStatus_(); if(!kd_.ok) html += centralUnavailableInline_(kd_) + '<p class="small-muted">Rencana alokasi tidak dihitung; pembayaran siswa tidak dapat disimpan sampai data kewajiban tersedia.</p>'; } // [P1_19 D]
   html += '<div style="display:grid;grid-template-columns:2fr 1fr;gap:16px;align-items:start">';
   html += '<div>';
 
@@ -3546,6 +3548,7 @@ function submitPenerimaan(){
   const unit = val('pf_unit');
   if(!unit){ toast('Unit (TK/MI) wajib dipilih'); return; }
   if(!akunList().some(a=>a.id===val('pf_akun'))){ toast('Akun Kas/Bank wajib dipilih (tidak ada akun bawaan)'); return; } // [P1-IMP B]
+  if(siswaId){ const kd_ = kewajibanDataStatus_(); if(!kd_.ok){ toast('DIBLOKIR - ' + kd_.alasan[0] + '. Pembayaran siswa tidak disimpan agar tidak tercatat tanpa alokasi kewajiban yang benar.'); return; } } // [P1_19 D]
   const agg = siswa ? pfAggregateFromRows(siswa, pf.rows.filter(r=>r.komponen)) : null;
   const nominal = siswa ? agg.totalNominal : numval('pf_nominal_generic');
   if(nominal<=0){ toast('Nominal harus lebih dari 0'); return; }
@@ -3773,9 +3776,9 @@ function openDetailPenerimaan(id){
   siswaIds.forEach(sid=>{
     const alokSiswa = alok.filter(a=>a.siswaId===sid);
     body += '<div class="card" style="margin-bottom:8px"><b>'+esc(siswaName(sid))+'</b>'+
-      '<div class="kv" style="margin-top:4px"><div>Total Kewajiban</div><div>'+fmtRp(totalKewajibanSiswa(sid))+'</div>'+
+      '<div class="kv" style="margin-top:4px"><div>Total Kewajiban</div><div>'+kwRp_(()=>totalKewajibanSiswa(sid))+'</div>'+
       '<div>Sudah Dibayar</div><div>'+fmtRp(totalDibayarSiswa(sid))+'</div>'+
-      '<div>Sisa Kewajiban</div><div>'+fmtRp(totalSisaSiswa(sid))+'</div></div>'+
+      '<div>Sisa Kewajiban</div><div>'+kwRp_(()=>totalSisaSiswa(sid))+'</div></div>'+
       '<table style="margin-top:6px"><thead><tr><th>Komponen</th><th>Periode</th><th>Nominal Dialokasikan</th></tr></thead><tbody>'+
       alokSiswa.map(a=>'<tr><td>'+esc(a.komponenId?(komponenById(a.komponenId)||{}).nama||'-':'-')+'</td><td>'+esc(a.periode||'-')+'</td><td>'+fmtRp(a.nominal)+'</td></tr>').join('')+
       '</tbody></table></div>';
@@ -3841,12 +3844,12 @@ function openResiModal(id){
       const kompNama = kId!=='-' ? ((komponenById(kId)||{}).nama||'-') : '-';
       body += '<div>Sisa Tunggakan '+esc(kompNama)+'</div><div>'+fmtRp(sisaKomponenSiswa(sid, kompNama))+'</div>';
     });
-    body += '<div>Sisa Kewajiban '+esc(siswa?siswa.nama:'')+' (semua komponen)</div><div>'+fmtRp(sisaSiswa)+'</div></div>';
+    body += '<div>Sisa Kewajiban '+esc(siswa?siswa.nama:'')+' (semua komponen)</div><div>'+kwRp_(()=>sisaSiswa)+'</div></div>';
   });
   const hasil = hasilPembayaranTransaksi(id);
   body += '<div class="kv" style="margin-top:10px;border-top:1px solid #e5e7eb;padding-top:8px">'+
     '<div>Total Pembayaran</div><div><b>'+fmtRp(t.nominal)+'</b></div>'+
-    (siswaIds.length ? ('<div>Sisa Kewajiban (semua siswa)</div><div>'+fmtRp(totalSisaAgg)+'</div>') : '')+
+    (siswaIds.length ? ('<div>Sisa Kewajiban (semua siswa)</div><div>'+kwRp_(()=>totalSisaAgg)+'</div>') : '')+
     '<div>Status Pembayaran</div><div>'+(hasil?hasilPembayaranBadge(hasil):statusBadge(t.status))+'</div>'+
     '</div>';
   body += '<div class="modal-actions"><button class="btn" onclick="exportPDFNote()">Download PDF</button><button class="btn" onclick="printCurrentView()">Cetak</button><button class="btn primary" onclick="closeModal()">Tutup</button></div>';
@@ -4380,6 +4383,7 @@ function guessKomponenFromCatatan(catatan){
 function openQuickAlokasi(trxId){
   const t = transaksiById(trxId);
   if(!t){ toast('Transaksi tidak ditemukan'); return; }
+  { const kd_ = kewajibanDataStatus_(); if(!kd_.ok){ toast('Alokasi tidak dapat dibuat - DATA TIDAK TERSEDIA: ' + kd_.alasan[0]); return; } } // [P1_19 D]
   if(!t.siswaId){ toast('Transaksi belum diidentifikasi ke siswa - gunakan Atur Manual'); openAlokasiEditor(trxId); return; }
   const siswa = MasterAPI.students().find(s=>s.id===t.siswaId);
   if(!siswa){ toast('Data siswa tidak ditemukan'); return; }
@@ -4846,12 +4850,15 @@ function renderSiswaPosisi(){
   if(!filtered.length) html += '<tr><td colspan="7" class="empty">Tidak ada data sesuai filter.</td></tr>';
   { const kd_ = kewajibanDataStatus_(); if(!kd_.ok && filtered.length){ html += '<tr><td colspan="7">'+centralUnavailableInline_(kd_)+'</td></tr></tbody></table></div>'; return html; } } // [P1-IMP C]
   filtered.forEach(s=>{
-    html += '<tr style="cursor:pointer" onclick="openProfilSiswa(\''+s.id+'\')"><td>'+esc(s.nama)+'</td><td>'+esc(s.kelas||'-')+'</td><td>'+esc(s.unit||'-')+'</td><td>'+fmtRp(totalKewajibanSiswa(s.id))+'</td><td>'+fmtRp(totalDibayarSiswa(s.id))+'</td><td>'+fmtRp(totalSisaSiswa(s.id))+'</td><td>'+arrearsBadge(classifyStudentArrears(s.id))+'</td></tr>';
+    html += '<tr style="cursor:pointer" onclick="openProfilSiswa(\''+s.id+'\')"><td>'+esc(s.nama)+'</td><td>'+esc(s.kelas||'-')+'</td><td>'+esc(s.unit||'-')+'</td><td>'+kwRp_(()=>totalKewajibanSiswa(s.id))+'</td><td>'+fmtRp(totalDibayarSiswa(s.id))+'</td><td>'+kwRp_(()=>totalSisaSiswa(s.id))+'</td><td>'+arrearsBadge(classifyStudentArrears(s.id))+'</td></tr>';
   });
   html += '</tbody></table></div>';
   return html;
 }
+/* [P1_19 D] Rupiah kewajiban/sisa hanya bila data kewajiban LENGKAP; selain itu teks DATA TIDAK TERSEDIA (bukan nol). */
+function kwRp_(fn){ const kd = kewajibanDataStatus_(); return kd.ok ? fmtRp(fn()) : '<span class="badge red" title="' + esc(kd.alasan.join('; ')) + '">DATA TIDAK TERSEDIA</span>'; }
 function arrearsBadge(status){
+  { const kd_ = kewajibanDataStatus_(); if(!kd_.ok) return '<span class="badge red" title="' + esc(kd_.alasan.join('; ')) + '">DATA TIDAK TERSEDIA</span>'; } // [P1_19 D]
   const cls = {'SEMUA LUNAS':'green','LUNAS':'green','KELEBIHAN BAYAR':'blue','OVERDUE':'red','ADA TUNGGAKAN':'amber','CICILAN':'amber','SEBAGIAN TAGIHAN':'amber','BELUM BAYAR':'gray','BELUM ADA TAGIHAN':'gray','BELUM ADA KEWAJIBAN':'gray'}[status]||'gray';
   return '<span class="badge '+cls+'">'+esc(status)+'</span>';
 }
@@ -4891,10 +4898,10 @@ function renderProfilSiswa(id){
     '<div>Nama Wali</div><div>'+esc(s.namaWali||(wali?wali.nama:'-'))+'</div><div>Kontak</div><div>'+esc(s.kontakWali||(wali?wali.kontak:'-'))+'</div></div></div>';
   const kdProf_ = kewajibanDataStatus_(); if(!kdProf_.ok) html += centralUnavailableCard_('3-4. Ringkasan Keuangan & Kewajiban', kdProf_); // [P1-IMP C]
   if(kdProf_.ok) html += '<div class="card"><h3>3. Ringkasan Keuangan (computed - Patch01)</h3><div class="kv">'+
-    '<div>Total Kewajiban</div><div>'+fmtRp(totalKewajibanSiswa(id))+'</div>'+
+    '<div>Total Kewajiban</div><div>'+kwRp_(()=>totalKewajibanSiswa(id))+'</div>'+
     '<div>Sudah Dibayar</div><div>'+fmtRp(totalDibayarSiswa(id))+'</div>'+
     '<div>Keringanan</div><div>'+fmtRp(tagihan.reduce((sum,t)=>sum+(t.potongan||[]).reduce((s2,p)=>s2+Number(p.nominal||0),0),0))+'</div>'+
-    '<div>Sisa</div><div>'+fmtRp(totalSisaSiswa(id))+'</div>'+
+    '<div>Sisa</div><div>'+kwRp_(()=>totalSisaSiswa(id))+'</div>'+
     '<div>Status</div><div>'+arrearsBadge(classifyStudentArrears(id))+'</div></div></div>';
   if(kdProf_.ok) html += '<div class="card"><h3>4. Kewajiban (Computed, bukan record wajib)</h3><div class="tablewrap"><table><thead><tr><th>Periode</th><th>Komponen</th><th>Bruto</th><th>Netto</th><th>Terbayar</th><th>Sisa</th><th>Status</th></tr></thead><tbody>'+
     (tagihan.length? tagihan.map(t=>'<tr><td>'+esc(t.periode)+'</td><td>'+esc(t.komponenNama)+'</td><td>'+fmtRp(t.bruto)+'</td><td>'+fmtRp(t.netto)+'</td><td>'+fmtRp(tagihanTerbayar(t))+'</td><td>'+fmtRp(tagihanSisa(t))+'</td><td>'+arrearsBadge(tagihanStatus(t))+(obligationOverdue(t)?' <span class="badge red">Jatuh Tempo</span>':'')+'</td></tr>').join('') : '<tr><td colspan="7" class="empty">Tidak ada kewajiban (belum ada Tarif untuk unit/komponen ini)</td></tr>')+
@@ -5267,7 +5274,8 @@ function downloadDOCX(filename, title, headers, rows, opts){
    yang SAMA dengan yang sudah menerapkan filter). */
 function exportReport(format, baseFilename, title, headers, rows, opts){
   // [P0-T8] ekspor dari data tidak lengkap diblokir (berkas tidak membawa banner peringatan)
-  const ds_ = centralSourcesStatus_((State.page === 'laporan' && REPORT_SOURCE_KEYS_[State.laporanTab]) || (baseFilename === 'Anggaran' ? RAB_SOURCE_KEYS_ : []));
+  const kwKeys_ = ['Kewajiban', 'Tunggakan', 'Siswa'].indexOf(baseFilename) !== -1 ? ['kewajiban', 'alokasi', 'transaksi'] : null; // [P1_19 D] dari halaman mana pun
+  const ds_ = centralSourcesStatus_(kwKeys_ || (State.page === 'laporan' && REPORT_SOURCE_KEYS_[State.laporanTab]) || (baseFilename === 'Anggaran' ? RAB_SOURCE_KEYS_ : []));
   if(!ds_.ok){ toast('Ekspor dibatalkan - DATA TIDAK TERSEDIA: ' + ds_.alasan.join('; ')); return false; }
   if(format==='docx') downloadDOCX(baseFilename+'.docx', title, headers, rows, opts);
   else downloadXLSX(baseFilename+'.xlsx', title, headers, rows, opts);
@@ -5296,6 +5304,7 @@ function buildLaporanSnapshot(periode){
 }
 function submitLaporanBulanan(){
   const periode = Store.loadSettings().periodeAktif;
+  { const kd_ = kewajibanDataStatus_(); if(!kd_.ok){ toast('Laporan bulanan tidak dibuat - DATA TIDAK TERSEDIA: ' + kd_.alasan[0]); return; } } // [P1_19 D] snapshot memuat tagihan/tunggakan
   const arr = Store.loadLaporan();
   const idx = arr.findIndex(l=>l.periode===periode);
   const row = {
@@ -5387,7 +5396,7 @@ function renderLaporan(){
       const rows = tblApply(all, 'lapSiswa', cfg);
       let h = tblFilterBar('lapSiswa', cfg, all.length, rows.length)+exportBarHtml('exportSiswaReport');
       h += '<div class="tablewrap"><table><thead><tr>'+sortableTh('lapSiswa','nama','Nama')+sortableTh('lapSiswa','kelas','Kelas')+'<th>Total Kewajiban</th><th>Dibayar</th><th>Sisa</th><th>Status</th></tr></thead><tbody>'+
-        (rows.length?rows.map(s=>'<tr><td>'+esc(s.nama)+'</td><td>'+esc(s.kelas||'-')+'</td><td>'+fmtRp(totalKewajibanSiswa(s.id))+'</td><td>'+fmtRp(totalDibayarSiswa(s.id))+'</td><td>'+fmtRp(totalSisaSiswa(s.id))+'</td><td>'+arrearsBadge(classifyStudentArrears(s.id))+'</td></tr>').join(''):'<tr><td colspan="6" class="empty">Tidak ada data sesuai filter.</td></tr>')+
+        (rows.length?rows.map(s=>'<tr><td>'+esc(s.nama)+'</td><td>'+esc(s.kelas||'-')+'</td><td>'+kwRp_(()=>totalKewajibanSiswa(s.id))+'</td><td>'+fmtRp(totalDibayarSiswa(s.id))+'</td><td>'+kwRp_(()=>totalSisaSiswa(s.id))+'</td><td>'+arrearsBadge(classifyStudentArrears(s.id))+'</td></tr>').join(''):'<tr><td colspan="6" class="empty">Tidak ada data sesuai filter.</td></tr>')+
         '</tbody></table></div>';
       return h;
     },
@@ -8971,7 +8980,7 @@ function centralSourcesStatus_(keys){
       (keys || []).forEach(function(k){ const s = st[k]; if(!s || !s.loaded || s.error) alasan.push(OP_SHEETS[k] + (s && s.error ? ' gagal dimuat (' + s.error + ')' : ' belum termuat')); });
     }
   }catch(e){ alasan.push('status sumber data tidak dapat diperiksa'); }
-  if((keys || []).indexOf('kewajiban') !== -1){ const dp = kpiPeriodeStatus_(Store.loadSettings().periodeAktif); if(!dp.ok) alasan.unshift(dp.alasan[0]); } // [P1-IMP C]
+  if((keys || []).indexOf('kewajiban') !== -1 || keys === FCC_SOURCE_KEYS_){ const dp = kpiPeriodeStatus_(Store.loadSettings().periodeAktif); if(!dp.ok) alasan.unshift(dp.alasan[0]); } // [P1-IMP C] [P1_19 D] FCC memakai tagihan periode aktif
   return {ok: !alasan.length, alasan: alasan};
 }
 /* [P1-IMP C] Status data kewajiban: LENGKAP | PERIODE_AKTIF_TIDAK_VALID | SUMBER_TIDAK_TERSEDIA | SUMBER_TIDAK_LENGKAP (| LOKAL: mode lama). */

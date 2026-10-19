@@ -2,7 +2,8 @@
  * F7 kolom siswa (tanggalMasuk/tanggalKeluar/jenisKelamin) + audit master siswa (D-IMP-8).
  * KPI-DIFF: KPI dihitung dengan build dasar 25d258b (git) dan build sekarang pada data yang sama -> harus identik.
  */
-const cp = require('child_process');
+const cp = require('child_process'), vm = require('vm');
+const vmEval = (c, code) => vm.runInContext(code, c.sb);
 const { makeServer } = require('./srv_env.js');
 const { makeClient } = require('./client_env.js');
 const R = []; const rec = (id, tc, ok, d) => R.push({ id, tc, st: ok === null ? 'INFO' : (ok ? 'PASS' : 'FAIL'), d });
@@ -130,6 +131,25 @@ const kpiShape = k => ({ periode: k.periode, overall: k.overall, overallStatus: 
       k1 === 'LENGKAP' && ds0 && k2 === 'SUMBER_TIDAK_LENGKAP' && k3 === 'SUMBER_TIDAK_TERSEDIA' && k4 === 'PERIODE_AKTIF_TIDAK_VALID' && !ds.ok && /periode aktif tidak valid/.test(ds.alasan[0]) &&
       /Penerimaan Siswa[\s\S]*DATA TIDAK TERSEDIA/.test(beranda) && !/Belum Diterima \(Tunggakan\)/.test(beranda) && /DATA TIDAK TERSEDIA/.test(posisi) && /DATA TIDAK TERSEDIA/.test(profil) && !/Total Kewajiban/.test(profil),
       J([k1, k2, k3, k4, ds.alasan[0].slice(0, 60)])); }
+
+  { // P1_19 D: konsumen kewajiban lain di klien
+    const srv = makeServer(); const c = await boot(srv); const n0 = srv.sheets['05_TRANSAKSI'].length;
+    const okExp = c.sb.exportReport('xlsx', 'Tunggakan', 'x', ['a'], [['1']]);
+    c.a.Store.loadSettings = (o => () => Object.assign({}, o(), { periodeAktif: '2026-10-01' }))(c.a.Store.loadSettings);
+    c.a.State.page = 'beranda'; const exp = c.sb.exportReport('xlsx', 'Tunggakan', 'x', ['a'], [['1']]); const tExp = c.toast();
+    c.sb.openDetailPenerimaan('imp_trx_1'); const det = c.el('modalBody').innerHTML;
+    c.sb.openQuickAlokasi('imp_trx_1'); const tq = c.toast();
+    c.sb.submitLaporanBulanan(); const tl = c.toast();
+    const pw = c.sb.renderCatatPenerimaanWizard();
+    const w = c.sb.ensurePenerimaanWizard(); w.rows = [{ siswaId: 's2', komponen: 'SPP', nominal: 200000 }]; c.sb.pwCanSubmit = () => ({ ok: true }); c.sb.pwCaptureDataFields = () => {};
+    c.sb.pwSubmit(); const tp = c.toast(); for (let i = 0; i < 3; i++) { await c.sb.centralRunSync(true); await tick(10); }
+    rec('T4B-23', 'P1_19 D: periode tidak valid -> ekspor tunggakan diblokir dari halaman mana pun, detail penerimaan/resi DATA TIDAK TERSEDIA, Alokasi Cepat & wizard Pembayaran bersiswa & laporan bulanan diblokir',
+      okExp !== false && exp === false && /DATA TIDAK TERSEDIA/.test(tExp) && /DATA TIDAK TERSEDIA/.test(det) && !/Rp 0<\/div><\/div>/.test(det.split('Sisa Kewajiban')[1] || '') && /Alokasi tidak dapat dibuat/.test(tq) && /Laporan bulanan tidak dibuat/.test(tl) && /DATA TIDAK TERSEDIA/.test(pw) && /DIBLOKIR/.test(tp) && srv.sheets['05_TRANSAKSI'].length === n0,
+      J([tExp.slice(0, 50), tq.slice(0, 40), tl.slice(0, 40), tp.slice(0, 60)])); }
+  { const srv = makeServer(); const c = await boot(srv);
+    c.a.Store.loadSettings = (o => () => Object.assign({}, o(), { periodeAktif: '2026-10-01' }))(c.a.Store.loadSettings);
+    const fccOk = (() => { try { return vmEval(c, 'centralSourcesStatus_(FCC_SOURCE_KEYS_)'); } catch (e) { return { err: e.message }; } })();
+    rec('T4B-24', 'P1_19 D: Kontrol Keuangan (FCC) ikut gagal tertutup saat periode aktif tidak valid', fccOk && fccOk.ok === false && /periode aktif tidak valid/.test(fccOk.alasan[0]), J(fccOk).slice(0, 120)); }
 
   const pass = R.filter(r => r.st === 'PASS').length, fail = R.filter(r => r.st === 'FAIL').length, info = R.filter(r => r.st === 'INFO').length;
   R.forEach(r => console.log(r.st + ' ' + r.id + ' [' + r.tc + '] ' + r.d));

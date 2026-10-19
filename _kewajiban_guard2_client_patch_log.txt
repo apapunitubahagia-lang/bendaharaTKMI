@@ -1,0 +1,11 @@
+kwRp_ + arrearsBadge
+fmtRp(totalKewajibanSiswa|totalSisaSiswa) -> kwRp_ (8x)
+resi sisa siswa
+resi sisa agregat
+exportReport kewajiban
+FCC periode
+pwSubmit
+submitPenerimaan
+openQuickAlokasi
+pw banner
+submitLaporanBulanan
