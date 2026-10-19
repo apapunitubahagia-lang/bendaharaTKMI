@@ -172,7 +172,7 @@ const BANK_NYATA = { '2026-09-30': 8000000, '2026-10-31': 8300000 }; // rekening
     const grant = code(safe(() => srv.sb.opUserUpsert({ email: 'kepsek.palsu@x.id', nama: 'Kepala (dibuat bendahara)', role: 'KEPALA_SEKOLAH', unit: '', status: 'ACTIVE' })));
     srv.state.email = 'kepsek.palsu@x.id'; const asKs = srv.sb.getCurrentUserIdentity();
     rec('AU-K7-01', 'K-RAB-07 peran server', roles['bendahara@x.id'] === 'BENDAHARA' && roles['auditor@x.id'] === 'AUDITOR' && deny === 'ROLE_NOT_ALLOWED', 'server membedakan peran dari 26_USER_ACCESS: ' + J(roles) + '; peran baca-saja ditolak menulis: ' + deny);
-    rec('AU-K7-02', 'K-RAB-07 / pemisahan tugas (TEMUAN)', null, 'BENDAHARA dapat membuat pengguna ber-peran KEPALA_SEKOLAH lewat opUserUpsert: ' + grant + ' -> identitas server ' + J({ email: asKs.email, role: asKs.role, authorized: asKs.authorized }) + '. Persetujuan "Kepala Sekolah" tidak dapat dipercaya selama pengelolaan 26_USER_ACCESS ada di peran yang sama dengan pemohon');
+    rec('AU-K7-02', 'K-RAB-07 / pemisahan tugas (TEMUAN)', null, (grant === 'OK' ? 'TERBUKA: BENDAHARA dapat membuat' : 'TERTUTUP sejak P0-T7: BENDAHARA tidak dapat membuat') + ' pengguna ber-peran KEPALA_SEKOLAH lewat opUserUpsert: ' + grant + ' -> identitas server ' + J({ email: asKs.email, role: asKs.role, authorized: asKs.authorized }));
   }
 
   // ================= Sheet 30_ALOKASI_PENGELUARAN: risiko membaca sheet yang belum/salah tersedia =================

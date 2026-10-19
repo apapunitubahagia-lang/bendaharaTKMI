@@ -160,6 +160,47 @@ const renameCol = (srv, n, h) => { srv.sheets[n][0][col(srv, n, h)] = 'rusak_' +
     const n = rows(srv, '05_TRANSAKSI').filter(r => r[col(srv, '05_TRANSAKSI', 'tanggal')] === norm).length;
     const blocked = c.a.Store.loadTransaksi().filter(t => t.tanggal === norm && t._syncBlocked).length;
     rec('HD-T4-05', 'T4 otoritas server', norm === '2026-02-31' && n === 0 && (blocked === 1 || /tanggal/.test(msg)), 'normalizeDateValue klien "31/02/2026" -> ' + norm + '; tersimpan di server: ' + n + '; status klien: ' + (blocked ? 'gagal sinkron (diblokir)' : msg)); }
+  // ======================= T7: otorisasi pengelolaan peran =======================
+  const userRows = s => rows(s, '26_USER_ACCESS');
+  const accessAudits = s => rows(s, '13_AUDIT_LOG').filter(r => /^ACCESS_/.test(String(r[col(s, '13_AUDIT_LOG', 'aksi')]))).length;
+  const seedUser = (s, o) => { const H = s.sheets['26_USER_ACCESS'][0]; s.sheets['26_USER_ACCESS'].push(H.map(h => o[String(h).trim()] || '')); };
+  { const s = makeServer(); const n0 = userRows(s).length, a0 = accessAudits(s);
+    const r = ['KEPALA_SEKOLAH', 'YAYASAN'].map(role => code(s.sb.opUserUpsert({ email: role.toLowerCase() + '.baru@x.id', nama: 'X', role, unit: '', status: 'ACTIVE' })));
+    rec('HD-T7-01', 'T7 / GAP-048 / TC-AUTH-09', r.every(x => x === 'PRIVILEGED_ROLE_CHANGE_DENIED') && userRows(s).length === n0 && accessAudits(s) === a0, 'BENDAHARA membuat KEPALA_SEKOLAH/YAYASAN: ' + J(r) + '; baris & audit akses tidak bertambah'); }
+  { const s = makeServer();
+    const r = code(s.sb.opUserUpsert({ id: 'U2', email: 'auditor@x.id', nama: 'Auditor', role: 'KEPALA_SEKOLAH', unit: '', status: 'ACTIVE' }));
+    const role = userRows(s).find(x => x[0] === 'U2')[col(s, '26_USER_ACCESS', 'role')];
+    rec('HD-T7-02', 'T7 / TC-AUTH-09', r === 'PRIVILEGED_ROLE_CHANGE_DENIED' && role === 'AUDITOR', 'ubah AUDITOR -> KEPALA_SEKOLAH: ' + r + ', peran tetap ' + role); }
+  { const s = makeServer();
+    const up = role => code(s.sb.opUserUpsert({ id: 'U1', email: 'bendahara@x.id', nama: 'B', role, unit: 'MI', status: 'ACTIVE' }));
+    const res = { keKepsek: up('KEPALA_SEKOLAH'), keYayasan: up('YAYASAN'), turunAuditor: up('AUDITOR'),
+      pindahEmail: code(s.sb.opUserUpsert({ id: 'U1', email: 'bendahara.lain@x.id', nama: 'B', role: 'BENDAHARA', unit: 'MI', status: 'ACTIVE' })), ubahNama: code(s.sb.opUserUpsert({ id: 'U1', email: 'bendahara@x.id', nama: 'Bendahara Baru', role: 'BENDAHARA', unit: 'MI', status: 'ACTIVE' })) };
+    rec('HD-T7-03', 'T7 akun sendiri', res.keKepsek === 'PRIVILEGED_ROLE_CHANGE_DENIED' && res.keYayasan === 'PRIVILEGED_ROLE_CHANGE_DENIED' && res.turunAuditor === 'SELF_LOCKOUT' && res.pindahEmail === 'SELF_ROLE_CHANGE_DENIED' && res.ubahNama === 'OK', J(res)); }
+  { const s = makeServer(); seedUser(s, { id: 'U_KS', email: 'kepsek@x.id', nama: 'Kepsek', role: 'KEPALA_SEKOLAH', unit: '', status: 'ACTIVE' });
+    const up = o => code(s.sb.opUserUpsert(Object.assign({ id: 'U_KS', email: 'kepsek@x.id', nama: 'Kepsek', role: 'KEPALA_SEKOLAH', unit: '', status: 'ACTIVE' }, o)));
+    const res = { nonaktif: up({ status: 'INACTIVE' }), turunkan: up({ role: 'AUDITOR' }), pindahEmail: up({ email: 'kepsek.lain@x.id' }), ubahNama: up({ nama: 'Nama Lain' }) };
+    const ks = userRows(s).find(x => x[0] === 'U_KS');
+    rec('HD-T7-04', 'T7 pengguna istimewa yang ada', Object.values(res).every(x => x === 'PRIVILEGED_ROLE_CHANGE_DENIED') && ks[col(s, '26_USER_ACCESS', 'status')] === 'ACTIVE' && ks[col(s, '26_USER_ACCESS', 'email')] === 'kepsek@x.id', J(res)); }
+  { const s = makeServer();
+    const res = { auditorBaru: code(s.sb.opUserUpsert({ email: 'aud2@x.id', nama: 'A2', role: 'AUDITOR', unit: '', status: 'ACTIVE' })), bendaharaBaru: code(s.sb.opUserUpsert({ email: 'ben2@x.id', nama: 'B2', role: 'BENDAHARA', unit: 'TK', status: 'ACTIVE' })),
+      nonaktifAuditor: code(s.sb.opUserUpsert({ id: 'U2', email: 'auditor@x.id', nama: 'Auditor', role: 'AUDITOR', unit: '', status: 'INACTIVE' })) };
+    rec('HD-T7-05', 'T7 operasi yang tetap diizinkan', Object.values(res).every(x => x === 'OK'), J(res) + ' (BENDAHARA -> BENDAHARA/AUDITOR; keputusan D-T7 apakah BENDAHARA boleh menambah BENDAHARA lain)'); }
+  { const s = makeServer();
+    const spoof = code(s.sb.opUserUpsert({ email: 'ks3@x.id', nama: 'X', role: 'KEPALA_SEKOLAH', unit: '', status: 'ACTIVE', actorRole: 'YAYASAN', identity: { role: 'YAYASAN' }, createdBy: 'yayasan@x.id' }));
+    const idDeps = s.sb.getCurrentUserIdentity({ getEmail: 'yayasan@x.id', lookupUserAccess: 'x' }); // objek JSON dari klien: bukan fungsi
+    s.state.email = 'auditor@x.id'; const aud = code(s.sb.opUserUpsert({ email: 'z@x.id', nama: 'Z', role: 'AUDITOR', unit: '', status: 'ACTIVE' }));
+    s.state.email = 'bendahara@x.id';
+    rec('HD-T7-06', 'T7 parameter klien', spoof === 'PRIVILEGED_ROLE_CHANGE_DENIED' && idDeps.authorized === false && aud === 'ROLE_NOT_ALLOWED',
+      'field identitas/peran palsu di payload diabaikan: ' + spoof + '; getCurrentUserIdentity dgn objek klien -> authorized=' + idDeps.authorized + ' (' + idDeps.code + '); AUDITOR menulis akses -> ' + aud); }
+  { const srv = makeServer(); const c = await bootClient(srv);
+    await c.sb.pdUsersLoad();
+    Object.assign(c.fields, { usr_email: 'kepsek.ui@x.id', usr_nama: 'Kepsek UI', usr_role: 'KEPALA_SEKOLAH', usr_unit: 'MI', usr_status: 'ACTIVE' });
+    await c.sb.pdUserSave(null);
+    rec('HD-T7-07', 'T7 UI', /PRIVILEGED_ROLE_CHANGE_DENIED|tidak dapat memberikan/.test(c.toast()) && !userRows(srv).some(r => r[1] === 'kepsek.ui@x.id'), 'toast: ' + c.toast()); }
+  { const s = makeServer(); s.sb.opUserUpsert({ email: 'kepsek.palsu@x.id', nama: 'Palsu', role: 'KEPALA_SEKOLAH', unit: '', status: 'ACTIVE' });
+    s.state.email = 'kepsek.palsu@x.id'; const id = s.sb.getCurrentUserIdentity();
+    rec('HD-T7-08', 'T7 skenario AU-K7-02 tertutup', id.authorized === false && id.code === 'USER_NOT_FOUND', 'akun penyetuju "palsu" tidak terbentuk: ' + J({ authorized: id.authorized, code: id.code })); }
+  rec('HD-T7-09', 'GAP-005 (INFO)', null, 'Identitas aktor = Session.getActiveUser() + 26_USER_ACCESS. Keandalannya di Apps Script live BELUM diverifikasi (executeAs/akses web app belum diputuskan) - autentikasi live TIDAK diklaim aman.');
   const pass = R.filter(r => r.st === 'PASS').length, fail = R.filter(r => r.st === 'FAIL').length, info = R.filter(r => r.st === 'INFO').length;
   R.forEach(r => console.log(r.st + ' ' + r.id + ' [' + r.tc + '] ' + r.d));
   console.log('\nPASS=' + pass + ' FAIL=' + fail + ' INFO=' + info);

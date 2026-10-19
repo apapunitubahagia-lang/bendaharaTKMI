@@ -245,16 +245,20 @@ const sync = async (c) => { await c.sb.centralRunSync(true); await tick(5); };
     // ===== USERS =====
     await c.sb.pdUsersLoad();
     rec('U1 daftar pengguna dimuat dari 26_USER_ACCESS', /bendahara@x\.id/.test(c.el('pdUsersOut').innerHTML));
-    Object.assign(c.fields, { usr_email: 'kepsek@x.id', usr_nama: 'Kepsek', usr_role: 'KEPALA_SEKOLAH', usr_unit: 'MI', usr_status: 'ACTIVE' });
+    // [P0-T7, 19-10-2026] U2/U3 memakai peran AUDITOR (semula KEPALA_SEKOLAH): BENDAHARA tidak lagi boleh memberi peran penyetuju
+    // (temuan T7; Master Task P0 Bagian C). Penolakan KEPALA_SEKOLAH lewat UI diuji di p0_hardening_tests HD-T7-*.
+    Object.assign(c.fields, { usr_email: 'staf@x.id', usr_nama: 'Staf', usr_role: 'AUDITOR', usr_unit: 'MI', usr_status: 'ACTIVE' });
     await c.sb.pdUserSave(null);
-    const u2 = rows(srv, '26_USER_ACCESS').find(r => r[1] === 'kepsek@x.id');
+    const u2 = rows(srv, '26_USER_ACCESS').find(r => r[1] === 'staf@x.id');
     rec('U2 tambah pengguna: baris baru (id gas_usr_*), audit ACCESS_CREATE', !!u2 && String(u2[0]).startsWith('gas_usr_') && audits(srv).includes('ACCESS_CREATE'));
     await c.sb.pdUserSave(null);
-    rec('U3 email duplikat ditolak (DUPLICATE), tidak ada baris baru', /DUPLICATE|terdaftar/.test(c.toast()) && rows(srv, '26_USER_ACCESS').filter(r => r[1] === 'kepsek@x.id').length === 1, c.toast());
+    rec('U3 email duplikat ditolak (DUPLICATE), tidak ada baris baru', /DUPLICATE|terdaftar/.test(c.toast()) && rows(srv, '26_USER_ACCESS').filter(r => r[1] === 'staf@x.id').length === 1, c.toast());
     Object.assign(c.fields, { usr_email: 'bendahara@x.id', usr_nama: 'B', usr_role: 'BENDAHARA', usr_unit: 'MI', usr_status: 'INACTIVE' });
     const selfId = rows(srv, '26_USER_ACCESS').find(r => r[1] === 'bendahara@x.id')[0];
     await c.sb.pdUserSave(selfId);
     rec('U4 tidak boleh menonaktifkan akun sendiri (SELF_LOCKOUT)', rows(srv, '26_USER_ACCESS').find(r => r[1] === 'bendahara@x.id')[5] === 'ACTIVE' && /sendiri|SELF_LOCKOUT/.test(c.toast()), c.toast());
+    // [P0-T7] pengguna KEPALA_SEKOLAH disiapkan langsung di sheet (pemilik spreadsheet, di luar aplikasi) - satu-satunya jalur sah saat ini
+    { const H = srv.sheets['26_USER_ACCESS'][0]; srv.sheets['26_USER_ACCESS'].push(H.map(h => ({ id: 'U_KS', email: 'kepsek@x.id', nama: 'Kepsek', role: 'KEPALA_SEKOLAH', unit: 'MI', status: 'ACTIVE' })[String(h).trim()] || '')); }
     srv.state.email = 'kepsek@x.id';
     const denied = srv.sb.opUserUpsert({ email: 'z@x.id', nama: 'Z', role: 'AUDITOR', unit: '', status: 'ACTIVE' });
     const deniedTrx = srv.sb.opCreateExpense({ clientRequestId: 'TEST_deny', tanggal: '2026-09-01', unit: 'MI', nominal: 1, akunId: 'akun_kas1', metode: 'Tunai', kategori: 'ATK', penerima: 'x' });

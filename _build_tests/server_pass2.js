@@ -90,7 +90,9 @@ rec('S ObligationEngine: fungsi bisnis = salinan verbatim dari HTML (dihasilkan,
     rec('R21 audit mirror UI_ tercatat append-only', r.ok && audits(s).includes('UI_TAMBAH_ANGGARAN') && B.opAuditAppend([]).code === 'VALIDATION_ERROR');
     // R22 users
     r = B.opUserList(); rec('R22 daftar pengguna', r.ok && r.data.users.length === 2 && r.data.me === 'bendahara@x.id');
-    r = B.opUserUpsert({ email: ' Kepsek@X.id ', nama: 'Kepsek', role: 'KEPALA_SEKOLAH', unit: '', status: 'ACTIVE' });
+    // [P0-T7, 19-10-2026] peran diganti KEPALA_SEKOLAH -> AUDITOR: BENDAHARA tidak lagi boleh memberi peran penyetuju (temuan T7,
+    // AU-K7-02; Master Task P0 Bagian C). Tujuan R23 (normalisasi email, id server, audit) tetap; penolakan KEPALA_SEKOLAH diuji HD-T7-*.
+    r = B.opUserUpsert({ email: ' Kepsek@X.id ', nama: 'Kepsek', role: 'AUDITOR', unit: '', status: 'ACTIVE' });
     rec('R23 tambah pengguna: email dinormalisasi lowercase, id server, audit ACCESS_CREATE', r.ok && s.sheets['26_USER_ACCESS'][3][1] === 'kepsek@x.id' && String(s.sheets['26_USER_ACCESS'][3][0]).startsWith('gas_usr_') && audits(s).includes('ACCESS_CREATE'));
     rec('R24 email duplikat / role tak dikenal / email tak valid ditolak', B.opUserUpsert({ email: 'kepsek@x.id', nama: 'K', role: 'AUDITOR' }).code === 'DUPLICATE' && B.opUserUpsert({ email: 'a@b.id', nama: 'K', role: 'ADMIN' }).code === 'VALIDATION_ERROR' && B.opUserUpsert({ email: 'bukan-email', nama: 'K', role: 'AUDITOR' }).code === 'VALIDATION_ERROR');
     rec('R25 proteksi lockout: tidak bisa nonaktifkan/turunkan akun sendiri', B.opUserUpsert({ id: 'U1', email: 'bendahara@x.id', nama: 'B', role: 'BENDAHARA', unit: 'MI', status: 'INACTIVE' }).code === 'SELF_LOCKOUT' && B.opUserUpsert({ id: 'U1', email: 'bendahara@x.id', nama: 'B', role: 'AUDITOR', unit: 'MI', status: 'ACTIVE' }).code === 'SELF_LOCKOUT');

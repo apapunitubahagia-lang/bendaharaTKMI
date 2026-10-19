@@ -10,6 +10,14 @@
 
 var OP_USER_ROLES_ = ['BENDAHARA', 'KEPALA_SEKOLAH', 'YAYASAN', 'AUDITOR'];
 var OP_EMAIL_RE_ = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+/* [P0-T7] Pengelolaan peran. Peran istimewa (penyetuju/pengawas) TIDAK dapat diberikan, dicabut, atau diubah lewat
+   aplikasi oleh BENDAHARA (pemohon/pembuat transaksi), agar BENDAHARA tidak dapat membuat "persetujuan" atas dirinya
+   sendiri. Peran BENDAHARA hanya boleh memberi peran dalam OP_ROLE_ASSIGNABLE_BY_[peranAktor]. Identitas & peran aktor
+   SELALU dari sesi server (opGate_ -> getCurrentUserIdentity), tidak pernah dari parameter klien.
+   Pemberian peran istimewa saat ini hanya di luar aplikasi (pemilik spreadsheet) sampai peran admin terpisah diputuskan
+   (keputusan D-T7, P1_14). */
+var OP_PRIVILEGED_ROLES_ = ['KEPALA_SEKOLAH', 'YAYASAN'];
+var OP_ROLE_ASSIGNABLE_BY_ = { BENDAHARA: ['BENDAHARA', 'AUDITOR'] };
 
 function opUserList() {
   var g = opGate_(OP_WRITE_ROLES_); if (!g.ok) return g;
@@ -39,11 +47,17 @@ function opUserUpsert(record) {
       for (i = 0; i < m.rows.length; i++) { if (rid ? String(m.rows[i][c('id')]) === rid : false) { idx = i; break; } }
       if (rid && idx === -1) return errResult_('NOT_FOUND', 'Pengguna tidak ditemukan', 'id');
       for (i = 0; i < m.rows.length; i++) { if (i !== idx && opNorm_(m.rows[i][c('email')]) === email) return errResult_('DUPLICATE', 'Email sudah terdaftar', 'email'); }
+      // [P0-T7] otorisasi peran (sebelum lockout & penulisan)
+      var actorEmail = opNorm_(g.identity.email), allowed = OP_ROLE_ASSIGNABLE_BY_[g.identity.role] || [];
+      var curRole = idx >= 0 ? opStr_(m.rows[idx][c('role')]) : '', curEmail = idx >= 0 ? opNorm_(m.rows[idx][c('email')]) : '';
+      if (idx >= 0 && OP_PRIVILEGED_ROLES_.indexOf(curRole) !== -1) return errResult_('PRIVILEGED_ROLE_CHANGE_DENIED', 'Pengguna berperan ' + curRole + ' tidak dapat diubah, dinonaktifkan, atau dipindah email lewat aplikasi oleh peran ' + g.identity.role, 'role');
+      if (allowed.indexOf(role) === -1) return errResult_('PRIVILEGED_ROLE_CHANGE_DENIED', 'Peran ' + g.identity.role + ' tidak dapat memberikan peran ' + role, 'role');
       // proteksi lockout: tidak boleh menonaktifkan/menurunkan diri sendiri, dan harus tersisa >=1 BENDAHARA ACTIVE
       var after = m.rows.map(function (r, k) { return k === idx ? { email: email, role: role, status: status } : { email: opNorm_(r[c('email')]), role: String(r[c('role')]), status: String(r[c('status')]) }; });
       if (idx === -1) after.push({ email: email, role: role, status: status });
       if (opNorm_(g.identity.email) === email && (status !== 'ACTIVE' || role !== 'BENDAHARA')) return errResult_('SELF_LOCKOUT', 'Tidak boleh menonaktifkan atau menurunkan akun sendiri', 'status');
       if (!after.some(function (u) { return u.role === 'BENDAHARA' && u.status === 'ACTIVE'; })) return errResult_('SELF_LOCKOUT', 'Harus tersisa minimal satu BENDAHARA aktif', 'role');
+      if (idx >= 0 && curEmail === actorEmail && email !== actorEmail) return errResult_('SELF_ROLE_CHANGE_DENIED', 'Tidak boleh memindahkan akun sendiri ke email lain', 'email'); // [P0-T7]
       if (idx >= 0 && opNorm_(m.rows[idx][c('email')]) === email && opStr_(m.rows[idx][c('nama')]) === nama && opStr_(m.rows[idx][c('role')]) === role && opStr_(m.rows[idx][c('unit')]) === unit && opStr_(m.rows[idx][c('status')]) === status) {
         // [GAP-031] replay tanpa perubahan = satu efek: tidak menulis updatedAt dan tidak mengaudit ulang
         var same = okResult_('Akses pengguna tidak berubah (sudah sama)', opJsonSafe_(opRowObj_(m.live, m.rows[idx]))); same.data.unchanged = true; return same;
