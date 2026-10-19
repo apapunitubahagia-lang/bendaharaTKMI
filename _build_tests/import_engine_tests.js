@@ -133,8 +133,25 @@ const NOMCOL = { pengeluaran: 'nominal', pemasukan: 'nominal', rab: 'nominal', l
     const r2 = importAll(srv, 'pemasukan', b2);
     const b3 = [{ tanggal: '2026-10-03', nominal: '10000', unit: 'MI', akun: 'Kasir', metode: 'Tunai', sumber: 'Pembayaran Siswa', namaSiswa: 'ZAHRA', kelas: '3 Abdul', komponen: 'SPP' }];
     const n2 = rows(srv, '05_TRANSAKSI').length, p3 = plan(srv, 'pemasukan', b3), r3 = importAll(srv, 'pemasukan', b3);
-    rec('IE-20', 'D-IMP-4 kelebihan atas sisa kewajiban = PERINGATAN (kredit, kebijakan berlaku); kewajiban sudah lunas -> alokasi tidak valid -> TOLAK (tidak disimpan)', r2.plan.data.rows[0].kode.includes('SISA_TIDAK_TERALOKASI') && cnt(r2.hasil, 'TERSIMPAN') === 1 && p3.data.rows[0].kelas === 'TOLAK' && p3.data.rows[0].kode.includes('KEWAJIBAN_TIDAK_ADA') && rows(srv, '05_TRANSAKSI').length === n2,
-      J(r2.plan.data.rows[0].kode) + ' / ' + J(p3.data.rows[0].kode)); }
+    const T = rows(srv, '05_TRANSAKSI'), tc = h => col(srv, '05_TRANSAKSI', h);
+    const t2 = T.find(x => x[tc('nominal')] === 60000), t3 = T.find(x => x[tc('nominal')] === 10000);
+    const al2 = rows(srv, '06_ALOKASI').filter(a => a[col(srv, '06_ALOKASI', 'transaksiId')] === (t2 && t2[0])).map(a => [a[col(srv, '06_ALOKASI', 'periode')], a[col(srv, '06_ALOKASI', 'nominal')]]);
+    const al3 = rows(srv, '06_ALOKASI').filter(a => a[col(srv, '06_ALOKASI', 'transaksiId')] === (t3 && t3[0])).length;
+    const lb2 = r2.plan.data.rows[0].lebihBayar, lb3 = p3.data.rows[0].lebihBayar;
+    // [Keputusan 1, diminta eksplisit 19-10-2026] ekspektasi IE-20 diubah: lebih bayar penuh TIDAK lagi ditolak otomatis
+    rec('IE-20', 'Keputusan 1: KELEBIHAN PEMBAYARAN = PERINGATAN; nominal transaksi = pembayaran; terpenuhi & kelebihan dipisah; kelebihan tidak dialokasikan ke periode berikutnya; lunas penuh tetap tersimpan tanpa alokasi',
+      r2.plan.data.rows[0].kelas === 'PERINGATAN' && r2.plan.data.rows[0].kode.includes('KELEBIHAN_PEMBAYARAN') && J(lb2) === J({ nominalPembayaran: 60000, kewajibanTerpenuhi: 50000, kelebihanPembayaran: 10000 }) && J(al2) === J([['September 2026', 50000]]) &&
+      p3.data.rows[0].kelas === 'PERINGATAN' && J(lb3) === J({ nominalPembayaran: 10000, kewajibanTerpenuhi: 0, kelebihanPembayaran: 10000 }) && cnt(r3.hasil, 'TERSIMPAN') === 1 && al3 === 0 && rows(srv, '05_TRANSAKSI').length === n2 + 1 &&
+      t2[tc('status')] === 'OVERPAYMENT_CREDIT' && t3[tc('status')] === 'TERIDENTIFIKASI',
+      J({ lb2, al2, st2: t2 && t2[tc('status')], lb3, al3, st3: t3 && t3[tc('status')] })); }
+  { const srv = fresh(); srv.sheets['02_KOMPONEN'].push(['kmp_tanpa_tarif', 'Seragam', 'MI', 'SekaliBayar', 'Aktif', '']);
+    const p = plan(srv, 'pemasukan', [{ tanggal: '2026-10-01', nominal: '50000', unit: 'MI', akun: 'Kasir', metode: 'Tunai', sumber: 'Pembayaran Siswa', namaSiswa: 'ZAHRA', kelas: '3 Abdul', komponen: 'Seragam' },
+      { tanggal: '2026-10-01', nominal: '900000', unit: 'MI', akun: 'Kasir', metode: 'Tunai', sumber: 'Pembayaran Siswa', namaSiswa: 'ZAHRA', kelas: '3 Abdul', komponen: 'SPP', periodeKomponen: 'Agustus 2026' },
+      { tanggal: '2026-10-01', nominal: '50000', unit: 'MI', akun: 'Kasir', metode: 'Tunai', sumber: 'Pembayaran Siswa', namaSiswa: 'ZAHRA', kelas: '3 Abdul', komponen: 'SPP', periodeKomponen: 'Desember 2026' }]);
+    const rr = p.data.rows;
+    rec('IE-20b', 'Keputusan 1: kewajiban tidak ada (tanpa tarif / periode setelah periode aktif) tetap TOLAK; periode eksplisit diisi sisa periode itu saja, kelebihan tidak berpindah periode',
+      J(rr.map(x => x.kelas)) === J(['TOLAK', 'PERINGATAN', 'TOLAK']) && rr[0].kode.includes('KEWAJIBAN_TIDAK_ADA') && J(rr[1].payload.allocations.map(a => [a.periode, a.nominal])) === J([['Agustus 2026', 200000]]) && rr[1].lebihBayar.kelebihanPembayaran === 700000 && rr[2].kode.includes('KEWAJIBAN_TIDAK_ADA'),
+      J(rr.map(x => x.kelas + ':' + x.kode.join(','))) + ' alokasi baris2 ' + J(rr[1].payload.allocations.map(a => [a.periode, a.nominal]))); }
   { const srv = fresh(); const b = [{ tanggal: '2026-10-01', nominal: '100000', unit: 'MI', akun: 'Kasir', metode: 'Tunai', sumber: 'Pembayaran Siswa', namaSiswa: 'Zahra', kelas: '3 Abdul', komponen: 'SPP' }, { tanggal: '2026-10-01', nominal: '100000', unit: 'MI', akun: 'Kasir', metode: 'Tunai', sumber: 'Pembayaran Siswa', namaSiswa: 'Zahraa', kelas: '9', komponen: 'SPP' }];
     const p = plan(srv, 'pemasukan', b);
     rec('IE-21', 'siswa ambigu/mirip -> PERLU_KEPUTUSAN (tidak dicocokkan otomatis)', p.data.rows[1].kelas === 'PERLU_KEPUTUSAN' && p.data.rows[1].kode.includes('SISWA_AMBIGU'), J(kelasOf(p)) + ' ' + J(p.data.rows[1].keputusanPerlu.map(k => k.label))); }

@@ -7583,22 +7583,30 @@ function impRowPemasukan_(res, r, k, D, st) {
     minta.forEach(function (x) { if (!(D.komponen || []).some(function (c) { return c.id === x.komponenId; })) impTolak_(res, 'KOMPONEN_TIDAK_DIKENAL', 'komponen ' + x.komponenId + ' tidak ada di master'); });
     if (!siswa && !res._putus) impTolak_(res, 'ALOKASI_TANPA_SISWA', 'alokasi komponen membutuhkan siswa yang teridentifikasi');
     if (siswa && !res._tolak && !res._putus && typeof D.kewajiban === 'function') {
-      var obs = D.kewajiban(siswa.id) || [];
+      var obs = D.kewajiban(siswa.id) || [], lebih = 0;
       minta.forEach(function (x) {
         var cand = obs.filter(function (o) { return o.komponenId === x.komponenId && (!x.periode || o.periode === x.periode); }).sort(function (a, b) { return impPeriodSortKey_(a.periode) - impPeriodSortKey_(b.periode); });
         var sisaKey = function (o) { return o.sisa - (st.pakai[o.key] || 0); };
-        if (x.periode && !cand.length) { impTolak_(res, 'KEWAJIBAN_TIDAK_ADA', 'kewajiban ' + x.komponenId + ' ' + x.periode + ' tidak ada untuk siswa ini'); return; }
-        if (x.periode && sisaKey(cand[0]) + 0.5 < x.nominal) { impTolak_(res, 'ALOKASI_MELEBIHI_KEWAJIBAN', 'nominal melebihi sisa kewajiban ' + x.periode + ' (' + sisaKey(cand[0]) + ')'); return; }
-        var left = x.nominal, got = 0;
-        cand.forEach(function (o) { var s = sisaKey(o); if (left <= 0.5 || s <= 0.5) return; var take = Math.min(s, left); allocations.push({ siswaId: siswa.id, komponenId: x.komponenId, periode: o.periode, nominal: take, tagihanId: o.tagihanId || '', _key: o.key }); left -= take; got += take; });
-        if (got <= 0.5) impTolak_(res, 'KEWAJIBAN_TIDAK_ADA', 'tidak ada sisa kewajiban ' + x.komponenId + ' untuk siswa ini (alokasi wajib tidak valid)');
-        else if (left > 0.5) impWarn_(res, 'SISA_TIDAK_TERALOKASI', 'Rp' + left + ' melebihi sisa kewajiban ' + x.komponenId + '; tetap di transaksi sebagai kelebihan bayar (kebijakan yang berlaku)');
+        // tidak ada kewajiban sama sekali untuk komponen/periode itu = alokasi tidak valid (D-IMP-4)
+        if (!cand.length) { impTolak_(res, 'KEWAJIBAN_TIDAK_ADA', 'kewajiban ' + x.komponenId + (x.periode ? ' ' + x.periode : '') + ' tidak ada untuk siswa ini (tarif/periode/klasifikasi tidak berlaku)'); return; }
+        // [Keputusan 1] hanya kewajiban yang ada (s.d. periode aktif) yang diisi; kelebihan TIDAK dialokasikan ke periode berikutnya
+        var left = x.nominal;
+        cand.forEach(function (o) { var s = sisaKey(o); if (left <= 0.5 || s <= 0.5) return; var take = Math.min(s, left); allocations.push({ siswaId: siswa.id, komponenId: x.komponenId, periode: o.periode, nominal: take, tagihanId: o.tagihanId || '', _key: o.key }); left -= take; });
+        if (left > 0.5) lebih += left;
       });
+      if (lebih > 0.5 && !res._tolak) {
+        var terpenuhi = allocations.reduce(function (t, a) { return t + a.nominal; }, 0);
+        var lainSisa = obs.filter(function (o) { return !minta.some(function (x) { return x.komponenId === o.komponenId; }); }).reduce(function (t, o) { return t + Math.max(0, o.sisa - (st.pakai[o.key] || 0)); }, 0);
+        impWarn_(res, 'KELEBIHAN_PEMBAYARAN', 'KELEBIHAN PEMBAYARAN: pembayaran ' + nominal + ', kewajiban terpenuhi ' + terpenuhi + ', kelebihan ' + lebih + ' (tidak dialokasikan ke periode berikutnya; tetap di transaksi). ' +
+          (lainSisa > 0.5 ? 'Siswa masih punya sisa kewajiban komponen lain ' + lainSisa + ' -> status server SEBAGIAN_TERALOKASI (dapat dialokasikan manual).' : (terpenuhi > 0.5 ? 'Status server OVERPAYMENT_CREDIT (kelebihan bayar/kredit).' : 'Tanpa alokasi -> status server TERIDENTIFIKASI.')));
+        res._lebih = { nominalPembayaran: nominal, kewajibanTerpenuhi: terpenuhi, kelebihanPembayaran: lebih };
+      }
     } else if (siswa && typeof D.kewajiban !== 'function') impWarn_(res, 'ALOKASI_DIPERIKSA_SERVER', 'alokasi dihitung & diperiksa server saat pratinjau');
   } else if (!impS_(r.komponen)) impWarn_(res, 'TANPA_ALOKASI', 'tanpa alokasi komponen; transaksi masuk daftar Belum Diproses');
   if (!res._tolak && tanggal && nominal) impCekDuplikatTrx_(res, D, 'PENERIMAAN', tanggal, nominal, [r.ftNumber, r.namaPengirim, r.uraian]);
   res.nominal = nominal;
   res.nilai = { tanggal: tanggal, unit: unit, nominal: nominal, akun: akun ? akun.nama : '', metode: metode, sumber: sumber, siswa: siswa ? siswa.nama : '', alokasi: allocations.map(function (a) { return a.komponenId + ' ' + a.periode + ' ' + a.nominal; }).join('; ') };
+  if (res._lebih) { res.nilai.nominalPembayaran = res._lebih.nominalPembayaran; res.nilai.kewajibanTerpenuhi = res._lebih.kewajibanTerpenuhi; res.nilai.kelebihanPembayaran = res._lebih.kelebihanPembayaran; res.lebihBayar = res._lebih; }
   res.payload = { tanggal: tanggal, unit: unit, nominal: nominal, akunId: akun ? akun.id : '', metode: metode, sumber: sumber, siswaId: siswa ? siswa.id : '',
     _siswaNamaSnapshot: siswa ? siswa.nama : '', status: siswa ? 'TERIDENTIFIKASI' : 'TERCATAT', catatan: impS_(r.uraian), namaPengirim: impS_(r.namaPengirim), ftNumber: impS_(r.ftNumber),
     allocations: allocations.map(function (a) { return { siswaId: a.siswaId, komponenId: a.komponenId, periode: a.periode, nominal: a.nominal, tagihanId: a.tagihanId, caraBayar: 'manual' }; }) };
@@ -7788,7 +7796,7 @@ function impPlan_(modul, rows, opts, D) {
     // alokasi baris yang TIDAK dipilih dikembalikan agar baris berikut dialokasikan dari kewajiban tertua yang benar
     if (modul === 'pemasukan' && res._alokKeys) { if (res.dipilih) res._alokKeys.forEach(function (a) { st.pakai[a._key] = (st.pakai[a._key] || 0) + a.nominal; }); }
     if (modul === 'lpj' && !res.dipilih && res._lpjAdd) st.lpjPakai[res.payload.transaksiId] -= res._lpjAdd;
-    ['_tolak', '_putus', '_dup', '_alokKeys', '_sudahAda', '_lpjAdd'].forEach(function (x) { delete res[x]; });
+    ['_tolak', '_putus', '_dup', '_alokKeys', '_sudahAda', '_lpjAdd', '_lebih'].forEach(function (x) { delete res[x]; });
     out.push(res);
   });
   var ring = { total: out.length }, totalSumber = 0, totalDipilih = 0;
@@ -8049,6 +8057,8 @@ function impV2PratinjauHtml(){
   let h = '<div class="section-title">Pratinjau Server</div><div class="tiles">' + tile('Total', rg.total, '') + ['VALID','PERINGATAN','PERLU_KEPUTUSAN','DUPLIKAT','TOLAK','SUDAH_ADA'].filter(k=>rg[k]).map(k=>tile(k.replace('_', ' '), rg[k], {VALID:'good', TOLAK:'bad'}[k] || 'warn')).join('')+
     tile('Akan diimpor', nPilih, 'good') + tile('Sudah tersimpan (batch ini)', rg.sudahTersimpan || 0, '') + '</div>'+
     '<div class="kv"><div>Total nominal sumber</div><div>' + fmtRp(p.total.nominalSumber) + '</div><div>Total nominal dipilih</div><div>' + fmtRp(p.total.nominalDipilih) + '</div><div>Batch</div><div>' + esc(p.batchId) + '</div></div>';
+  const lb = p.rows.filter(r=>r.lebihBayar);
+  if(lb.length) h += '<div class="tile warn"><b>KELEBIHAN PEMBAYARAN</b> pada ' + lb.length + ' baris: pembayaran ' + fmtRp(lb.reduce((t, r)=>t + r.lebihBayar.nominalPembayaran, 0)) + ', kewajiban terpenuhi ' + fmtRp(lb.reduce((t, r)=>t + r.lebihBayar.kewajibanTerpenuhi, 0)) + ', kelebihan ' + fmtRp(lb.reduce((t, r)=>t + r.lebihBayar.kelebihanPembayaran, 0)) + '. Nominal transaksi tetap = pembayaran; kelebihan tidak dialokasikan ke periode berikutnya.</div>'; // [Keputusan 1]
   if(Object.keys(p.kolomTidakTersedia || {}).length) h += '<div class="tile warn">Kolom belum ada di sheet (nilai disimpan di sourceRow, bukan kolom): ' + esc(Object.keys(p.kolomTidakTersedia).join(', ')) + '</div>';
   if(!p.logSiap) h += '<div class="tile bad">Sheet log impor (31/32/33) belum dibuat di server. Penyimpanan ditolak sampai administrator menjalankan opImportSetup di salinan uji.</div>';
   const fb = Object.keys(butuh).filter(f=>butuh[f].k.opsi);

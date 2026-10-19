@@ -250,6 +250,8 @@ function impV2PratinjauHtml(){
   let h = '<div class="section-title">Pratinjau Server</div><div class="tiles">' + tile('Total', rg.total, '') + ['VALID','PERINGATAN','PERLU_KEPUTUSAN','DUPLIKAT','TOLAK','SUDAH_ADA'].filter(k=>rg[k]).map(k=>tile(k.replace('_', ' '), rg[k], {VALID:'good', TOLAK:'bad'}[k] || 'warn')).join('')+
     tile('Akan diimpor', nPilih, 'good') + tile('Sudah tersimpan (batch ini)', rg.sudahTersimpan || 0, '') + '</div>'+
     '<div class="kv"><div>Total nominal sumber</div><div>' + fmtRp(p.total.nominalSumber) + '</div><div>Total nominal dipilih</div><div>' + fmtRp(p.total.nominalDipilih) + '</div><div>Batch</div><div>' + esc(p.batchId) + '</div></div>';
+  const lb = p.rows.filter(r=>r.lebihBayar);
+  if(lb.length) h += '<div class="tile warn"><b>KELEBIHAN PEMBAYARAN</b> pada ' + lb.length + ' baris: pembayaran ' + fmtRp(lb.reduce((t, r)=>t + r.lebihBayar.nominalPembayaran, 0)) + ', kewajiban terpenuhi ' + fmtRp(lb.reduce((t, r)=>t + r.lebihBayar.kewajibanTerpenuhi, 0)) + ', kelebihan ' + fmtRp(lb.reduce((t, r)=>t + r.lebihBayar.kelebihanPembayaran, 0)) + '. Nominal transaksi tetap = pembayaran; kelebihan tidak dialokasikan ke periode berikutnya.</div>'; // [Keputusan 1]
   if(Object.keys(p.kolomTidakTersedia || {}).length) h += '<div class="tile warn">Kolom belum ada di sheet (nilai disimpan di sourceRow, bukan kolom): ' + esc(Object.keys(p.kolomTidakTersedia).join(', ')) + '</div>';
   if(!p.logSiap) h += '<div class="tile bad">Sheet log impor (31/32/33) belum dibuat di server. Penyimpanan ditolak sampai administrator menjalankan opImportSetup di salinan uji.</div>';
   const fb = Object.keys(butuh).filter(f=>butuh[f].k.opsi);
