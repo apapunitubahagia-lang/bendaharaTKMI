@@ -509,6 +509,7 @@ function createTransactionWithAllocations_(payload, opts) {
       }
       if (payload.akunId && !akunExists_(payload.akunId)) return errResult_('INVALID_ACCOUNT', 'akunId tidak valid (re-check)', 'akunId');
       if (payload.siswaId && !siswaExists_(payload.siswaId)) return errResult_('INVALID_STUDENT', 'siswaId tidak valid (re-check)', 'siswaId');
+      if (allocations.length && typeof engineAllocObligationCheck_ === 'function') { var obErr = engineAllocObligationCheck_(allocations); if (obErr) return obErr; } // [P1_19 B] sisa kewajiban di bawah kunci
       var plFlagsC = plFlags_([payload.tanggal]); // [P1-POLICY] penanda periode (tidak menolak), dihitung di dalam lock
 
       var trxId = ID_PREFIX_TRX + Utilities.getUuid();
@@ -643,6 +644,7 @@ function createAllocation_(payload) {
       if (newSum > Number(trx.nominal)) {
         return errResult_('ALLOCATION_EXCEEDS_TRANSACTION', 'total allocation (' + newSum + ') akan melebihi nominal transaksi (' + trx.nominal + ')', 'nominal');
       }
+      if (typeof engineAllocObligationCheck_ === 'function') { var obErrA = engineAllocObligationCheck_([payload]); if (obErrA) return obErrA; } // [P1_19 B] sisa kewajiban di bawah kunci
 
       var alokId = ID_PREFIX_ALK + Utilities.getUuid();
       var now = new Date().toISOString();
@@ -834,7 +836,7 @@ function updateTransaction_(payload) {
         else if (k === 'metode') { if (!next.metode || typeof next.metode !== 'string') e1 = 'metode wajib diisi'; }
         else if (k === 'status') e1 = validateStatus_(next.status);
         else if (k === 'akunId') { if (next.akunId && !akunExists_(next.akunId)) { e1 = 'akunId tidak ditemukan di ' + SHT_AKUN + ': ' + next.akunId; code = 'INVALID_ACCOUNT'; } }
-        else if (k === 'siswaId') { if (next.siswaId && !siswaExists_(next.siswaId)) { e1 = 'siswaId tidak ditemukan di ' + SHT_SISWA + ': ' + next.siswaId; code = 'INVALID_STUDENT'; } }
+        else if (k === 'siswaId') { if (allocSum > 0) { e1 = 'siswaId tidak dapat diubah: transaksi memiliki alokasi aktif (arsipkan alokasi lebih dulu)'; code = 'ALLOCATION_LOCKED'; } else if (next.siswaId && !siswaExists_(next.siswaId)) { e1 = 'siswaId tidak ditemukan di ' + SHT_SISWA + ': ' + next.siswaId; code = 'INVALID_STUDENT'; } } // [P1_19 B]
         else if (k === '_komponenHint') { if (next._komponenHint && !komponenExists_(next._komponenHint)) { e1 = 'komponen tidak ditemukan di ' + SHT_KOMPONEN + ': ' + next._komponenHint; code = 'INVALID_COMPONENT'; } }
         if (e1) field = k;
       });

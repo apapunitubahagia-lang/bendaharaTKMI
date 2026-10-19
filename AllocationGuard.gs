@@ -21,6 +21,11 @@ function opAllocGuard_(action, p) {
   if (!list.length) return null;
   var cid = opStr_(p.clientRequestId);
   if (cid) { var idem = checkIdempotency_(cid); if (idem && idem.status === 'found') return null; }
+  return allocObligationCheck_(list); // pemeriksaan awal (cepat gagal); OTORITAS = engineAllocObligationCheck_ di dalam kunci
+}
+/* [P1_19 B] Inti pemeriksaan kewajiban (tanpa logika idempotensi). Dibaca dari Sheets SAAT dipanggil. */
+function allocObligationCheck_(list) {
+  var prevCtx = OBL_CTX_;
   try {
     var ks = typeof kgStatus_ === 'function' ? kgStatus_() : { ok: true }; if (!ks.ok) return kgErr_(ks); // [P1-IMP C] periode/sumber tidak sah -> bukan OBLIGATION_NOT_FOUND palsu
     OBL_CTX_ = oblLoadContext_();
@@ -45,5 +50,12 @@ function opAllocGuard_(action, p) {
     return null;
   } catch (e) {
     return sgErr_(e, 'COMPUTE_FAILED', 'Gagal memeriksa kewajiban untuk alokasi'); // [P0-A]
-  } finally { OBL_CTX_ = null; }
+  } finally { OBL_CTX_ = prevCtx; }
+}
+/* [P1_19 B] Dipanggil engine (createTransactionWithAllocations_, createAllocation_) DI DALAM withLock_, setelah pemeriksaan
+   idempotensi dan sebelum baris apa pun ditulis: sisa kewajiban dibaca ulang di bawah kunci yang sama dengan penulisan, sehingga
+   dua permintaan bersamaan tidak dapat sama-sama lolos dengan sisa yang sudah kedaluwarsa. null = lolos. */
+function engineAllocObligationCheck_(list) {
+  if (!OP_ALLOC_GUARD_ENABLED_ || !list || !list.length) return null;
+  return allocObligationCheck_(list);
 }

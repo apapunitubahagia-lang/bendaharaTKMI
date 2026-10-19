@@ -1,0 +1,14 @@
+FAIL TI-01 [dua pembayaran Rp800.000 bersamaan untuk sisa Rp1.000.000 -> satu ditolak, total alokasi <= sisa] A SUCCESS, B SUCCESS, alokasi Juli 1600000, transaksi baru 2
+PASS TI-02 [dua pembayaran yang totalnya tepat = sisa -> keduanya tersimpan, sisa 0] A SUCCESS, B SUCCESS, alokasi 1000000
+PASS TI-03 [pratinjau dibuat sebelum transaksi lain disimpan -> server menolak rencana basi] A ALLOCATION_EXCEEDS_OBLIGATION - Total alokasi (800000) melebihi sisa kewajiban SPP Juli 2026 (200000)
+PASS TI-04 [retry setelah respons hilang (sisa sudah habis) -> replay idempoten, bukan transaksi/alokasi ganda dan bukan penolakan palsu] Request sudah pernah diproses (idempotent replay), alokasi 1000000
+PASS TI-05 [kegagalan tulis di tengah (alokasi) -> transaksi di-rollback, tidak ada catatan idempotensi; ulang tersimpan sekali] WRITE_FAILED -> SUCCESS
+FAIL TI-06 [perubahan alokasi bersamaan (dua alokasi Rp800.000 ke sisa Rp1.000.000) -> satu ditolak] A SUCCESS, B SUCCESS, alokasi 1600000
+PASS TI-07 [impor bersamaan dengan form biasa -> form tertahan (LOCK_TIMEOUT), lalu ditolak (sisa habis); total alokasi <= sisa] impor SUCCESS/TERSIMPAN, form saat impor LOCK_TIMEOUT, form ulang ALLOCATION_EXCEEDS_OBLIGATION, alokasi 800000
+FAIL TI-08 [koreksi transaksi beralokasi: nominal < alokasi / ganti siswa / ganti jenis ditolak; naikkan nominal tersimpan & status dihitung ulang; retry idempoten] ALLOCATION_EXCEEDS_TRANSACTION | SUCCESS | VALIDATION_ERROR | SUCCESS | Request sudah pernah di
+PASS TI-09 [periode aktif tidak valid -> pembayaran beralokasi & alokasi baru ditolak PERIODE_AKTIF_TIDAK_VALID] PERIODE_AKTIF_TIDAK_VALID / PERIODE_AKTIF_TIDAK_VALID
+PASS TI-10 [sumber kewajiban tidak tersedia / tidak lengkap -> alokasi ditolak dengan kode eksplisit] SUMBER_TIDAK_TERSEDIA / SCHEMA_MISMATCH
+PASS TI-11 [audit trail & kebijakan periode dipertahankan (periode ditutup = penanda, bukan penolakan; CREATE_TRANSACTION + CREATE_ALLOCATION + PERIODE_DITANDAI)] ["CLOSING_PERIODE","CREATE_TRANSACTION","CREATE_ALLOCATION","PERIODE_DITANDAI","API_CREATE_INCOME
+PASS TI-12 [jejak kunci jalur biasa: satu acq/rel, pemeriksaan kewajiban di dalam kunci yang sama dengan tulisan] A:acq,A:rel
+
+PASS=9 FAIL=3 INFO=0

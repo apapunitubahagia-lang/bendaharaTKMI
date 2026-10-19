@@ -1,0 +1,3 @@
+createTransactionWithAllocations_ cek kewajiban dalam kunci
+createAllocation_ cek kewajiban dalam kunci
+updateTransaction_ siswaId terkunci bila beralokasi

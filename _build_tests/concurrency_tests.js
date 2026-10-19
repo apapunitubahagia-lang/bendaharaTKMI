@@ -17,7 +17,10 @@ function fresh() {
     releaseLock() { if (L.holder === L.cur) { L.holder = null; L.log.push(L.cur + ':rel'); } } }) };
   s.L = L;
   /* menjalankan fn sebagai eksekusi lain (global per eksekusi dipisah) */
-  s.asExec = (id, fn) => { const prevCur = L.cur, prevDepth = s.sb.LOCK_DEPTH_; L.cur = id; if (prevDepth !== undefined) s.sb.LOCK_DEPTH_ = 0; try { return fn(); } finally { L.cur = prevCur; if (prevDepth !== undefined) s.sb.LOCK_DEPTH_ = prevDepth; } };
+  /* GLOBALS_PER_EKSEKUSI: Apps Script memberi tiap eksekusi global sendiri; di sandbox global dipindah-simpan saat berganti eksekusi */
+  const G_ = ['LOCK_DEPTH_', 'ENGINE_ACTOR_', 'ENGINE_API_', 'OBL_CTX_'];
+  s.asExec = (id, fn) => { const pc = L.cur, saved = {}; G_.forEach(k => { saved[k] = s.sb[k]; }); L.cur = id; if (saved.LOCK_DEPTH_ !== undefined) s.sb.LOCK_DEPTH_ = 0; s.sb.ENGINE_ACTOR_ = null; s.sb.ENGINE_API_ = null; s.sb.OBL_CTX_ = null;
+    try { return fn(); } finally { L.cur = pc; G_.forEach(k => { s.sb[k] = saved[k]; }); } };
   return s;
 }
 const trx = (t, n, p) => ({ tanggal: t, nominal: String(n), penerima: p, unit: 'MI', akun: 'Kasir', metode: 'Tunai', kategori: 'ATK' });
