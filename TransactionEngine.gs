@@ -85,7 +85,7 @@ var REGRESSION_BASELINE = {
 // ERROR CONTRACT
 // ============================================================
 /* [P0-A] SCHEMA_MISMATCH dibawa apa adanya; galat lain tetap WRITE_FAILED */
-function engineErrCode_(e) { return e && e.code === 'SCHEMA_MISMATCH' ? 'SCHEMA_MISMATCH' : 'WRITE_FAILED'; }
+function engineErrCode_(e) { return e && ['SCHEMA_MISMATCH', 'PERIODE_AKTIF_TIDAK_VALID', 'SUMBER_TIDAK_TERSEDIA'].indexOf(e.code) !== -1 ? e.code : 'WRITE_FAILED'; } // [P1-IMP C] kode kewajiban dipertahankan
 function errResult_(code, message, field, refId) {
   return { ok: false, code: code, message: message, field: field || null, refId: refId || null };
 }
@@ -382,6 +382,7 @@ function engineAllocStatusFor_(trx) {
   var ids = [];
   alok.map(function (a) { return a.siswaId; }).concat(trx.siswaId ? [trx.siswaId] : []).forEach(function (sid) { if (sid && ids.indexOf(sid) === -1) ids.push(sid); });
   if (typeof oblLoadContext_ !== 'function') throw new Error('ObligationEngine tidak tersedia untuk menghitung status alokasi');
+  if (typeof kgThrowIfBad_ === 'function') kgThrowIfBad_(); // [P1-IMP C] status SEBAGIAN/OVERPAYMENT tidak ditebak dari daftar kewajiban kosong
   var prev = OBL_CTX_, masih;
   try {
     OBL_CTX_ = oblLoadContext_();

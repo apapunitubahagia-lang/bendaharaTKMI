@@ -144,7 +144,9 @@ function impContext_(modul, rows, src, batchId) {
     OBL_CTX_ = oblLoadContext_();
     OBL_CTX_.alokasi = OBL_CTX_.alokasi.filter(function (a) { return !ownTrx[a.transaksiId]; });
     var memo = {};
+    var ksKw = kgStatus_();
     D.kewajiban = function (sid) {
+      if (!ksKw.ok) throw impErr_(ksKw.code, ksKw.message); // [P1-IMP C] alokasi impor tidak direncanakan dari daftar kewajiban kosong
       if (!memo[sid]) memo[sid] = kewajibanForSiswa(sid).map(function (o) { return { key: o.key, komponenId: o.komponenId, periode: o.periode, sisa: sisaObligation(o), tagihanId: o.tagihanId || '' }; });
       return memo[sid];
     };

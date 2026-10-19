@@ -222,11 +222,12 @@ function opObligations(opts) {
   var g = opGate_(OP_READ_ROLES_); if (!g.ok) return g;
   opts = opts && typeof opts === 'object' ? opts : {};
   try {
+    var ks = kgStatus_(); if (!ks.ok) return kgErr_(ks); // [P1-IMP C] bukan daftar kosong
     OBL_CTX_ = oblLoadContext_();
     var raw = opts.siswaId ? kewajibanForSiswa(String(opts.siswaId), opts.periode || undefined) : allObligationsAllSiswa(opts.periode || undefined);
     var rows = raw.map(oblPublicRow_);
     var tot = rows.reduce(function (t, r) { t.bruto += r.bruto; t.netto += r.netto; t.terbayar += r.terbayar; t.sisa += r.sisa; return t; }, { bruto: 0, netto: 0, terbayar: 0, sisa: 0 });
-    return okResult_('OK', { rows: rows, count: rows.length, totals: tot, periodeAktif: OBL_CTX_.settings.periodeAktif, computedAt: new Date().toISOString() });
+    return okResult_('OK', { rows: rows, count: rows.length, totals: tot, periodeAktif: OBL_CTX_.settings.periodeAktif, computedAt: new Date().toISOString(), statusData: 'LENGKAP' }); // [P1-IMP C] kosong di sini = kewajiban nol yang sah
   } catch (e) {
     return sgErr_(e, 'COMPUTE_FAILED', 'Gagal menghitung kewajiban');
   } finally { OBL_CTX_ = null; }
@@ -240,6 +241,7 @@ function oblSnapshotRow_(ob, siswa, id, now) {
 /* Inti pembekuan kewajiban. opts: { periode, semua, komponenIds[], siswaIds[], onlyWithAllocations }.
    Kewajiban yang SUDAH beku (punya tagihanId) tidak pernah disentuh -> tarif/hari yang dipakai tidak berubah walau tarif berubah. */
 function oblSnapshotCore_(opts) {
+  var ks0 = kgStatus_(); if (!ks0.ok) return kgErr_(ks0); // [P1-IMP C]
   try {
     OBL_CTX_ = oblLoadContext_();
     var byId = {}; OBL_CTX_.students.forEach(function (s) { byId[s.id] = s; });

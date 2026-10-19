@@ -22,6 +22,7 @@ function opAllocGuard_(action, p) {
   var cid = opStr_(p.clientRequestId);
   if (cid) { var idem = checkIdempotency_(cid); if (idem && idem.status === 'found') return null; }
   try {
+    var ks = typeof kgStatus_ === 'function' ? kgStatus_() : { ok: true }; if (!ks.ok) return kgErr_(ks); // [P1-IMP C] periode/sumber tidak sah -> bukan OBLIGATION_NOT_FOUND palsu
     OBL_CTX_ = oblLoadContext_();
     var cache = {}, groups = {}, i, key;
     for (i = 0; i < list.length; i++) {

@@ -14,6 +14,7 @@ async function boot(srv, opts) { const c = makeClient(srv, opts); c.sb.initializ
 const setPA = (srv, v) => { const i = srv.sheets['15_SETTINGS'].findIndex(r => r[0] === 'periodeAktif'); srv.sheets['15_SETTINGS'][i][1] = v; };
 const auditAksi = srv => srv.sheets['13_AUDIT_LOG'].slice(1).map(r => r[2]);
 const BASE = '25d258b';
+const col06 = srv => srv.sheets['06_ALOKASI'][0].indexOf('archivedAt');
 let baseJs = null;
 try { const h = cp.execSync('git show ' + BASE + ':Bendahara_V2.html', { cwd: __dirname + '/..', encoding: 'utf8', maxBuffer: 64 << 20 }).replace(/\r/g, ''); baseJs = h.match(/\n<script>\n([\s\S]*?)\n<\/script>/)[1]; } catch (e) { baseJs = null; }
 const kpiShape = k => ({ periode: k.periode, overall: k.overall, overallStatus: k.overallStatus, rows: k.rows.map(r => ({ kode: r.kode, skor: r.skor, status: r.status, bobot: r.bobot, ind: (r.indicators || []).map(i => [i.kode, i.bobot, i.capaian, i.activityStatus, i.target]) })) });
@@ -84,13 +85,51 @@ const kpiShape = k => ({ periode: k.periode, overall: k.overall, overallStatus: 
     const a = per('siswa_sept1'), b = per('siswa_tanpa1');
     rec('T4B-16', 'F7 dampak kewajiban: tanggalMasuk 2026-09-05 -> SPP mulai September 2026', a.length && a[0] === 'September 2026' && b[0] === 'Juli 2026' && b.length === a.length + 2, 'dengan tanggal ' + J(a) + ' | tanpa tanggal ' + J(b));
     setPA(srv, '2026-10-01');
-    rec('T4B-17', 'F8 dampak kewajiban server saat periodeAktif tidak valid (TEMUAN)', null, 'periodeAktif "2026-10-01" -> SPP siswa tanpa tanggal: ' + J(per('siswa_tanpa1')) + ' (enumerasi berhenti karena label tidak dikenal; KPI kini gagal tertutup, tampilan kewajiban belum)'); }
+    const o17 = srv.sb.opObligations({ siswaId: 'siswa_tanpa1' });
+    // [Prioritas C, diminta eksplisit] T4B-17 dulu INFO (temuan: daftar kosong); kini dinyatakan sebagai kontrol (PASS)
+    rec('T4B-17', 'Prioritas C: periodeAktif tidak valid -> opObligations mengembalikan PERIODE_AKTIF_TIDAK_VALID, bukan daftar kosong', !o17.ok && o17.code === 'PERIODE_AKTIF_TIDAK_VALID' && o17.statusData === 'PERIODE_AKTIF_TIDAK_VALID' && !o17.data, o17.code + ' - ' + o17.message); }
   { const srv = makeServer(); const H = srv.sheets['01_SISWA'][0];
     srv.sheets['01_SISWA'][1][H.indexOf('jenisKelamin')] = 'L'; srv.sheets['01_SISWA'][2][H.indexOf('jenisKelamin')] = 'Perempuan';
     srv.sheets['01_SISWA'][1][H.indexOf('nisn')] = '0012345678'; srv.sheets['01_SISWA'][2][H.indexOf('tanggalMasuk')] = '31/02/2026';
     const before = J(srv.sheets['01_SISWA']); const r = srv.sb.opSiswaMasterAudit();
     rec('T4B-18', 'D-IMP-8 audit master siswa read-only (distribusi, tanpa normalisasi)', r.ok && J(srv.sheets['01_SISWA']) === before && r.data.jenisKelamin.L === 1 && r.data.jenisKelamin.Perempuan === 1 && r.data.nisn.digit10 === 1 && r.data.tanggalMasuk.tidakSah === 1,
       J({ jk: r.data.jenisKelamin, nisn: r.data.nisn.digit10 + '/10digit', tm: r.data.tanggalMasuk, kelas: r.data.kelasPerUnit })); }
+
+  // ---------- Prioritas C: empat keadaan daftar kewajiban ----------
+  { const srv = makeServer(); srv.sheets['01_SISWA'].slice(1).forEach(r => { r[13] = 'Nonaktif'; });
+    const a = srv.sb.opObligations({});
+    const s2 = makeServer(); delete s2.sheets['03_TARIF']; const b = s2.sb.opObligations({});
+    const s3 = makeServer(); s3.sheets['03_TARIF'][0][5] = 'nominalX'; const c = s3.sb.opObligations({});
+    const s4 = makeServer(); setPA(s4, '2026-10-01'); const d = s4.sb.opObligations({}), e = s4.sb.opObligationSnapshot('September 2026');
+    rec('T4B-19', 'kewajiban: periode valid & nol (LENGKAP, rows []) / sumber tidak tersedia / sumber tidak lengkap / periode tidak valid dibedakan (server)',
+      a.ok && a.data.count === 0 && a.data.statusData === 'LENGKAP' && b.code === 'SUMBER_TIDAK_TERSEDIA' && c.code === 'SCHEMA_MISMATCH' && c.statusData === 'SUMBER_TIDAK_LENGKAP' && d.code === 'PERIODE_AKTIF_TIDAK_VALID' && e.code === 'PERIODE_AKTIF_TIDAK_VALID',
+      J([a.ok && a.data.statusData + ':' + a.data.count, b.code, c.code + '/' + c.statusData, d.code, 'snapshot ' + e.code])); }
+  { const srv = makeServer(); srv.sb.opSchemaApply('TAMBAH_KOLOM_ADITIF'); const n0 = srv.sheets['05_TRANSAKSI'].length;
+    const okInc = srv.sb.opCreateIncome({ clientRequestId: 'kg_1', tanggal: '2026-09-10', unit: 'MI', nominal: 300000, akunId: 'akun_kas1', metode: 'Tunai', siswaId: 's2', allocations: [{ siswaId: 's2', komponenId: 'kmp_spp', periode: 'Juli 2026', nominal: 100000 }, { siswaId: 's2', komponenId: 'kmp_spp', periode: 'Agustus 2026', nominal: 100000 }] });
+    setPA(srv, '2026-10-01');
+    const bad = srv.sb.opCreateIncome({ clientRequestId: 'kg_2', tanggal: '2026-09-11', unit: 'MI', nominal: 100000, akunId: 'akun_kas1', metode: 'Tunai', siswaId: 's2', allocations: [{ siswaId: 's2', komponenId: 'kmp_spp', periode: 'Agustus 2026', nominal: 100000 }] });
+    const alkId = srv.sheets['06_ALOKASI'].find(r => r[1] === okInc.data.id)[0], nAlk = () => srv.sheets['06_ALOKASI'].filter(r => r[1] === okInc.data.id && !r[col06(srv)]).length;
+    const arc = srv.sb.opArchiveAllocation(alkId, 'uji');
+    rec('T4B-20', 'alokasi saat periode tidak valid: AllocationGuard -> PERIODE_AKTIF_TIDAK_VALID (bukan OBLIGATION_NOT_FOUND); hitung ulang status gagal tertutup', okInc.ok && okInc.data.transaction.status === 'SEBAGIAN_TERALOKASI' && bad.code === 'PERIODE_AKTIF_TIDAK_VALID' && srv.sheets['05_TRANSAKSI'].length === n0 + 1 && !arc.ok && arc.code === 'PERIODE_AKTIF_TIDAK_VALID' && nAlk() === 2,
+      J([okInc.data && okInc.data.transaction.status, bad.code, 'arsip ' + arc.code])); }
+  { const srv = makeServer(); srv.sb.opImportSetup('BUAT_SHEET_IMPOR'); setPA(srv, '2026-10-01');
+    const b1 = [{ tanggal: '2026-10-01', nominal: '200000', unit: 'MI', akun: 'Kasir', metode: 'Tunai', sumber: 'Pembayaran Siswa', namaSiswa: 'ZAHRA', kelas: '3 Abdul', komponen: 'SPP' }];
+    const b2 = [{ tanggal: '2026-10-01', nominal: '70000', unit: 'MI', akun: 'Kasir', metode: 'Tunai', sumber: 'SPP', namaPengirim: 'Umum' }];
+    const p1 = srv.sb.opImportPlan({ modul: 'pemasukan', baris: b1, sumber: { nama: 'a', jenis: 'csv' } }), p2 = srv.sb.opImportPlan({ modul: 'pemasukan', baris: b2, sumber: { nama: 'b', jenis: 'csv' } });
+    rec('T4B-21', 'impor pemasukan beralokasi saat periode tidak valid -> pratinjau gagal PERIODE_AKTIF_TIDAK_VALID; tanpa alokasi tetap dapat dipratinjau', p1.code === 'PERIODE_AKTIF_TIDAK_VALID' && p2.ok, p1.code + ' / ' + p2.code); }
+  { const srv = makeServer(); const c = await boot(srv);
+    const st = () => c.sb.kewajibanDataStatus_().kode;
+    const k1 = st(); const ds0 = c.sb.centralSourcesStatus_(['kewajiban', 'alokasi', 'transaksi']).ok;
+    c.a.OperationalCache.states.kewajiban.error = 'SCHEMA_MISMATCH'; const k2 = st();
+    c.a.OperationalCache.states.kewajiban.error = 'READ_FAILED'; const k3 = st(); c.a.OperationalCache.states.kewajiban.error = null;
+    c.a.Store.loadSettings = (o => () => Object.assign({}, o(), { periodeAktif: '2026-10-01' }))(c.a.Store.loadSettings);
+    const k4 = st(), ds = c.sb.centralSourcesStatus_(['kewajiban', 'alokasi', 'transaksi']);
+    c.a.State.page = 'beranda'; const beranda = c.sb.renderBeranda();
+    c.a.State.selectedSiswaId = null; const posisi = c.sb.renderSiswaPosisi(); c.a.State.selectedSiswaId = 's1'; const profil = c.sb.renderProfilSiswa('s1');
+    rec('T4B-22', 'klien: LENGKAP / SUMBER_TIDAK_LENGKAP / SUMBER_TIDAK_TERSEDIA / PERIODE_AKTIF_TIDAK_VALID; Beranda, posisi siswa, profil, laporan tagihan -> DATA TIDAK TERSEDIA (bukan nol)',
+      k1 === 'LENGKAP' && ds0 && k2 === 'SUMBER_TIDAK_LENGKAP' && k3 === 'SUMBER_TIDAK_TERSEDIA' && k4 === 'PERIODE_AKTIF_TIDAK_VALID' && !ds.ok && /periode aktif tidak valid/.test(ds.alasan[0]) &&
+      /Penerimaan Siswa[\s\S]*DATA TIDAK TERSEDIA/.test(beranda) && !/Belum Diterima \(Tunggakan\)/.test(beranda) && /DATA TIDAK TERSEDIA/.test(posisi) && /DATA TIDAK TERSEDIA/.test(profil) && !/Total Kewajiban/.test(profil),
+      J([k1, k2, k3, k4, ds.alasan[0].slice(0, 60)])); }
 
   const pass = R.filter(r => r.st === 'PASS').length, fail = R.filter(r => r.st === 'FAIL').length, info = R.filter(r => r.st === 'INFO').length;
   R.forEach(r => console.log(r.st + ' ' + r.id + ' [' + r.tc + '] ' + r.d));

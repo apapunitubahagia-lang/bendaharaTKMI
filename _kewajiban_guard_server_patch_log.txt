@@ -1,0 +1,5 @@
+opObligations kgStatus_
+opObligations statusData
+oblSnapshotCore_ kgStatus_
+engineErrCode_
+engineAllocStatusFor_ kg

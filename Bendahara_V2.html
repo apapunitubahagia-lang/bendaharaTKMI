@@ -2307,9 +2307,9 @@ function renderBeranda(){
 
   html += '<div class="grid cols-2">'+
     '<div class="card"><h3>Penerimaan Siswa <a class="link small-muted" style="float:right" onclick="setPage(\'laporan\');State.laporanTab=\'tagihan\';renderShell()">Lihat Detail &rarr;</a></h3>'+
-      progressStat('Expected Penerimaan', expected, expected, 'var(--primary)')+
+      (kewajibanDataStatus_().ok ? progressStat('Expected Penerimaan', expected, expected, 'var(--primary)')+
       progressStat('Sudah Diterima', sudahDiterima, expected, 'var(--green)')+
-      progressStat('Belum Diterima (Tunggakan)', belumDiterima, expected, 'var(--amber)')+
+      progressStat('Belum Diterima (Tunggakan)', belumDiterima, expected, 'var(--amber)') : centralUnavailableInline_(kewajibanDataStatus_()))+ // [P1-IMP C]
       '<div class="kv" style="margin-top:6px"><div>Belum Teridentifikasi</div><div>'+fmtRp(belumTeridentifikasi)+'</div></div>'+
     '</div>'+
     '<div class="card"><h3>Realisasi RAB Bulanan (' + esc(periode) + ') <a class="link small-muted" style="float:right" onclick="setPage(\'anggaran\');State.anggaranTab=\'realisasi\';renderShell()">Lihat Anggaran &rarr;</a></h3>'+
@@ -4144,6 +4144,7 @@ function alokTagihanCardsHtml(){
     '<button class="btn sm" type="button" onclick="setAlokFilter()">Terapkan Filter</button>'+
     '<button class="btn sm" type="button" onclick="resetAlokFilter()">Reset</button>'+
     '<button class="btn sm" type="button" style="margin-left:auto" onclick="hitungOtomatis()">&#9889; Auto Alokasi (sisa pembayaran, tertua dulu)</button></div>';
+  { const kd_ = kewajibanDataStatus_(); if(!kd_.ok) return html + centralUnavailableInline_(kd_); } // [P1-IMP C] bukan "belum ada tagihan"
   const groups = alokTagihanGroups(ed.activeSiswaId, ed.filter);
   const filterAktif = !!(ed.filter.komponen || ed.filter.status || ed.filter.periode);
   if(!groups.length){
@@ -4168,6 +4169,7 @@ function alokTagihanCardsHtml(){
 }
 function alokTagihanDetailHtml(){
   const ed = State.alokEditor;
+  { const kd_ = kewajibanDataStatus_(); if(!kd_.ok) return centralUnavailableInline_(kd_); } // [P1-IMP C]
   const groups = alokTagihanGroups(ed.activeSiswaId, {});
   const g = groups.find(x=>x.periode===ed.selectedPeriode);
   if(!g){
@@ -4836,6 +4838,7 @@ function renderSiswaPosisi(){
   html += tblFilterBar('siswaPosisi', cfg, siswa.length, filtered.length);
   html += '<div class="tablewrap"><table><thead><tr>'+sortableTh('siswaPosisi','nama','Nama')+sortableTh('siswaPosisi','kelas','Kelas')+sortableTh('siswaPosisi','unit','Unit')+'<th>Total Kewajiban</th><th>Sudah Dibayar</th><th>Sisa</th><th>Status</th></tr></thead><tbody>';
   if(!filtered.length) html += '<tr><td colspan="7" class="empty">Tidak ada data sesuai filter.</td></tr>';
+  { const kd_ = kewajibanDataStatus_(); if(!kd_.ok && filtered.length){ html += '<tr><td colspan="7">'+centralUnavailableInline_(kd_)+'</td></tr></tbody></table></div>'; return html; } } // [P1-IMP C]
   filtered.forEach(s=>{
     html += '<tr style="cursor:pointer" onclick="openProfilSiswa(\''+s.id+'\')"><td>'+esc(s.nama)+'</td><td>'+esc(s.kelas||'-')+'</td><td>'+esc(s.unit||'-')+'</td><td>'+fmtRp(totalKewajibanSiswa(s.id))+'</td><td>'+fmtRp(totalDibayarSiswa(s.id))+'</td><td>'+fmtRp(totalSisaSiswa(s.id))+'</td><td>'+arrearsBadge(classifyStudentArrears(s.id))+'</td></tr>';
   });
@@ -4880,13 +4883,14 @@ function renderProfilSiswa(id){
     '<div>Status</div><div>'+esc(s.status||'Aktif')+'</div><div>Tanggal Masuk</div><div>'+fmtDate(s.tanggalMasuk)+'</div></div></div>';
   html += '<div class="card"><h3>2. Data Keluarga/Wali</h3><div class="kv">'+
     '<div>Nama Wali</div><div>'+esc(s.namaWali||(wali?wali.nama:'-'))+'</div><div>Kontak</div><div>'+esc(s.kontakWali||(wali?wali.kontak:'-'))+'</div></div></div>';
-  html += '<div class="card"><h3>3. Ringkasan Keuangan (computed - Patch01)</h3><div class="kv">'+
+  const kdProf_ = kewajibanDataStatus_(); if(!kdProf_.ok) html += centralUnavailableCard_('3-4. Ringkasan Keuangan & Kewajiban', kdProf_); // [P1-IMP C]
+  if(kdProf_.ok) html += '<div class="card"><h3>3. Ringkasan Keuangan (computed - Patch01)</h3><div class="kv">'+
     '<div>Total Kewajiban</div><div>'+fmtRp(totalKewajibanSiswa(id))+'</div>'+
     '<div>Sudah Dibayar</div><div>'+fmtRp(totalDibayarSiswa(id))+'</div>'+
     '<div>Keringanan</div><div>'+fmtRp(tagihan.reduce((sum,t)=>sum+(t.potongan||[]).reduce((s2,p)=>s2+Number(p.nominal||0),0),0))+'</div>'+
     '<div>Sisa</div><div>'+fmtRp(totalSisaSiswa(id))+'</div>'+
     '<div>Status</div><div>'+arrearsBadge(classifyStudentArrears(id))+'</div></div></div>';
-  html += '<div class="card"><h3>4. Kewajiban (Computed, bukan record wajib)</h3><div class="tablewrap"><table><thead><tr><th>Periode</th><th>Komponen</th><th>Bruto</th><th>Netto</th><th>Terbayar</th><th>Sisa</th><th>Status</th></tr></thead><tbody>'+
+  if(kdProf_.ok) html += '<div class="card"><h3>4. Kewajiban (Computed, bukan record wajib)</h3><div class="tablewrap"><table><thead><tr><th>Periode</th><th>Komponen</th><th>Bruto</th><th>Netto</th><th>Terbayar</th><th>Sisa</th><th>Status</th></tr></thead><tbody>'+
     (tagihan.length? tagihan.map(t=>'<tr><td>'+esc(t.periode)+'</td><td>'+esc(t.komponenNama)+'</td><td>'+fmtRp(t.bruto)+'</td><td>'+fmtRp(t.netto)+'</td><td>'+fmtRp(tagihanTerbayar(t))+'</td><td>'+fmtRp(tagihanSisa(t))+'</td><td>'+arrearsBadge(tagihanStatus(t))+(obligationOverdue(t)?' <span class="badge red">Jatuh Tempo</span>':'')+'</td></tr>').join('') : '<tr><td colspan="7" class="empty">Tidak ada kewajiban (belum ada Tarif untuk unit/komponen ini)</td></tr>')+
     '</tbody></table></div></div>';
   const riwayat = OperationalAPI.transaksi().filter(t=>t.siswaId===id && t.jenis==='PENERIMAAN');
@@ -8947,7 +8951,18 @@ function centralSourcesStatus_(keys){
       (keys || []).forEach(function(k){ const s = st[k]; if(!s || !s.loaded || s.error) alasan.push(OP_SHEETS[k] + (s && s.error ? ' gagal dimuat (' + s.error + ')' : ' belum termuat')); });
     }
   }catch(e){ alasan.push('status sumber data tidak dapat diperiksa'); }
+  if((keys || []).indexOf('kewajiban') !== -1){ const dp = kpiPeriodeStatus_(Store.loadSettings().periodeAktif); if(!dp.ok) alasan.unshift(dp.alasan[0]); } // [P1-IMP C]
   return {ok: !alasan.length, alasan: alasan};
+}
+/* [P1-IMP C] Status data kewajiban: LENGKAP | PERIODE_AKTIF_TIDAK_VALID | SUMBER_TIDAK_TERSEDIA | SUMBER_TIDAK_LENGKAP (| LOKAL: mode lama). */
+function kewajibanDataStatus_(){
+  const dp = kpiPeriodeStatus_(Store.loadSettings().periodeAktif);
+  if(!dp.ok) return {ok:false, kode:'PERIODE_AKTIF_TIDAK_VALID', alasan:dp.alasan};
+  if(typeof ServerBridge === 'undefined' || !ServerBridge || !centralReady_()) return {ok:true, kode:'LOKAL', alasan:[]};
+  const keys = ['kewajiban', 'alokasi', 'transaksi'], ds = centralSourcesStatus_(keys);
+  if(ds.ok) return {ok:true, kode:'LENGKAP', alasan:[]};
+  const st = OperationalCache.states, tidakLengkap = keys.some(k=>st[k] && ['SCHEMA_MISMATCH', 'PARTIAL_READ'].indexOf(st[k].error) !== -1);
+  return {ok:false, kode:tidakLengkap ? 'SUMBER_TIDAK_LENGKAP' : 'SUMBER_TIDAK_TERSEDIA', alasan:ds.alasan};
 }
 /* [P1-IMP F8] Normalisasi periodeAktif: pratinjau server -> penyetuju memilih/memeriksa label -> konfirmasi eksplisit. */
 function openPeriodeAktifNormalisasi(){
