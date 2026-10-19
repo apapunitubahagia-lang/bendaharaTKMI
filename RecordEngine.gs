@@ -85,6 +85,7 @@ function opRecordBatch(key, ops) {
   }
 }
 function opRecordUpsert(key, record) {
+  var g0 = opGate_(OP_WRITE_ROLES_); if (!g0.ok) return g0; // [P1_19 E] otorisasi sebelum validasi masukan (konsisten dengan fungsi publik lain)
   if (!record || typeof record !== 'object') return errResult_('VALIDATION_ERROR', 'record wajib berupa objek', 'record');
   return opRecordBatch(key, [{ op: 'upsert', id: record.id, row: record }]);
 }

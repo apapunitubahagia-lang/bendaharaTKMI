@@ -42,6 +42,13 @@ function ltMutasiStatus_(ss) {
   var pairs = vals.map(function (r) { return String(r[ci]) + '=' + String(r[cs]); });
   return { total: vals.length, terekonsiliasi: vals.filter(function (r) { return String(r[cs]) === 'TEREKONSILIASI'; }).length, hash: oblHash_(pairs.join('|')) };
 }
+/* [P1_19 E] Folder bukti uji: BUKTI_FOLDER_ID wajib diisi dan bukan folder bernama 'Bendahara_Bukti' (nama folder produksi). */
+function ltBuktiFolderCek_() {
+  var fid = PropertiesService.getScriptProperties().getProperty('BUKTI_FOLDER_ID');
+  if (!fid) return { ok: false, alasan: 'Script Property BUKTI_FOLDER_ID belum diisi (unggah bukti di mode uji akan ditolak)' };
+  try { var f = DriveApp.getFolderById(fid); return { ok: f.getName() !== 'Bendahara_Bukti', nama: f.getName(), alasan: f.getName() === 'Bendahara_Bukti' ? 'nama sama dengan folder produksi - gunakan folder khusus uji' : '' }; }
+  catch (e) { return { ok: false, alasan: 'folder tidak dapat dibuka oleh akun ini' }; }
+}
 function ltLog_(name, obj) { var s = JSON.stringify(obj); Logger.log(name + ': ' + s); return obj; }
 
 /* 1. Pra-uji: pengaman salinan + snapshot (jumlah baris, status mutasi, identitas yang dilihat server) */
@@ -49,7 +56,8 @@ function ltPreflight() {
   var ss = ltGuard_();
   var id = getCurrentUserIdentity();
   var snap = { at: new Date().toISOString(), spreadsheetId: ss.getId(), spreadsheetName: ss.getName(), counts: ltCounts_(ss), mutasi: ltMutasiStatus_(ss),
-    identity: { authorized: id.authorized, code: id.code || '', role: id.role || null, emailTerbaca: !!id.email }, effectiveUserTerbaca: !!Session.getEffectiveUser().getEmail() };
+    identity: { authorized: id.authorized, code: id.code || '', role: id.role || null, emailTerbaca: !!id.email }, effectiveUserTerbaca: !!Session.getEffectiveUser().getEmail(),
+    buktiFolder: ltBuktiFolderCek_() }; // [P1_19 E] folder bukti khusus uji wajib (Script Property BUKTI_FOLDER_ID)
   PropertiesService.getScriptProperties().setProperty(LT_PROP_SNAP_, JSON.stringify(snap));
   return ltLog_('ltPreflight', snap);
 }

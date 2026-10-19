@@ -16,7 +16,21 @@ var OP_BUKTI_FOLDER_ = 'Bendahara_Bukti';
 var OP_BUKTI_MAX_B64_ = 12 * 1024 * 1024; // ~9 MB file
 var OP_BUKTI_MIME_ = ['application/pdf', 'image/png', 'image/jpeg', 'image/webp', 'image/gif'];
 
+/* [P1_19 E / GAP-005] Folder bukti dapat dikunci ke ID tertentu lewat Script Property BUKTI_FOLDER_ID (proyek uji WAJIB mengisinya
+   dengan folder khusus pengujian). Bila proyek dalam mode uji (Script Property LIVE_TEST_SPREADSHEET_ID = spreadsheet aktif) dan
+   BUKTI_FOLDER_ID kosong -> unggah DITOLAK (tidak pernah mencari folder produksi berdasarkan nama). Tanpa kedua properti, perilaku
+   lama (cari/buat folder berdasarkan nama) tidak berubah. ID tidak ditemukan -> gagal tertutup. */
+var OP_BUKTI_PROP_FOLDER_ = 'BUKTI_FOLDER_ID';
 function opBuktiFolder_() {
+  var props = typeof PropertiesService !== 'undefined' ? PropertiesService.getScriptProperties() : null;
+  var fid = props ? opStr_(props.getProperty(OP_BUKTI_PROP_FOLDER_)) : '';
+  if (fid) {
+    var f = null; try { f = DriveApp.getFolderById(fid); } catch (e) { f = null; }
+    if (!f) { var e1 = new Error('Folder bukti (Script Property ' + OP_BUKTI_PROP_FOLDER_ + ') tidak ditemukan / tidak dapat diakses'); e1.code = 'BUKTI_FOLDER_UNAVAILABLE'; throw e1; }
+    return f;
+  }
+  var testId = props ? opStr_(props.getProperty('LIVE_TEST_SPREADSHEET_ID')) : '';
+  if (testId && testId === String(ss_().getId())) { var e2 = new Error('Mode uji: Script Property ' + OP_BUKTI_PROP_FOLDER_ + ' wajib diisi folder bukti khusus pengujian'); e2.code = 'TEST_FOLDER_REQUIRED'; throw e2; }
   var it = DriveApp.getFoldersByName(OP_BUKTI_FOLDER_);
   return it.hasNext() ? it.next() : DriveApp.createFolder(OP_BUKTI_FOLDER_);
 }
@@ -73,6 +87,7 @@ function opUploadBukti(p) {
         return out;
       } catch (e) {
         if (file) { try { file.setTrashed(true); } catch (e2) { /* biarkan */ } }
+        if (e && (e.code === 'BUKTI_FOLDER_UNAVAILABLE' || e.code === 'TEST_FOLDER_REQUIRED')) return errResult_(e.code, String(e.message), 'folder', id); // [P1_19 E]
         return errResult_('WRITE_FAILED', 'Gagal mengunggah bukti', null);
       }
     });
