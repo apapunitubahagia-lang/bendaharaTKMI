@@ -57,3 +57,12 @@ Tambahan P1_19 (2026-10-19): apply_alloc_lock_server.js, apply_akun_strict_serve
   node tx_integrity_tests.js    # konkurensi & integritas jalur transaksi biasa (10 skenario wajib + audit/periode + jejak kunci)
   node gap005_tests.js          # matriks peran semua fungsi publik, folder bukti uji (Script Property), inventaris deploy
   Hasil terakhir: node run_all_tests.js p1_19 -> 19 suite, 555 PASS, 0 FAIL, 44 INFO (sandbox; uji live BLOCKED).
+
+Tambahan P1_20 (2026-10-19): apply_v1_migrasi_client.js, apply_alloc_siswa_server.js, apply_kategori_server.js;
+  berkas baru ../KategoriPengeluaranAudit.gs (audit baca-saja kategori historis).
+  node v1_migrasi_tests.js      # migrasi V1: pengecualian akun, penjaga kirim, pemetaan beraudit, id deterministik, retry
+  node alloc_siswa_tests.js     # alokasi lintas siswa / ke pengeluaran ditolak server; arsip alokasi beraudit
+  node kategori_tests.js        # kategori pengeluaran wajib & valid terhadap master aktif (create, batch, koreksi, audit)
+  node snapshot_tarif_tests.js  # karakterisasi perubahan tarif & snapshot kewajiban (INFO; tanpa perubahan kebijakan)
+  node legacy_import_tests.js   # jalur impor lama 5 modul V2: UI dialihkan, resolver ditolak, server tetap memvalidasi
+  Hasil terakhir: node run_all_tests.js p1_20 -> 24 suite, 587 PASS, 0 FAIL, 50 INFO (sandbox; uji live BLOCKED).

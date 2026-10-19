@@ -1,0 +1,13 @@
+PASS AK-01 [server: transaksi baru tanpa akunId ditolak (create & batch); dengan akun eksplisit tersimpan] VALIDATION_ERROR,VALIDATION_ERROR,VALIDATION_ERROR,SUCCESS
+PASS AK-02 [form Pengeluaran: opsi "Pilih Akun" (tidak terpilih otomatis), tanpa akun ditolak, akun pilihan tersimpan] Akun Kas/Bank wajib dipilih (tidak ada akun bawaan) / akun akun_bank1
+PASS AK-03 [form Penerimaan & wizard Pembayaran: daftar akun diawali opsi kosong wajib] <select id="pf_akun"><option value="" selected>- Pilih Akun Kas/Bank (wajib) -</option><option value="akun_kas1" >Kasir</option><option valu
+PASS AK-04 [Buat Transaksi dari Mutasi Bank: akun Bank wajib dipilih (sebelumnya akun Bank pertama otomatis); akun Kas ditolak] Akun Bank penerima wajib dipilih (tidak  | Akun Bank penerima wajib dipilih (tidak  | akun akun_bank1 | 
+PASS AK-05 [wizard impor Mutasi Bank lama: akun Bank dipilih eksplisit per berkas (sebelumnya akun Bank pertama), tanpa pilihan -> tidak ada pratinjau] akun tersimpan akun_bank2
+PASS AK-06 [antrean impor mutasi bank lama tanpa akun pilihan tidak dapat diimpor (tidak jatuh ke akun Bank pertama)] Item mutasi bank lama tanpa akun Bank pilihan - impor ulang berkas dan pilih aku
+INFO AK-07 [inventaris: RKAT & 11_MUTASI_BANK tidak punya kolom akun (RKAT tidak membuat transaksi; akun mutasi ditentukan saat dibuat transaksi)] 18_RKAT [], 11_MUTASI_BANK []
+PASS AK-08 [wizard impor lama (fungsi global, masih dapat dipanggil): tanpa akun / kategori tak dikenal -> tidak tersimpan (HOLD beralasan); akun & kategori eksplisit -> tersimpan] tersimpan [[6300,"akun_bank1"]], HOLD 2
+PASS AK-09 [form Pengeluaran: kategori tidak terpilih otomatis; tanpa kategori ditolak] Kategori pengeluaran wajib dipilih (tidak ada kategori bawaa
+PASS AK-10 [server: koreksi tidak dapat mengosongkan akun / memakai akun tidak dikenal; ganti ke akun valid boleh] VALIDATION_ERROR,INVALID_ACCOUNT,SUCCESS
+INFO AK-11 [AUDIT migrasi V1->V2 (tidak diubah): akun = akun pertama; boot ulang idempoten (penanda); "Jalankan Migrasi Sekarang" mengulang dengan id baru] {"jalan1":true,"akunTransaksiV1":["akun_kas1"],"akunPertama":"akun_kas1","bootUlang":"dilewati (penanda migratedFromV1)","idSebelum":["v1pem_f90e4962409cf2d204fa"],"idSesudahUlang":["v1pem_f90e4962409cf2d204fa"],"jumlahSesudahUlang":1,"pendingSync":false}
+
+PASS=9 FAIL=0 INFO=2
