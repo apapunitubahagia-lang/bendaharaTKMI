@@ -78,21 +78,24 @@ const BANK_NYATA = { '2026-09-30': 8000000, '2026-10-31': 8300000 }; // rekening
     const srv = t1Fixture();
     const p = exp(srv, '2026-09-20', 2000000);
     srv.sb.opRecordBatch('lpj', [lpjRow('lpj_n1', '2026-09-25', 800000), lpjRow('lpj_n2', '2026-09-25', 600000), lpjRow('lpj_n3', '2026-09-25', 300000)]);
-    const c = await bootClient(srv); c.fields.ltu_unit = 'MI';
+    const c = await bootClient(srv); Object.assign(c.fields, { ltu_unit: 'MI', ltu_akun: 'akun_bank1', ltu_kategori: 'Kegiatan' }); // [P0-T1] akun/kategori wajib eksplisit
     const ids = c.a.Store.loadLpj().map(x => x.id);
     ids.forEach(id => safe(() => c.sb.createTransaksiFromLpj(id))); await sync(c);
     srv.sb.opCreateIncome({ tanggal: '2026-10-06', unit: 'MI', nominal: 300000, akunId: 'akun_bank1', metode: 'Transfer', sumber: 'Penerimaan Lainnya', clientRequestId: nid('cr') });
     const nTrx = rows(srv, '05_TRANSAKSI').filter(r => r[1] === 'PENGELUARAN').length;
     const s = snap(srv, 'M1 pencairan + "Buat Transaksi dari LPJ"');
     models.push(s);
-    rec('AU-T1-03', 'T1 / GAP-020 (TEMUAN)', null, 'M1 TEMUAN TERBUKTI lewat fungsi UI createTransaksiFromLpj: ' + ids.length + ' LPJ -> ' + (nTrx - 1) + ' transaksi baru; pengeluaran Sep ' + s.pengeluaranSep + ' (seharusnya 2.000.000 kas keluar), realisasi garis Kegiatan ' + s.realisasiGarisKegiatan + ' > pagu 2.000.000 (I04 ok=' + s.i04ok + '), saldo bank 30-09 ' + s.saldoBank30Sep + ' (= koran), tetapi transaksi LPJ masuk akun ' + J(s.akunTrxLpj) + ' -> kas 31-10 ' + s.saldoKas31Okt + ' (uang yang tidak pernah keluar dua kali); total bank+kas 31-10 ' + (s.saldoBank31Okt + s.saldoKas31Okt) + ' vs nyata ' + BANK_NYATA['2026-10-31']);
-    rec('AU-T1-04', 'T1 kontrol yang ada', rows(srv, '19_LPJ').every(r => r[col(srv, '19_LPJ', 'transaksiId')]) && p.ok,
-      'RecordGuard LPJ (Σ LPJ <= nominal transaksi) TIDAK mencegah M1: tiap LPJ tertaut ke transaksi barunya sendiri (nominal sama) - kontrol berlaku, tetapi pada tautan yang salah');
+    const nBaru = nTrx - 1, nLink = rows(srv, '19_LPJ').filter(r => r[col(srv, '19_LPJ', 'transaksiId')]).length;
+    rec('AU-T1-03', 'T1 / GAP-020 (TEMUAN)', null, (nBaru > 0 ? 'M1 TERBUKA: ' : 'M1 TERTUTUP sejak P0-T1 (diblokir, toast: ' + c.toast() + '): ') + ids.length + ' LPJ -> ' + nBaru + ' transaksi baru; pengeluaran Sep ' + s.pengeluaranSep + ', realisasi garis Kegiatan ' + s.realisasiGarisKegiatan + ' (pagu 2.000.000, I04 ok=' + s.i04ok + '), bank 30-09 ' + s.saldoBank30Sep + ' (koran ' + BANK_NYATA['2026-09-30'] + '), kas 31-10 ' + s.saldoKas31Okt);
+    // [P0-T1, 19-10-2026] ekspektasi diperbarui: semula membuktikan M1 TERJADI (setiap LPJ tertaut ke transaksi barunya sendiri);
+    // pengaman P0-T1 (Master Task P0 Bagian D) kini harus MEMBLOKIR M1: tidak ada transaksi baru, tidak ada tautan LPJ.
+    rec('AU-T1-04', 'T1 pengaman P0-T1', p.ok && nBaru === 0 && nLink === 0 && s.pengeluaranSep === 2000000 && s.saldoKas31Okt === 0,
+      'M1 diblokir: transaksi baru ' + nBaru + ', LPJ tertaut ' + nLink + ', pengeluaran Sep tetap ' + s.pengeluaranSep + ', kas tidak berubah');
   }
   { // M2: pencairan TIDAK dicatat; hanya transaksi dari LPJ (tanggal LPJ = tanggal penyerahan 05-10); sisa dicatat sbg penerimaan
     const srv = t1Fixture();
     srv.sb.opRecordBatch('lpj', [lpjRow('lpj_n1', '2026-10-05', 800000), lpjRow('lpj_n2', '2026-10-05', 600000), lpjRow('lpj_n3', '2026-10-05', 300000)]);
-    const c = await bootClient(srv); c.fields.ltu_unit = 'MI';
+    const c = await bootClient(srv); Object.assign(c.fields, { ltu_unit: 'MI', ltu_akun: 'akun_bank1', ltu_kategori: 'Kegiatan' }); // [P0-T1] akun/kategori wajib eksplisit
     c.a.Store.loadLpj().map(x => x.id).forEach(id => safe(() => c.sb.createTransaksiFromLpj(id))); await sync(c);
     srv.sb.opCreateIncome({ tanggal: '2026-10-06', unit: 'MI', nominal: 300000, akunId: 'akun_bank1', metode: 'Transfer', sumber: 'Penerimaan Lainnya', clientRequestId: nid('cr') });
     const s = snap(srv, 'M2 tanpa pencairan; transaksi dari LPJ bertanggal penyerahan');

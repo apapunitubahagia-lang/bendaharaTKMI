@@ -201,6 +201,86 @@ const renameCol = (srv, n, h) => { srv.sheets[n][0][col(srv, n, h)] = 'rusak_' +
     s.state.email = 'kepsek.palsu@x.id'; const id = s.sb.getCurrentUserIdentity();
     rec('HD-T7-08', 'T7 skenario AU-K7-02 tertutup', id.authorized === false && id.code === 'USER_NOT_FOUND', 'akun penyetuju "palsu" tidak terbentuk: ' + J({ authorized: id.authorized, code: id.code })); }
   rec('HD-T7-09', 'GAP-005 (INFO)', null, 'Identitas aktor = Session.getActiveUser() + 26_USER_ACCESS. Keandalannya di Apps Script live BELUM diverifikasi (executeAs/akses web app belum diputuskan) - autentikasi live TIDAK diklaim aman.');
+  // ======================= T1: pengaman tombol "Buat Transaksi Pengeluaran" dari LPJ =======================
+  const lpjSeed = (srv, list) => { const H = srv.sheets['19_LPJ'][0]; list.forEach(o => srv.sheets['19_LPJ'].push(H.map(h => (o[String(h).trim()] === undefined ? '' : o[String(h).trim()])))); };
+  const srvTrx = srv => rows(srv, '05_TRANSAKSI').filter(r => r[col(srv, '05_TRANSAKSI', 'jenis')] === 'PENGELUARAN');
+  const srvLpjLink = (srv, id) => { const r = rows(srv, '19_LPJ').find(x => x[0] === id); return r ? r[col(srv, '19_LPJ', 'transaksiId')] : undefined; };
+  const t1Boot = async (list, prep) => { const srv = makeServer(); lpjSeed(srv, list); if (prep) prep(srv); const c = await bootClient(srv); return { srv, c }; };
+  const L1 = { id: 'lpj_u1', tanggal: '2026-10-05', unit: '', kategori: 'ATK', item: 'Spidol', nominal: 45000, status: 'REALIZATION', transaksiId: '' };
+  { const { srv, c } = await t1Boot([L1]);
+    c.sb.openCreateTransaksiFromLpjUnitModal('lpj_u1'); const modal = String(c.a.__lastModal || (c.el('modalBody') || {}).innerHTML || '');
+    const n0 = srvTrx(srv).length;
+    Object.assign(c.fields, { ltu_unit: 'MI', ltu_akun: '', ltu_kategori: 'ATK' }); c.sb.createTransaksiFromLpj('lpj_u1'); await sync(c);
+    const t1 = c.toast(), n1 = srvTrx(srv).length;
+    Object.assign(c.fields, { ltu_akun: 'akun_tidak_ada' }); c.sb.createTransaksiFromLpj('lpj_u1'); await sync(c);
+    rec('HD-T1-01', 'T1 akun eksplisit', /Akun sumber .*wajib dipilih/.test(t1) && /Akun sumber .*wajib dipilih/.test(c.toast()) && n1 === n0 && srvTrx(srv).length === n0 && !c.a.Store.loadLpj().find(x => x.id === 'lpj_u1').transaksiId,
+      'tanpa akun / akun tidak dikenal -> ditolak, tidak ada transaksi/tautan: "' + t1 + '"' + (modal ? '' : ' (modal tidak tertangkap sandbox)')); }
+  { const { srv, c } = await t1Boot([Object.assign({}, L1, { kategori: '' })]);
+    Object.assign(c.fields, { ltu_unit: 'MI', ltu_akun: 'akun_bank1', ltu_kategori: '' }); c.sb.createTransaksiFromLpj('lpj_u1'); await sync(c);
+    rec('HD-T1-02', 'T1 kategori eksplisit', /Kategori pengeluaran wajib dipilih/.test(c.toast()) && srvTrx(srv).length === 1, 'LPJ tanpa kategori: ' + c.toast() + ' (sebelumnya diisi kategori pertama diam-diam)'); }
+  { // pengeluaran yang mungkin sama sudah ada (imp_trx_2: ATK MI 50.000, 2026-09-05; LPJ 45.000 2026-10-05 = 30 hari) -> diblokir
+    const { srv, c } = await t1Boot([L1]); const before = J(rows(srv, '05_TRANSAKSI'));
+    Object.assign(c.fields, { ltu_unit: 'MI', ltu_akun: 'akun_bank1', ltu_kategori: 'ATK' }); c.sb.createTransaksiFromLpj('lpj_u1'); await sync(c);
+    rec('HD-T1-03', 'T1 potensi ganda diblokir', /DIBLOKIR - kemungkinan tercatat ganda/.test(c.toast()) && J(rows(srv, '05_TRANSAKSI')) === before && !srvLpjLink(srv, 'lpj_u1'), c.toast()); }
+  { // tanpa kandidat: transaksi dibuat dengan akun pilihan, id deterministik, tautan tercatat di server, badge "Sudah" setelah konfirmasi
+    const L2 = Object.assign({}, L1, { id: 'lpj_u2', kategori: 'ATK', tanggal: '2026-12-20', nominal: 45000 });
+    const { srv, c } = await t1Boot([L2]);
+    Object.assign(c.fields, { ltu_unit: 'TK', ltu_akun: 'akun_bank1', ltu_kategori: 'ATK' });
+    c.sb.createTransaksiFromLpj('lpj_u2');
+    const badgePending = c.sb.lpjLinkBadge_(c.a.Store.loadLpj().find(x => x.id === 'lpj_u2'));
+    await sync(c); await c.sb.loadOperationalData(['lpj']); await tick(5);
+    const tr = srvTrx(srv).filter(r => r[col(srv, '05_TRANSAKSI', 'catatan')] === 'Dari LPJ: Spidol');
+    const link = srvLpjLink(srv, 'lpj_u2'), badge = c.sb.lpjLinkBadge_(c.a.Store.loadLpj().find(x => x.id === 'lpj_u2'));
+    rec('HD-T1-04', 'T1 pembuatan sah', tr.length === 1 && tr[0][col(srv, '05_TRANSAKSI', 'akunId')] === 'akun_bank1' && tr[0][col(srv, '05_TRANSAKSI', 'unit')] === 'TK' && link === tr[0][0] && /Menunggu server/.test(badgePending) && /Sudah/.test(badge),
+      J({ transaksi: tr.length, akun: tr[0] && tr[0][col(srv, '05_TRANSAKSI', 'akunId')], tautanServer: link, badgeSebelum: badgePending.replace(/<[^>]+>/g, ''), badgeSesudah: badge.replace(/<[^>]+>/g, '') })); }
+  { // pengulangan: klik dua kali, dan coba ulang setelah penyimpanan tautan gagal -> tetap SATU transaksi
+    const L3 = Object.assign({}, L1, { id: 'lpj_u3', tanggal: '2026-12-21', nominal: 30000 });
+    const { srv, c } = await t1Boot([L3]);
+    Object.assign(c.fields, { ltu_unit: 'TK', ltu_akun: 'akun_kas1', ltu_kategori: 'ATK' });
+    const oSave = c.a.Store.saveLpj; let failOnce = true;
+    c.a.Store.saveLpj = function (a) { if (failOnce) { failOnce = false; throw new Error('simulasi gagal simpan LPJ'); } return oSave.call(c.a.Store, a); };
+    c.sb.createTransaksiFromLpj('lpj_u3'); const tFail = c.toast();
+    c.sb.createTransaksiFromLpj('lpj_u3'); c.sb.createTransaksiFromLpj('lpj_u3'); const tRep = c.toast();
+    await sync(c);
+    const tr = srvTrx(srv).filter(r => r[col(srv, '05_TRANSAKSI', 'catatan')] === 'Dari LPJ: Spidol');
+    rec('HD-T1-05', 'T1 pengulangan & gagal simpan', /simulasi gagal simpan LPJ/.test(tFail) && /sudah punya/.test(tRep) && tr.length === 1 && srvLpjLink(srv, 'lpj_u3') === tr[0][0],
+      J({ gagalPertama: tFail.slice(0, 80), ulang: tRep, transaksiServer: tr.length, tautan: !!srvLpjLink(srv, 'lpj_u3') })); }
+  { // validasi input LPJ
+    const { srv, c } = await t1Boot([Object.assign({}, L1, { id: 'lpj_n0', nominal: 0 }), Object.assign({}, L1, { id: 'lpj_dt', tanggal: '2026-02-30', nominal: 1000 })], s => { s.sheets['19_LPJ'][0] = s.sheets['19_LPJ'][0]; });
+    Object.assign(c.fields, { ltu_unit: 'MI', ltu_akun: 'akun_bank1', ltu_kategori: 'ATK' });
+    c.sb.createTransaksiFromLpj('lpj_n0'); const a = c.toast(); c.sb.createTransaksiFromLpj('lpj_dt'); const b = c.toast();
+    Object.assign(c.fields, { ltu_unit: '' }); c.sb.createTransaksiFromLpj('lpj_dt'); const u = c.toast();
+    rec('HD-T1-06', 'T1 validasi input', /nominal LPJ tidak valid/.test(a) && /tanggal LPJ tidak valid/.test(b) && /Unit/.test(u) && srvTrx(srv).length === 1, J({ nominal0: a, tanggal: b, unit: u })); }
+  { // kegagalan penulisan server: transaksi ditolak -> tidak ada transaksi/tautan di server, badge bukan "Sudah", coba ulang diblokir
+    const L4 = Object.assign({}, L1, { id: 'lpj_u4', tanggal: '2026-12-22', nominal: 25000 });
+    const { srv, c } = await t1Boot([L4], s => { const o1 = s.sb.opCreateExpense, o2 = s.sb.opCreateTxBatch;
+      s.sb.opCreateExpense = p => (p && p.clientRequestId && /trx_lpj_/.test(p.clientRequestId)) ? { ok: false, code: 'VALIDATION_ERROR', message: 'simulasi ditolak server' } : o1(p);
+      s.sb.opCreateTxBatch = items => { if (items.some(it => it.payload && /trx_lpj_/.test(it.payload.clientRequestId || ''))) return { ok: true, code: 'SUCCESS', data: { results: items.map(() => ({ ok: false, code: 'VALIDATION_ERROR', message: 'simulasi ditolak server' })) } }; return o2(items); }; });
+    Object.assign(c.fields, { ltu_unit: 'TK', ltu_akun: 'akun_bank1', ltu_kategori: 'ATK' });
+    c.sb.createTransaksiFromLpj('lpj_u4'); await sync(c); await sync(c); await sync(c);
+    const badge = c.sb.lpjLinkBadge_(c.a.Store.loadLpj().find(x => x.id === 'lpj_u4')).replace(/<[^>]+>/g, '');
+    c.sb.createTransaksiFromLpj('lpj_u4'); const retry = c.toast();
+    rec('HD-T1-07', 'T1 kegagalan penulisan', srvTrx(srv).length === 1 && !srvLpjLink(srv, 'lpj_u4') && badge !== 'Sudah' && /sudah punya|DITOLAK server/.test(retry),
+      J({ transaksiServer: srvTrx(srv).length - 1, tautanServer: srvLpjLink(srv, 'lpj_u4') || null, badge, ulang: retry.slice(0, 90) })); }
+  { // sumber tidak lengkap (header 19_LPJ rusak) -> diblokir, tidak ada transaksi
+    const { srv, c } = await t1Boot([Object.assign({}, L1, { id: 'lpj_u5', tanggal: '2026-12-23' })], s => { renameCol(s, '19_LPJ', 'nominal'); });
+    Object.assign(c.fields, { ltu_unit: 'TK', ltu_akun: 'akun_bank1', ltu_kategori: 'ATK' });
+    const n0 = srvTrx(srv).length; c.sb.createTransaksiFromLpj('lpj_u5'); await sync(c);
+    rec('HD-T1-08', 'T1 sumber tidak lengkap', /DIBLOKIR/.test(c.toast()) && srvTrx(srv).length === n0, c.toast()); }
+  // ======================= Regresi: data lengkap -> KPI, FCC, saldo, ringkasan RAB identik dengan HEAD sebelum hardening =======================
+  { let base = '';
+    try { base = require('child_process').execFileSync('git', ['show', (process.env.HD_BASELINE_REF || '184b7f9') + ':Bendahara_V2.html'], { cwd: require('./paths').OUT, maxBuffer: 64 << 20, stdio: ['ignore', 'pipe', 'ignore'] }).toString().replace(/\r/g, '').match(/\n<script>\n([\s\S]*?)\n<\/script>/)[1]; } catch (e) { }
+    if (!base) rec('HD-REG-01', 'regresi', false, 'baseline 184b7f9 tidak terbaca');
+    else {
+      const snap = async (code) => { const srv = makeServer();
+        ['2026-09-10', '2026-09-12'].forEach((d, i) => srv.sb.opCreateExpense({ tanggal: d, unit: 'MI', nominal: 70000 + i, akunId: 'akun_bank1', metode: 'Transfer', kategori: 'ATK', penerima: 'Toko ' + i, clientRequestId: 'reg' + i }));
+        const c = await bootClient(srv, { js: code }); const k = c.sb.kpiIndukSummary('September 2026'), f = c.sb.fccCompute_('September 2026', c.sb.centralFccData_('September 2026'));
+        return J({ kpi: [k.overall, k.overallStatus, k.rows.map(r => [r.kode, r.skor, r.indicators.map(i => [i.kode, i.capaian, i.realisasi])])], fcc: [f.actual, f.committed, f.missing, f.anggaranVsAktual.rows, f.anggaranVsAktual.ringkasanPeriode],
+          saldo: [c.sb.totalSaldoKas(), c.sb.totalSaldoBank(), c.sb.totalPengeluaran('September 2026'), c.sb.totalPemasukan('September 2026')] }); };
+      const a = await snap(base), b = await snap(require('./client_env.js').js);
+      rec('HD-REG-01', 'regresi KPI/FCC/saldo', a === b, a === b ? 'identik dengan 184b7f9 pada data lengkap (KPI, Financial Control, ringkasan RAB, saldo kas/bank, total periode)' : 'BEDA\nbase=' + a.slice(0, 300) + '\nbaru=' + b.slice(0, 300));
+    }
+  }
   const pass = R.filter(r => r.st === 'PASS').length, fail = R.filter(r => r.st === 'FAIL').length, info = R.filter(r => r.st === 'INFO').length;
   R.forEach(r => console.log(r.st + ' ' + r.id + ' [' + r.tc + '] ' + r.d));
   console.log('\nPASS=' + pass + ' FAIL=' + fail + ' INFO=' + info);
