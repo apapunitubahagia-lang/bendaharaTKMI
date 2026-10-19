@@ -317,6 +317,7 @@ function opSettingsUpsert(items) {
     if (!it || !OP_SETTING_KEY_RE_.test(opStr_(it.key))) return errResult_('VALIDATION_ERROR', 'key setting tidak valid', 'key');
     if (typeof it.value !== 'string') return errResult_('VALIDATION_ERROR', 'value harus string (objek di-JSON-kan klien)', 'value');
     if (it.value.length > 45000) return errResult_('VALUE_TOO_LARGE', 'value melebihi batas satu sel (45000)', 'value');
+    if (opStr_(it.key) === 'periodeAktif') { var pe = sgPeriodLabelError_(it.value, false); if (pe) return errResult_('VALIDATION_ERROR', 'periodeAktif: ' + pe, 'value'); } // [P0-T4]
     if (opStr_(it.key).indexOf(PL_BLOB_PREFIX_) === 0 || opStr_(it.key).indexOf(PL_STATUS_PREFIX_) === 0) return errResult_('PERIOD_STATUS_API_REQUIRED', 'Status periode hanya dapat diubah lewat Tutup/Buka Kembali Periode (opClosePeriod/opReopenPeriod) agar beraudit', 'key'); // [P1-POLICY] perlindungan metadata, bukan penguncian
   }
   try {

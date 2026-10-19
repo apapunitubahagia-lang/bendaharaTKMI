@@ -61,9 +61,41 @@ function rgFail_(code, message) { return { code: code, message: message }; }
 function rgFilled_(v) { return opStr_(v) !== ''; }
 
 /* cur = objek baris lama (null bila baru), next = objek baris sesudah upsert (null bila archive). */
+/* [P0-T4] Field tanggal/periode per key: [field, jenis, wajibSaatDibuat]. Diperiksa HANYA saat baris dibuat atau saat
+   nilai field itu berubah; baris historis tidak diperiksa ulang/dikoreksi. Field opsional boleh kosong.
+   jenis: date (YYYY-MM-DD), dateOrDatetime (YYYY-MM-DD atau ISO Z), month (label bulan), period (bulan / Tahun Ajaran / SekaliBayar), year (YYYY). */
+var RG_DATE_FIELDS_ = {
+  lpj: [['tanggal', 'date', true]],
+  komitmen: [['tanggal', 'date', true], ['jatuhTempo', 'date', false]],
+  mutasiBank: [['tanggal', 'date', true]],
+  bukti: [['tanggal', 'date', false]],
+  anggaran: [['periode', 'period', true]],
+  kewajiban: [['periode', 'period', true]],
+  laporan: [['periode', 'month', true], ['tanggalDibuat', 'dateOrDatetime', false]],
+  kpi: [['periode', 'month', true]],
+  rkat: [['tahun', 'year', false]]
+};
+function rgDateFieldError_(key, cur, next) {
+  var spec = RG_DATE_FIELDS_[key]; if (!spec) return null;
+  for (var i = 0; i < spec.length; i++) {
+    var f = spec[i][0], kind = spec[i][1], req = spec[i][2];
+    if (!Object.prototype.hasOwnProperty.call(next, f)) continue; // kolom tidak ada di sheet live
+    var nv = next[f], sv = opStr_(nv);
+    if (cur && opStr_(sgDateStr_(cur[f])) === opStr_(sgDateStr_(nv))) continue; // tidak berubah -> tidak diperiksa
+    if (sv === '') { if (!cur && req) return rgFail_('VALIDATION_ERROR', f + ' wajib diisi'); if (cur && req && opStr_(cur[f]) !== '') return rgFail_('VALIDATION_ERROR', f + ' wajib diisi (tidak boleh dikosongkan)'); continue; }
+    var e = kind === 'date' ? sgDateError_(typeof nv === 'string' ? nv : sv)
+      : kind === 'dateOrDatetime' ? (sv.length > 10 ? sgDateTimeError_(sv) : sgDateError_(sv))
+      : kind === 'month' ? sgPeriodLabelError_(sv, false)
+      : kind === 'period' ? sgPeriodLabelError_(sv, true)
+      : (/^\d{4}$/.test(sv) ? null : 'tahun wajib 4 digit: "' + sv + '"');
+    if (e) return rgFail_('VALIDATION_ERROR', f + ': ' + e);
+  }
+  return null;
+}
 function rgCheckOp_(ctx, op, cur, next) {
   var key = ctx.key;
   if (op === 'archive') return null;
+  var de = rgDateFieldError_(key, cur, next); if (de) return de; // [P0-T4]
   if (key === 'rekonsiliasi') {
     var ak = opStr_(next.akunId); // [TC-CRUD-04 / GAP-014] referensi akun divalidasi lebih dulu
     if (!ak || !ctx.akunIds()[ak]) return rgFail_('VALIDATION_ERROR', 'akunId rekonsiliasi tidak ditemukan di 07_AKUN: ' + (ak || '(kosong)'));

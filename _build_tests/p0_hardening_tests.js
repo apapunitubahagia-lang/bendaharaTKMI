@@ -22,6 +22,7 @@ async function bootClient(srv, opts) {
   await tick(5); return c;
 }
 const sync = async c => { await c.sb.centralRunSync(true); await tick(10); await c.sb.centralRunSync(true); await tick(10); };
+const exp_ = t => ({ tanggal: t, unit: 'MI', nominal: 1234, akunId: 'akun_kas1', metode: 'Tunai', kategori: 'ATK', penerima: 'Toko' });
 const renameCol = (srv, n, h) => { srv.sheets[n][0][col(srv, n, h)] = 'rusak_' + h; };
 
 (async () => {
@@ -99,6 +100,66 @@ const renameCol = (srv, n, h) => { srv.sheets[n][0][col(srv, n, h)] = 'rusak_' +
     READ_SHEETS.forEach(n => { if (!FINAL[n]) return; srv.sheets[n] = [FINAL[n].slice()]; const r = srv.sb.opReadSheet(n, {}); if (!r.ok) blocked.push(n + ':' + r.code + ':' + (r.missing || []).join(',')); });
     rec('HD-T8-10', 'T8 kompatibilitas header FINAL', blocked.length === 0, blocked.length ? 'terblokir: ' + blocked.join(' | ') : 'semua sheet baca dengan header FINAL tetap terbaca (30 tidak ada di FINAL = opsional)'); }
 
+  // ======================= T4: validasi tanggal & label periode =======================
+  { const V = ['2026-10-19', '2026-13-40', '2026-02-30', '2024-02-29', '2025-02-29', '', null, '19/10/2026', '2026-1-9', '2026-10-19T08:00:00'];
+    const VALID = { '2026-10-19': 1, '2024-02-29': 1 };
+    const acc = r => { const c = code(r); return c === 'OK' || c === 'SUCCESS' || c === 'CREATED' || c === 'UPDATED'; };
+    const exp = { tanggal: undefined, unit: 'MI', nominal: 1000, akunId: 'akun_kas1', metode: 'Tunai', kategori: 'ATK', penerima: 'Toko' };
+    const P = {
+      'opCreateExpense.tanggal (wajib)': [true, (s, v) => s.sb.opCreateExpense(Object.assign({}, exp, { tanggal: v, clientRequestId: nid('cr') }))],
+      'opCreateIncome.tanggal (wajib)': [true, (s, v) => s.sb.opCreateIncome({ tanggal: v, unit: 'MI', nominal: 1000, akunId: 'akun_kas1', metode: 'Tunai', sumber: 'Penerimaan Lainnya', clientRequestId: nid('cr') })],
+      'opCreateTxBatch.tanggal (wajib)': [true, (s, v) => { const r = s.sb.opCreateTxBatch([{ kind: 'expense', payload: Object.assign({}, exp, { tanggal: v, clientRequestId: nid('cr') }) }]); return r.ok ? { ok: r.data.results[0].ok, code: r.data.results[0].code } : r; }],
+      'opUpdateTransaction.tanggal (wajib bila diubah)': [true, (s, v) => s.sb.opUpdateTransaction({ id: 'imp_trx_2', tanggal: v })],
+      'lpj.tanggal (wajib)': [true, (s, v) => s.sb.opRecordBatch('lpj', [{ op: 'upsert', id: nid('lpj'), row: { tanggal: v, unit: 'MI', item: 'x', nominal: 1000, status: 'REALIZATION' } }])],
+      'komitmen.tanggal (wajib)': [true, (s, v) => s.sb.opRecordBatch('komitmen', [{ op: 'upsert', id: nid('kom'), row: { tanggal: v, uraian: 'x', nominal: 1000, status: 'EXPECTED' } }])],
+      'komitmen.jatuhTempo (opsional)': [false, (s, v) => { s.sheets['09_KOMITMEN'][0].push('jatuhTempo'); return s.sb.opRecordBatch('komitmen', [{ op: 'upsert', id: nid('kom'), row: { tanggal: '2026-10-01', jatuhTempo: v, uraian: 'x', nominal: 1000, status: 'EXPECTED' } }]); }],
+      'mutasiBank.tanggal (wajib)': [true, (s, v) => s.sb.opRecordBatch('mutasiBank', [{ op: 'upsert', id: nid('mut'), row: { tanggal: v, nominal: 1000, keterangan: 'x' } }])],
+      'bukti.tanggal record (opsional)': [false, (s, v) => s.sb.opRecordBatch('bukti', [{ op: 'upsert', id: nid('dok'), row: { tanggal: v, fileRef: 'ref://uji', transaksiId: 'imp_trx_2', kategori: 'Kuitansi', judul: 'x' } }])],
+      'opUploadBukti.tanggal (opsional; kosong = hari ini)': [false, (s, v) => s.sb.opUploadBukti({ id: nid('dok'), mimeType: 'application/pdf', base64: Buffer.from('%PDF').toString('base64'), fileName: 'n.pdf', transaksiId: 'imp_trx_2', tanggal: v })]
+    };
+    const bad = [], mat = {};
+    Object.keys(P).forEach(k => { const [req, fn] = P[k]; mat[k] = V.map(v => { const s = makeServer(); const r = safe(() => fn(s, v)); const a = acc(r);
+      const want = VALID[v] ? true : ((v === '' || v === null) ? !req : false);
+      if (a !== want) bad.push(k + ' ' + J(v) + ' -> ' + code(r)); return a ? 'T' : 'X'; }).join(''); });
+    rec('HD-T4-01', 'T4 / GAP-014 / TC-CRUD-08', bad.length === 0, bad.length ? 'tidak sesuai: ' + bad.join(' | ') : 'semua jalur tanggal sesuai matriks (T=terima, X=tolak; urutan ' + J(V) + '): ' + J(mat)); }
+  { const L = ['Oktober 2026', 'oktober 2026', 'Bulan13 2026', '2026-10', '', null, 'Tahun Ajaran 2026/2027', 'Tahun Ajaran 2026/2028', 'SekaliBayar'];
+    const acc = r => { const c = code(r); return c === 'OK' || c === 'SUCCESS' || c === 'CREATED'; };
+    const P = {
+      'anggaran.periode (bulan/non-bulan, wajib)': ['period', (s, v) => s.sb.opRecordBatch('anggaran', [{ op: 'upsert', id: nid('ang'), row: { periode: v, program: 'x', kategori: 'ATK', unit: 'MI', nominal: 1 } }])],
+      'kewajiban.periode (bulan/non-bulan, wajib)': ['period', (s, v) => s.sb.opRecordBatch('kewajiban', [{ op: 'upsert', id: nid('kw'), row: { periode: v, siswaId: 's1', komponenId: 'kmp_spp', bruto: 1, netto: 1 } }])],
+      'laporan.periode (bulan, wajib)': ['month', (s, v) => s.sb.opRecordBatch('laporan', [{ op: 'upsert', id: nid('lap'), row: { periode: v, tanggalDibuat: '2026-10-19T08:00:00.000Z', dibuatOleh: 'B', snapshot: '{}' } }])],
+      'kpi.periode (bulan, wajib)': ['month', (s, v) => s.sb.opRecordBatch('kpi', [{ op: 'upsert', id: nid('kpi'), row: { periode: v, kpiKode: 'BDS01', skor: 1 } }])],
+      'settings.periodeAktif (bulan)': ['month', (s, v) => s.sb.opSettingsUpsert([{ key: 'periodeAktif', value: v }])],
+      'opReconcileAccount.periode (bulan)': ['month', (s, v) => s.sb.opReconcileAccount({ akunId: 'akun_bank1', periode: v, saldoAktual: 0, clientRequestId: nid('cr') })],
+      'opClosePeriod.periode (bulan)': ['month', (s, v) => s.sb.opClosePeriod(v)]
+    };
+    const ok = { period: { 'Oktober 2026': 1, 'Tahun Ajaran 2026/2027': 1, SekaliBayar: 1 }, month: { 'Oktober 2026': 1 } };
+    const bad = [], mat = {};
+    Object.keys(P).forEach(k => { const [kind, fn] = P[k]; mat[k] = L.map(v => { const s = makeServer(); const r = safe(() => fn(s, v)); const a = acc(r);
+      if (a !== !!ok[kind][v]) bad.push(k + ' ' + J(v) + ' -> ' + code(r)); return a ? 'T' : 'X'; }).join(''); });
+    rec('HD-T4-02', 'T4 label periode / TC-CRUD-08', bad.length === 0, bad.length ? 'tidak sesuai: ' + bad.join(' | ') : 'semua jalur periode sesuai (urutan ' + J(L) + '): ' + J(mat)); }
+  { const s = makeServer(); const r = (v) => code(safe(() => s.sb.opRecordBatch('rkat', [{ op: 'upsert', id: nid('rk'), row: { tahun: v, pagu: 1, program: 'x' } }])));
+    const res = { '2026': r('2026'), '26': r('26'), 'kosong': r(''), 'abc': r('abc') };
+    rec('HD-T4-03', 'T4 RKAT tahun (opsional)', res['2026'] === 'CREATED' && res['26'] === 'VALIDATION_ERROR' && res.kosong === 'CREATED' && res.abc === 'VALIDATION_ERROR', J(res)); }
+  { // historis: baris lama bertanggal mustahil TIDAK dikoreksi dan TIDAK memblokir perubahan field lain; mengubah tanggalnya ke nilai mustahil ditolak
+    const s = makeServer(); const TH = s.sheets['05_TRANSAKSI'][0];
+    const row = TH.map(h => ({ id: 'old_trx', jenis: 'PENGELUARAN', tanggal: '2026-02-30', unit: 'MI', nominal: 5000, akunId: 'akun_kas1', metode: 'Tunai', status: 'TERCATAT', kategori: 'ATK', penerima: 'Lama' })[h] || '');
+    s.sheets['05_TRANSAKSI'].push(row);
+    s.sheets['19_LPJ'].push(s.sheets['19_LPJ'][0].map(h => ({ id: 'old_lpj', tanggal: '2026-13-40', nominal: 100, status: 'REALIZATION' })[h] || ''));
+    const a = s.sb.opUpdateTransaction({ id: 'old_trx', catatan: 'koreksi catatan' });
+    const b = s.sb.opUpdateTransaction({ id: 'old_trx', tanggal: '2026-02-31' });
+    const c = code(s.sb.opRecordBatch('lpj', [{ op: 'upsert', id: 'old_lpj', row: { item: 'diberi nama' } }]));
+    const d = code(s.sb.opRecordBatch('lpj', [{ op: 'upsert', id: 'old_lpj', row: { tanggal: '2026-11-31' } }]));
+    const trxT = rows(s, '05_TRANSAKSI').find(r => r[0] === 'old_trx')[col(s, '05_TRANSAKSI', 'tanggal')], lpjT = rows(s, '19_LPJ').find(r => r[0] === 'old_lpj')[col(s, '19_LPJ', 'tanggal')];
+    rec('HD-T4-04', 'T4 data historis', a.ok && !b.ok && b.code === 'VALIDATION_ERROR' && c === 'UPDATED' && d === 'VALIDATION_ERROR' && trxT === '2026-02-30' && lpjT === '2026-13-40',
+      J({ ubahCatatan: a.code, ubahTanggalMustahil: b.code, lpjUbahItem: c, lpjUbahTanggalMustahil: d, tanggalLamaTetap: [trxT, lpjT] })); }
+  { // klien: jalur impor masih menormalisasi tanggal tanpa cek kalender, tetapi server menolak (otoritas di server)
+    const srv = makeServer(); const c = await bootClient(srv);
+    const norm = c.sb.normalizeDateValue('31/02/2026');
+    let msg = ''; try { c.sb.postTransaksi(Object.assign({ jenis: 'PENGELUARAN', status: 'TERCATAT' }, exp_(norm))); await sync(c); } catch (e) { msg = e.message; }
+    const n = rows(srv, '05_TRANSAKSI').filter(r => r[col(srv, '05_TRANSAKSI', 'tanggal')] === norm).length;
+    const blocked = c.a.Store.loadTransaksi().filter(t => t.tanggal === norm && t._syncBlocked).length;
+    rec('HD-T4-05', 'T4 otoritas server', norm === '2026-02-31' && n === 0 && (blocked === 1 || /tanggal/.test(msg)), 'normalizeDateValue klien "31/02/2026" -> ' + norm + '; tersimpan di server: ' + n + '; status klien: ' + (blocked ? 'gagal sinkron (diblokir)' : msg)); }
   const pass = R.filter(r => r.st === 'PASS').length, fail = R.filter(r => r.st === 'FAIL').length, info = R.filter(r => r.st === 'INFO').length;
   R.forEach(r => console.log(r.st + ' ' + r.id + ' [' + r.tc + '] ' + r.d));
   console.log('\nPASS=' + pass + ' FAIL=' + fail + ' INFO=' + info);

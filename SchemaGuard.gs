@@ -124,6 +124,43 @@ function sgRowsChecked_(sheetName) {
   return m.values.map(function (r) { var o = sgObj_(m, r); return typeof opJsonSafe_ === 'function' ? opJsonSafe_(o) : o; });
 }
 
+/* [P0-T4] Validasi tanggal & label periode BERSAMA untuk seluruh jalur tulis server. Mengembalikan null bila sah,
+   atau pesan galat. Tidak mengubah nilai (tidak ada normalisasi/koreksi otomatis). Hanya dipakai saat nilai DIBUAT atau
+   DIUBAH; baris historis tidak diperiksa ulang dan tidak dikoreksi.
+   - Tanggal: teks persis YYYY-MM-DD (tanpa jam), bulan 01-12, hari ada di kalender (kabisat dihitung).
+   - Tanggal-waktu (cap waktu sistem): YYYY-MM-DDTHH:mm:ss(.sss)Z dengan bagian tanggal yang sah.
+   - Label periode bulan: "<Bulan> <Tahun>" (huruf besar sesuai daftar). Label non-bulan yang dikenal sistem:
+     "Tahun Ajaran YYYY/YYYY+1" dan "SekaliBayar" (hanya bila allowNonMonth). */
+var SG_DATE_RE_ = /^(\d{4})-(\d{2})-(\d{2})$/;
+var SG_DATETIME_RE_ = /^(\d{4}-\d{2}-\d{2})T([01]\d|2[0-3]):[0-5]\d:[0-5]\d(\.\d{1,3})?Z$/;
+var SG_MONTH_LABEL_RE_ = /^(Januari|Februari|Maret|April|Mei|Juni|Juli|Agustus|September|Oktober|November|Desember) (\d{4})$/;
+function sgDateError_(v) {
+  if (typeof v !== 'string') return 'tanggal wajib teks berformat YYYY-MM-DD';
+  var m = SG_DATE_RE_.exec(v);
+  if (!m) return 'tanggal wajib format YYYY-MM-DD tanpa jam: "' + v + '"';
+  var y = Number(m[1]), mo = Number(m[2]), d = Number(m[3]);
+  if (mo < 1 || mo > 12) return 'bulan tidak valid pada tanggal "' + v + '"';
+  var dim = new Date(Date.UTC(y, mo, 0)).getUTCDate();
+  if (d < 1 || d > dim) return 'tanggal tidak ada di kalender: "' + v + '"';
+  return null;
+}
+function sgDateTimeError_(v) {
+  if (typeof v !== 'string') return 'cap waktu wajib teks ISO (YYYY-MM-DDTHH:mm:ssZ)';
+  var m = SG_DATETIME_RE_.exec(v);
+  if (!m) return 'cap waktu wajib format YYYY-MM-DDTHH:mm:ss(.sss)Z: "' + v + '"';
+  return sgDateError_(m[1]);
+}
+function sgPeriodLabelError_(p, allowNonMonth) {
+  if (typeof p !== 'string') return 'periode wajib teks';
+  if (SG_MONTH_LABEL_RE_.test(p)) return null;
+  if (allowNonMonth) {
+    if (p === 'SekaliBayar') return null;
+    var t = /^Tahun Ajaran (\d{4})\/(\d{4})$/.exec(p);
+    if (t && Number(t[2]) === Number(t[1]) + 1) return null;
+  }
+  return 'periode tidak valid: "' + p + '" (format "<Bulan> <Tahun>", mis. "Oktober 2026"' + (allowNonMonth ? '; atau "Tahun Ajaran 2026/2027" / "SekaliBayar"' : '') + ')';
+}
+
 /* [P0-B] Rollback KHUSUS baris yang BARU SAJA ditambahkan oleh operasi yang sama di dalam lock yang sama
    (pola yang sama dengan rollback engine deleteRowById_). Tidak boleh dipakai untuk menghapus data lama. */
 function sgUndoAppend_(sh, fromRow, count) {

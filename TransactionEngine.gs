@@ -283,9 +283,9 @@ function validateJenis_(jenis) {
   if (jenis !== 'PENERIMAAN' && jenis !== 'PENGELUARAN') return 'jenis harus PENERIMAAN atau PENGELUARAN';
   return null;
 }
-function validateTanggal_(tanggal) {
-  if (!tanggal || typeof tanggal !== 'string' || !/^\d{4}-\d{2}-\d{2}/.test(tanggal)) return 'tanggal wajib format YYYY-MM-DD';
-  return null;
+function validateTanggal_(tanggal) { // [P0-T4] tanggal kalender nyata, tanpa jam (sgDateError_, SchemaGuard.gs)
+  if (tanggal === null || tanggal === undefined || tanggal === '') return 'tanggal wajib diisi (format YYYY-MM-DD)';
+  return sgDateError_(tanggal);
 }
 function validateUnit_(unit) {
   if (!unit || (unit !== 'TK' && unit !== 'MI')) return 'unit harus TK atau MI';

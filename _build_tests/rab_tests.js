@@ -298,8 +298,10 @@ const kpiPack = s => ({ overall: s.overall, st: s.overallStatus, rows: s.rows.ma
     // tanggal transaksi: kosong/format salah ditolak; tanggal tidak mungkin DITERIMA (temuan T4, usulan U-4)
     const dt = d => { const r = safe(() => srv.sb.opCreateExpense({ tanggal: d, unit: 'MI', nominal: 1000, akunId: 'akun_kas1', metode: 'Tunai', kategori: 'ATK', penerima: 'Toko', clientRequestId: 'dt_' + d })); return r.ok ? 'OK:' + srv.sb.fccPeriodeOfDate_(d) : r.code; };
     const res = { kosong: dt(''), format: dt('12/10/2026'), bulan13: dt('2026-13-40'), feb30: dt('2026-02-30') };
-    rec('RAB-35', 'tanggal tidak valid (karakterisasi T4)', res.kosong === 'VALIDATION_ERROR' && res.format === 'VALIDATION_ERROR' && res.bulan13 === 'OK:' && res.feb30 === 'OK:Februari 2026',
-      J(res) + ' -> 2026-13-40 tersimpan tanpa periode (tidak masuk C periode mana pun); perbaikan menunggu keputusan U-4');
+    // [P0-T4, 19-10-2026] ekspektasi diperbarui: semula karakterisasi temuan T4 (tanggal mustahil DITERIMA, "menunggu U-4");
+    // perbaikan validasi kalender kini diminta eksplisit (Master Task P0 Bagian B) -> tanggal mustahil DITOLAK.
+    rec('RAB-35', 'tanggal tidak valid (T4 diperbaiki P0-T4)', res.kosong === 'VALIDATION_ERROR' && res.format === 'VALIDATION_ERROR' && res.bulan13 === 'VALIDATION_ERROR' && res.feb30 === 'VALIDATION_ERROR',
+      J(res) + ' -> tanggal kalender mustahil kini ditolak server (sebelumnya diterima: temuan T4)');
   }
   // ================= LPJ bulan berikutnya (P1_12 kasus 1/2/10) =================
   { const srv = makeServer();

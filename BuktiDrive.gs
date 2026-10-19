@@ -32,6 +32,7 @@ function opUploadBukti(p) {
   if (b64.length > OP_BUKTI_MAX_B64_) return errResult_('VALUE_TOO_LARGE', 'File terlalu besar (maks ~9 MB)', 'base64');
   var name = opStr_(p.fileName).replace(/[^A-Za-z0-9._\- ]/g, '_').slice(0, 120) || ('bukti_' + id);
   var trxId = opStr_(p.transaksiId);
+  if (opStr_(p.tanggal) !== '') { var te = sgDateError_(typeof p.tanggal === 'string' ? p.tanggal : opStr_(p.tanggal)); if (te) return errResult_('VALIDATION_ERROR', 'tanggal: ' + te, 'tanggal'); } // [P0-T4] opsional (kosong = hari ini)
   try {
     return withLock_(function () {
       if (trxId) { // [P1-E] bukti hanya untuk transaksi aktif yang ada; file tidak dibuat bila referensi salah
