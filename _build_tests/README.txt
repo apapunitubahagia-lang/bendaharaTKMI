@@ -45,3 +45,9 @@ Tambahan P1-IMP (2026-10-19; D-IMP-1..8, D-T4b F7/F8; laporan P1_17):
   node import_engine_tests.js   # mesin impor server: skala 10/50/100/500 x 5 modul, idempotensi, putus koneksi, konflik, rekonsiliasi
   node import_client_tests.js   # wizard Impor V2: isi tabel, tempel, CSV, XLSX (stored & deflate), lanjut setelah putus
   Hasil terakhir: node run_all_tests.js p1impA -> 15 suite, 513 PASS, 0 FAIL, 42 INFO (sandbox; BELUM uji live).
+
+Tambahan P1_18 (2026-10-19; Keputusan 1, Prioritas A-C): apply_imp_lock_server.js (withLock_ reentran), apply_kewajiban_guard_server.js,
+  apply_kewajiban_guard_client.js, apply_akun_explicit_client.js; berkas baru ../KewajibanGuard.gs.
+  node concurrency_tests.js     # dua pengguna / balapan commit impor (kunci eksklusif antar-eksekusi disimulasikan)
+  node akun_explicit_tests.js   # akun Kas/Bank wajib eksplisit di jalur lama yang masih aktif + server
+  Hasil terakhir: node run_all_tests.js p1impB -> 17 suite, 533 PASS, 0 FAIL, 42 INFO (sandbox; uji live BLOCKED).
