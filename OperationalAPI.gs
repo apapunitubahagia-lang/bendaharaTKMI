@@ -221,6 +221,7 @@ function opSchemaReport() {
   expected['25_DEVICE_WHITELIST'] = typeof DEVICE_HEADERS !== 'undefined' ? DEVICE_HEADERS : null;
   expected['26_USER_ACCESS'] = typeof USER_ACCESS_HEADERS !== 'undefined' ? USER_ACCESS_HEADERS : null;
   if (typeof RAB_ALOKASI_HEADERS_ !== 'undefined') expected[RAB_ALOKASI_SHEET_] = RAB_ALOKASI_HEADERS_; // [P1-RAB] opsional (MISSING_SHEET wajar sebelum setup)
+  if (typeof IMP_HEADERS_ !== 'undefined') Object.keys(IMP_SHEET_).forEach(function (k) { expected[IMP_SHEET_[k]] = IMP_HEADERS_[k]; }); // [P1-IMP] log impor opsional (MISSING_SHEET wajar sebelum opImportSetup)
   expected['99_MIGRATION_LOG'] = null; // header tidak didefinisikan di kode (hanya penulisan posisional 7 kolom)
   var report = Object.keys(expected).sort().map(function (name) {
     var sh = ss_().getSheetByName(name);
