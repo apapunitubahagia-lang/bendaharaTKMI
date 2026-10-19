@@ -4,7 +4,20 @@
 **Branch:** `claude/vigilant-bell-967cih` (lokal `p1/implementasi`)
 **Commit dasar:** `8dd626b`. HEAD = remote, working tree bersih (diperiksa).
 
-**Status: RENCANA, BELUM ADA KODE.** Kode baru dimulai setelah dokumen ini ditinjau dan keputusan §9 diberikan.
+**Status: DISETUJUI SEBAGIAN (keputusan pengguna, 19-10-2026).** K-RAB-01..06 dan K-RAB-08 disahkan; K-RAB-07 **belum** (analisis terpisah: `P1_08_ANALISIS_K_RAB_07.md`). Implementasi dilakukan dalam commit terpisah `P1-RAB`.
+
+### Keputusan yang disahkan (19-10-2026)
+
+| ID | Keputusan |
+|---|---|
+| K-RAB-01 | Hanya `tingkatPemetaan = ITEM` yang sah sebagai pemetaan eksplisit. Tingkat lain dilaporkan (`PERLU_PEMERIKSAAN`) dan **tidak** diperlakukan setara ITEM |
+| K-RAB-02 | Status RAB kosong = belum disetujui (sama dengan DIAJUKAN untuk kelayakan). Ditampilkan terpisah (`TANPA_STATUS`). Status historis **tidak** diisi otomatis |
+| K-RAB-03 | Sisa nominal tanpa alokasi eksplisit tetap **tidak terpetakan**, tidak dicocokkan ulang lewat aturan kategori. Contoh: Rp1.000.000 dengan eksplisit Rp700.000 → terpetakan Rp700.000, tidak terpetakan Rp300.000. Σ alokasi ≤ nominal |
+| K-RAB-04 | I04 dinilai di **tingkat garis anggaran**; agregasi konsisten tanpa hitung ganda. Identitas garis dan aturan agregasi: §4.3 |
+| K-RAB-05 | Populasi I04 hanya garis yang memiliki RAB **DISETUJUI**. DIAJUKAN/tanpa status bukan anggaran disetujui. Tanpa garis yang memenuhi syarat → aturan N/A yang berlaku (tidak diubah) |
+| K-RAB-06 | Teks dokumentasi `formula` BDS03 diperbarui sesuai aturan pencocokan baru. Bobot/target/ambang/definisi lain tidak berubah |
+| K-RAB-07 | **Belum disetujui.** Bagian persetujuan BDS03-I05 tidak diubah |
+| K-RAB-08 | Skema aditif `30_ALOKASI_PENGELUARAN` disetujui untuk lingkungan uji. Dibuat hanya lewat fungsi admin eksplisit berkonfirmasi; uji kering + validasi mendahului impor; impor hanya di salinan uji setelah hasil diperiksa dan disetujui |
 
 **Paket:** perubahan terpisah dari revisi kebijakan periode (`79e2b66`). Akan menjadi commit tersendiri `P1-RAB` di atas dokumen-dokumen ini.
 
@@ -113,7 +126,7 @@ Satu hasil dipakai KPI dan FCC. Untuk setiap PENGELUARAN aktif bertanggal di `pe
 | Indikator | Sebelum | Sesudah |
 |---|---|---|
 | BDS03-I03 Sesuai RAB | ok bila ada RAB dengan `program === kategori` di periode yang sama (status apa pun) | ok bila transaksi **terpetakan penuh** (eksplisit atau kategori) ke RAB **disetujui** |
-| BDS03-I04 Tidak melebihi pagu | Per baris RAB: realisasi = Σ pengeluaran dengan `kategori === program` | Per baris RAB **disetujui**: realisasi = Σ bagian yang dipetakan ke baris itu. Untuk garis aturan-kategori yang berisi >1 baris RAB, realisasi dinilai di tingkat garis (K-RAB-04). Baris DIAJUKAN tidak masuk populasi I04 (K-RAB-05) |
+| BDS03-I04 Tidak melebihi pagu | Per baris RAB: realisasi = Σ pengeluaran dengan `kategori === program` | **Per garis anggaran** (§4.3) dengan `paguDisetujui > 0`: realisasi garis ≤ pagu disetujui. Satu aktivitas per garis. Garis tanpa RAB disetujui keluar populasi (K-RAB-05) |
 | BDS03-I05 Di luar RAB punya persetujuan | ok bila ada RAB (aturan lama) atau ada komitmen dengan `transaksiId` | ok bila I03-baru ok atau ada persetujuan. **Bagian persetujuan tidak diubah** (§7) |
 | FCC Anggaran vs Aktual | Aktual menurut aturan kategori | Aktual menurut `rabMatchCompute_`; kolom anggaran dipecah per status |
 | FCC `missing` | RAB tanpa transaksi `kategori === program` | RAB **disetujui** tanpa realisasi menurut `rabMatchCompute_` dan tanpa komitmen |
@@ -132,6 +145,42 @@ Satu hasil dipakai KPI dan FCC. Untuk setiap PENGELUARAN aktif bertanggal di `pe
 Semua aturan otorisasi (BENDAHARA), idempotensi (id), CONFLICT (`expect`), audit atomik, dan penanda periode (P1-POLICY) berlaku otomatis lewat jalur `opRecordBatch`.
 
 ---
+
+### 4.3 Identitas garis anggaran dan aturan agregasi (K-RAB-04, ditetapkan sebelum implementasi)
+
+**Garis anggaran** = kelompok baris `08_ANGGARAN` pengeluaran (`jenis ≠ PEMASUKAN`, tidak diarsipkan) yang dinilai bersama.
+
+1. **Kunci garis** (`lineKey`):
+   - Bila `kategori` terisi dan `unit ∈ {TK, MI}`: `kn(kategori) | norm(subkategori) | unit | periode`. Ini **identik** dengan kunci garis `fccBudgetVsActual_` sekarang. `kn` menerjemahkan id `21_KATEGORI_PENGELUARAN` ke nama, lalu menormalisasi huruf kecil dan spasi.
+   - Selain itu: `BARIS|<id>`, yaitu garis tunggal untuk satu baris. Garis ini tidak dapat dicocokkan lewat aturan kategori, hanya lewat pemetaan eksplisit. Baris itu tetap dilaporkan di `anggaranTidakValid` seperti sekarang.
+2. **Pagu garis per status:**
+   - `paguDisetujui` = Σ nominal baris `DISETUJUI`.
+   - `paguDiajukan` = Σ nominal baris `DIAJUKAN`.
+   - `paguTanpaStatus` = Σ nominal baris berstatus kosong.
+   - `paguStatusLain` = Σ nominal baris berstatus lain.
+   - Normalisasi: huruf besar, tanpa spasi tepi (`Disetujui` = `DISETUJUI`).
+3. **Realisasi garis** = Σ **bagian** transaksi yang dipetakan ke garis:
+   - (a) bagian eksplisit: alokasi `30_ALOKASI_PENGELUARAN` ke baris mana pun di garis itu;
+   - (b) bagian aturan kategori: transaksi tanpa pemetaan eksplisit yang cocok dengan garis (hanya garis periode-bulan, transaksi pada bulan yang sama).
+4. **Tanpa hitung ganda.** Setiap rupiah transaksi masuk ke **paling banyak satu** garis:
+   - eksplisit: per alokasi, ke garis baris tujuannya;
+   - aturan: kunci garis unik, sehingga satu transaksi mencocokkan paling banyak satu garis;
+   - sisa (K-RAB-03) dan tanpa RAB tidak masuk garis mana pun.
+   - **Invarian yang diuji:** Σ realisasi semua garis + Σ sisa tidak terpetakan + Σ tanpa RAB = Σ nominal pengeluaran aktif.
+5. **Transaksi dengan Σ alokasi eksplisit > nominal** (seharusnya tidak terjadi karena divalidasi saat tulis): seluruh alokasi eksplisitnya **diabaikan**. Transaksi itu menjadi tanpa RAB dan dilaporkan `ALOKASI_MELEBIHI_NOMINAL` (tanpa perbaikan otomatis).
+6. **I04 (K-RAB-04/05):**
+   - Populasi = garis dengan `paguDisetujui > 0`.
+   - ok ⇔ realisasi garis ≤ `paguDisetujui` + 0,5. Realisasi garis mencakup semua bagian yang dipetakan ke garis, termasuk alokasi eksplisit ke baris DIAJUKAN di garis yang sama: belanja dicatat terhadap garis itu dan dibandingkan dengan pagu yang disetujui.
+   - **Satu aktivitas per garis** (sebelumnya satu per baris RAB). Referensi = baris DISETUJUI pertama (urut id); tanggal jangkar = `anchorDateForPeriode(periode garis)`.
+   - Perubahan populasi ini dilaporkan sebagai perubahan input yang disengaja.
+7. **I03:** per transaksi pengeluaran. ok ⇔ sisa ≤ 0,5 **dan** setiap bagian disetujui:
+   - eksplisit: status baris tujuan = DISETUJUI;
+   - aturan: garis punya `paguDisetujui > 0`.
+8. **I05:** ok ⇔ I03-baru ok **atau** `pengeluaranPunyaPersetujuan(t)` (tidak diubah; K-RAB-07).
+9. **Tampilan per baris RAB** (tabel anggaran, laporan, snapshot laporan):
+   - Realisasi baris = bagian eksplisit ke baris itu + bagian aturan garis **hanya bila garis berisi satu baris**.
+   - Garis berisi >1 baris menampilkan keterangan realisasi garis (aturan kategori tidak dapat dibagi per baris tanpa mengarang).
+   - **Total** (ringkasan Beranda, total laporan) dijumlahkan **per garis unik**, bukan per baris, agar tidak ganda.
 
 ## 5. Rencana uji kering dan impor
 
@@ -224,14 +273,14 @@ Semua suite yang ada (`run_all_tests.js`) tetap dijalankan. Uji pada salinan FIN
 
 | ID | Pertanyaan | Usulan default |
 |---|---|---|
-| **K-RAB-01** | Tingkat `tingkatPemetaan` mana yang dianggap pemetaan eksplisit sah? | Hanya `ITEM`. Tingkat lain → `PERLU_PEMERIKSAAN` sampai nilai-nilainya terlihat di uji kering |
-| **K-RAB-02** | Perlakuan RAB **tanpa status** (kolom kosong; baris lama/manual sebelum kolom status ada) | Diperlakukan **seperti DIAJUKAN** (tidak dianggap disetujui) tetapi ditampilkan terpisah sebagai `TANPA_STATUS`. Konsekuensi: RAB lama tanpa status tidak lagi meluluskan I03 |
-| **K-RAB-03** | Sisa nominal transaksi yang hanya sebagian dipetakan eksplisit | Ditandai "sisa tidak terpetakan" (tidak dicocokkan ulang dengan aturan kategori). Transaksi tidak lulus I03 sampai terpetakan penuh |
-| **K-RAB-04** | I04 untuk garis aturan-kategori yang memuat >1 baris RAB disetujui | Dinilai di tingkat garis: Σ realisasi garis ≤ Σ pagu garis, hasilnya diterapkan ke setiap baris garis |
-| **K-RAB-05** | Populasi I04: hanya RAB DISETUJUI? | Ya. Baris DIAJUKAN/TANPA_STATUS keluar populasi dan ditampilkan terpisah. Bila populasi kosong → N/A (aturan yang ada) |
-| **K-RAB-06** | Teks `formula` BDS03-I03/I04 di `indDef` menyebut "kategori cocok dengan baris Anggaran". Perbarui teks dokumentasinya agar menyebut aturan baru? | Ya, **hanya teks dokumentasi**; bobot/target/ambang tidak berubah. Bila tidak disetujui, teks dibiarkan dan ketidaksesuaian dicatat |
-| **K-RAB-07** | Relasi persetujuan I05: alternatif A, B, atau C (§7) | Tidak ada default; bagian ini dihentikan |
-| **K-RAB-08** | Persetujuan menambah sheet `30_ALOKASI_PENGELUARAN` (skema aditif, dibuat eksplisit) | Sudah diminta di tugas ini; dikonfirmasi ulang dengan skema §2 |
+| **K-RAB-01** | Tingkat `tingkatPemetaan` mana yang dianggap pemetaan eksplisit sah? | **DISAHKAN 19-10-2026:** hanya `ITEM` |
+| **K-RAB-02** | Perlakuan RAB **tanpa status** (kolom kosong; baris lama/manual sebelum kolom status ada) | Diperlakukan **seperti DIAJUKAN** (tidak dianggap disetujui) tetapi ditampilkan terpisah sebagai `TANPA_STATUS`. Konsekuensi: RAB lama tanpa status tidak lagi meluluskan I03  **DISAHKAN 19-10-2026** (lihat tabel keputusan di atas). |
+| **K-RAB-03** | Sisa nominal transaksi yang hanya sebagian dipetakan eksplisit | Ditandai "sisa tidak terpetakan" (tidak dicocokkan ulang dengan aturan kategori). Transaksi tidak lulus I03 sampai terpetakan penuh  **DISAHKAN 19-10-2026** (lihat tabel keputusan di atas). |
+| **K-RAB-04** | I04 untuk garis aturan-kategori yang memuat >1 baris RAB disetujui | Dinilai di tingkat garis: Σ realisasi garis ≤ Σ pagu garis, hasilnya diterapkan ke setiap baris garis  **DISAHKAN 19-10-2026** (lihat tabel keputusan di atas). |
+| **K-RAB-05** | Populasi I04: hanya RAB DISETUJUI? | Ya. Baris DIAJUKAN/TANPA_STATUS keluar populasi dan ditampilkan terpisah. Bila populasi kosong → N/A (aturan yang ada)  **DISAHKAN 19-10-2026** (lihat tabel keputusan di atas). |
+| **K-RAB-06** | Teks `formula` BDS03-I03/I04 di `indDef` menyebut "kategori cocok dengan baris Anggaran". Perbarui teks dokumentasinya agar menyebut aturan baru? | Ya, **hanya teks dokumentasi**; bobot/target/ambang tidak berubah. Bila tidak disetujui, teks dibiarkan dan ketidaksesuaian dicatat  **DISAHKAN 19-10-2026** (lihat tabel keputusan di atas). |
+| **K-RAB-07** | Relasi persetujuan I05: alternatif A, B, atau C (§7) | Tidak ada default; bagian ini dihentikan  **BELUM DISETUJUI**: analisis di `P1_08_ANALISIS_K_RAB_07.md`. |
+| **K-RAB-08** | Persetujuan menambah sheet `30_ALOKASI_PENGELUARAN` (skema aditif, dibuat eksplisit) | Sudah diminta di tugas ini; dikonfirmasi ulang dengan skema §2  **DISAHKAN 19-10-2026** (lihat tabel keputusan di atas). |
 
 ## 10. Risiko dan kriteria penerimaan
 
