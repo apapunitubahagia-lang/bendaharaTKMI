@@ -31,4 +31,5 @@ Tambahan P1-RAB (2026-10-19; keputusan K-RAB-01..06, 08; paket terpisah dari P1-
   ke FinanceEngine.gs oleh apply_p1_rab_server.js). Berkas server tulisan tangan baru: ../RabAllocation.gs.
   Urutan lengkap ada di build_all.js (node build_all.js).
   node rab_tests.js              # pencocokan, FCC, RecordGuard, setup/uji kering/impor, diferensial BDS03, 35 tes + 2 INFO (RAB-29..37: Keputusan 2, karakterisasi lintas periode, LPJ bulan berikutnya)
+  node audit_p1_tests.js        # simulasi audit P1_13 (T1, T4, lintas bulan, K-RAB-07, sheet 30); PASS = kontrol berlaku, INFO = temuan
   node run_all_tests.js <prefix> # seluruh suite -> ../_test_logs/<prefix>_*.log (jangan pakai prefix 'final')

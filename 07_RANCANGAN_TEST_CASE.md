@@ -143,6 +143,13 @@ Status kebijakan setiap kasus: `P1_12` §4. TC bertanda **(menunggu kebijakan)**
 | TC-LB-08 | LPJ diterima, belum diverifikasi | Lihat status pertanggungjawaban | **(menunggu U-2)**: "menunggu verifikasi", bukan selesai | P1 | 020 |
 | TC-LB-09 | RAB disetujui setelah tanggal transaksi | Lihat penilaian I03 | **(menunggu U-5)** | P2 | 018 |
 | TC-LB-10 | Uang muka September, sisa dikembalikan Oktober | Catat pengembalian | **(menunggu U-3 + GAP-028)** | P2 | 028 |
+| TC-LB-11 | Transaksi September atas RAB DIAJUKAN; RAB kemudian diubah DISETUJUI | Lihat I03 transaksi itu | **(menunggu D-LB-3)**. Perilaku sekarang: berlaku surut tanpa tanggal persetujuan (`P1_13` §3 kasus 3) | P1 | 018 |
+| TC-LB-12 | September ditandai CLOSED | Catat LPJ bertanggal nota September atas transaksi September | Diterima; `PERIODE_DITANDAI`; transaksi dan saldo tidak berubah | P1 | 015, 020 |
+| TC-LB-13 | Uang muka 2.000.000 (20-09) dari bank; nota 1.700.000; sisa 300.000 kembali 06-10 | Catat seluruh siklus | **(menunggu D-T1)**: saldo bank = rekening koran; pengeluaran aktual tidak ganda; realisasi RAB = pemakaian; sisa tidak tercatat sebagai penerimaan operasional; status LPJ sesuai tahap (`P1_13` §1.2) | P1 | 020, 028 |
+| TC-CRUD-08 | – | Tulis tanggal `2026-13-40`, `2026-02-30`, `2025-02-29`, kosong, `null`, `19/10/2026` di semua jalur tulis bertanggal (transaksi, LPJ, komitmen, mutasi, bukti) dan label periode tidak sah di RAB/kewajiban | **(menunggu D-T4)**: semua ditolak `VALIDATION_ERROR`; `2024-02-29` dan `2026-10-19` diterima; baris historis tidak diubah | P1 | 014 |
+| TC-HDR-07 | Kolom wajib sheet yang dibaca lewat `opReadSheet` hilang (mis. `30_ALOKASI_PENGELUARAN.anggaranId`, `08_ANGGARAN.nominal`) | Buka KPI | **(menunggu D-T8)**: "DATA TIDAK TERSEDIA", tidak dihitung dari data parsial | P0 | 002 |
+| TC-AUTH-09 | Pengguna BENDAHARA | Buat/ubah pengguna menjadi KEPALA_SEKOLAH/YAYASAN | **(menunggu D-T7)**: ditolak; pengelolaan peran penyetuju hanya oleh peran admin terpisah | P1 | 048 (usulan) |
+| TC-REL-07 | Salinan uji, `30_REF_ALOKASI_PENGELUARAN` tersedia | Jalankan langkah setup sheet 30 (`P1_13` §5) | Semua kriteria langkah 0–8 terpenuhi; `30_REF` tidak berubah | P1 | 018, 016 |
 
 ## Riwayat revisi
 
@@ -151,6 +158,7 @@ Status kebijakan setiap kasus: `P1_12` §4. TC bertanda **(menunggu kebijakan)**
 | 17-10-2026 | TC-CRUD-05 | `opCreateIncome` pada periode TERKUNCI → `PERIOD_LOCKED` | Diterima pada tanggal aktual, ditandai dan diaudit secara atomik. Kegagalan audit tidak meninggalkan keadaan parsial. Otorisasi dan validasi tetap berlaku. Status periode dan riwayat closing tetap tersedia | Keputusan kebijakan pengguna 17-10-2026: status CLOSED/TERKUNCI adalah **penanda administratif, bukan hard lock** pencatatan rutin, karena pembayaran orang tua sering terlambat. Implementasi: commit `79e2b66`. Audit: `P1_03_POLICY_CHANGE_AUDIT.md`. Laporan: `P1_03_IMPLEMENTATION_REPORT.md`. Uji sandbox: P1L-01, P1L-13, P1P-06, P1P-10 |
 | 19-10-2026 | TC-REK-02 | Status mutasi teridentifikasi = `TERIDENTIFIKASI` | Status = `DIPROSES` | `TERIDENTIFIKASI` tidak ada di kontrak Web V2 (`DB_SCHEMA 11_MUTASI_BANK`: `BELUM_DIPROSES`, `DIPROSES`); KPI BDS02-I02/I03 memakai `DIPROSES`. Keputusan pengguna atas `P1_04`: **Opsi C**, yaitu tidak mengubah data maupun rumus KPI. 544 baris `TEREKONSILIASI` (angka dari dokumen 05, belum dihitung ulang terhadap data FINAL) tetap apa adanya; masalah pemetaan status **belum terselesaikan** |
 | 19-10-2026 | TC-DSH-08/09, TC-LB-01..10 (baru) | – | Lihat tabel J dan K | Keputusan 2 (Kartu Beranda) dan audit lintas bulan `P1_12`. Tidak ada TC yang dihapus atau diubah |
+| 19-10-2026 | TC-LB-11..13, TC-CRUD-08, TC-HDR-07, TC-AUTH-09, TC-REL-07 (baru) | – | Lihat tabel K | Audit `P1_13`. Tidak ada TC yang dihapus atau diubah |
 
 Revisi tersebut **tidak menghapus** test case; langkah dan ekspektasinya diperluas agar tetap memeriksa kontrol keamanan dan integritas.
 

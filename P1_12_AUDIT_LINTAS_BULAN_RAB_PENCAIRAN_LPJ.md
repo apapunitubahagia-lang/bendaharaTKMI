@@ -68,6 +68,8 @@ Dua instruksi tertanggal 19-10-2026 saling bertentangan:
 
 ## 4. Matriks kasus lintas bulan
 
+> **Pembaruan 19-10-2026:** matriks kasus 1–9 versi terbaru beserta dampak per saldo/periode/realisasi/KPI/LPJ ada di `P1_13` §3. Audit T1 dan T4 lengkap ada di `P1_13` §1–§2. Tabel di bawah dipertahankan sebagai riwayat.
+
 Keputusan usulan: ACCEPT / REJECT / NEEDS_POLICY_DECISION. Kolom "Sekarang" adalah perilaku kode `f955416` + Keputusan 2.
 
 | # | Kasus | Usulan | Sekarang | Catatan |

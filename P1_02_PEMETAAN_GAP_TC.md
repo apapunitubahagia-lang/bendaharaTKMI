@@ -16,6 +16,8 @@
 > - GAP-020 (LPJ): temuan baru T1 (risiko hitung ganda lewat "Buat Transaksi dari LPJ") dan T3 (tidak ada status diterima/diverifikasi).
 > - GAP-014: temuan T4 (`validateTanggal_` menerima tanggal kalender yang tidak mungkin).
 
+> **Pembaruan 19-10-2026 (audit `P1_13`):** temuan T1 (pengeluaran ganda via LPJ → GAP-020/018), T4 (tanggal kalender di 8/8 jalur tulis bertanggal → GAP-014), T7 (BENDAHARA mengelola peran penyetuju → **usulan GAP-048**), dan T8 (`opReadSheet` tanpa pemeriksaan kolom wajib; KPI klien dihitung dari data parsial → GAP-002, P0). Test case baru: TC-LB-11..13, TC-CRUD-08, TC-HDR-07, TC-AUTH-09, TC-REL-07. Pemetaan lengkap: `P1_13` §8.
+
 **Status P1: tetap BELUM SELESAI.** Uji live (Apps Script + salinan Sheets) masih BLOCKED.
 
 Hambatan H7 di `P1_00` (dokumen tidak tersedia) **teratasi**. ID TC sementara `TC-P1-*` diganti dengan ID dokumen di `p1_tests.js`.
