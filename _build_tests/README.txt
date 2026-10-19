@@ -51,3 +51,9 @@ Tambahan P1_18 (2026-10-19; Keputusan 1, Prioritas A-C): apply_imp_lock_server.j
   node concurrency_tests.js     # dua pengguna / balapan commit impor (kunci eksklusif antar-eksekusi disimulasikan)
   node akun_explicit_tests.js   # akun Kas/Bank wajib eksplisit di jalur lama yang masih aktif + server
   Hasil terakhir: node run_all_tests.js p1impB -> 17 suite, 533 PASS, 0 FAIL, 42 INFO (sandbox; uji live BLOCKED).
+
+Tambahan P1_19 (2026-10-19): apply_alloc_lock_server.js, apply_akun_strict_server.js, apply_akun_strict_client.js,
+  apply_kewajiban_guard2_client.js.
+  node tx_integrity_tests.js    # konkurensi & integritas jalur transaksi biasa (10 skenario wajib + audit/periode + jejak kunci)
+  node gap005_tests.js          # matriks peran semua fungsi publik, folder bukti uji (Script Property), inventaris deploy
+  Hasil terakhir: node run_all_tests.js p1_19 -> 19 suite, 555 PASS, 0 FAIL, 44 INFO (sandbox; uji live BLOCKED).
