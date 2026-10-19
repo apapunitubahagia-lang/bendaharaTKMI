@@ -1,0 +1,16 @@
+id pembayaran
+id alokasi
+id pemasukan
+id pengeluaran
+penanda akun pembayaran
+penanda akun pemasukan
+penanda akun pengeluaran
+v1Id_
+runMigrationNow mode pusat
+v1Pengecualian_ + rep
+scan pengecualian
+migrate pengecualian
+push guard
+batch guard
+v1PetakanAkun + modal
+laporan pengecualian

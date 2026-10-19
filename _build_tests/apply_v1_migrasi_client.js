@@ -1,0 +1,52 @@
+// Langkah build P1_20 B (klien). Dijalankan SETELAH apply_kewajiban_guard2_client.js. Paket terpisah agar mudah di-revert.
+// Migrasi V1->V2 & pengiriman data lama ke server:
+//  - transaksi hasil migrasi V1 (akun = akun pertama, fallback historis) TIDAK dikirim ke server tanpa pemetaan akun EKSPLISIT
+//    (_akunPemetaan); masuk daftar pengecualian dengan alasan (PEMETAAN_AKUN_V1_DIPERLUKAN / AKUN_KOSONG / AKUN_TIDAK_ADA_DI_SERVER);
+//  - pemetaan hanya lewat tindakan pengguna (v1PetakanAkun: akun Kas/Bank master server + alasan wajib), beraudit;
+//  - id transaksi/alokasi hasil migrasi DETERMINISTIK dari data V1 (migrasi ulang = id sama = clientRequestId sama -> tidak ganda);
+//  - "Jalankan Migrasi Sekarang" dinonaktifkan pada mode pusat (menimpa seluruh koleksi lokal termasuk transaksi yang masih antre).
+// Data V1 & histori tidak diubah; akunId lokal hasil migrasi lama tidak diubah otomatis; migrasi tidak dijalankan.
+const fs = require('fs');
+const { OUT } = require('./paths');
+const L = require('./p0_lib');
+const log = [];
+const doc = L.load(OUT + 'Bendahara_V2.html');
+// --- id deterministik + penanda sumber akun ---
+L.rep(doc, "  v1Pembayaran.forEach(p=>{\n    const tId = uid('trx');", "  v1Pembayaran.forEach((p, i)=>{\n    const tId = v1Id_('pembayaran', p, i); // [P1_20 B] deterministik", 'id pembayaran', log);
+L.rep(doc, "    (p.alokasi||[]).forEach(al=>{\n      alokasiOut.push({id:uid('alk'), transaksiId:tId,", "    (p.alokasi||[]).forEach((al, j)=>{\n      alokasiOut.push({id:v1Id_('alokasi', al, tId + '|' + j), transaksiId:tId,", 'id alokasi', log);
+L.rep(doc, "  v1Pemasukan.forEach(p=>{\n    transaksiOut.push({\n      id:uid('trx'), jenis:'PENERIMAAN'", "  v1Pemasukan.forEach((p, i)=>{\n    transaksiOut.push({\n      id:v1Id_('pemasukan', p, i), jenis:'PENERIMAAN'", 'id pemasukan', log);
+L.rep(doc, "  v1Pengeluaran.forEach(p=>{\n    transaksiOut.push({\n      id:uid('trx'), jenis:'PENGELUARAN'", "  v1Pengeluaran.forEach((p, i)=>{\n    transaksiOut.push({\n      id:v1Id_('pengeluaran', p, i), jenis:'PENGELUARAN'", 'id pengeluaran', log);
+['pembayaran', 'pemasukan', 'pengeluaran'].forEach(k => L.rep(doc, "_migratedFromV1:'" + k + "'", "_migratedFromV1:'" + k + "', _akunSumber:'FALLBACK_AKUN_PERTAMA_V1'", 'penanda akun ' + k, log));
+L.rep(doc, "function migrateV1ToV2(){\n", "/* [P1_20 B] id stabil dari isi record V1 (jenis + urutan + isi): migrasi ulang menghasilkan id yang sama. */\nfunction v1Id_(kind, rec, idx){ return 'v1' + kind.slice(0, 3) + '_' + impHash_(kind + '|' + idx + '|' + JSON.stringify(rec)).slice(0, 20); }\nfunction migrateV1ToV2(){\n", 'v1Id_', log);
+// --- migrasi ulang dinonaktifkan pada mode pusat ---
+L.rep(doc, "function runMigrationNow(){\n", "function runMigrationNow(){\n  if(typeof ServerBridge !== 'undefined' && ServerBridge){ toast('Migrasi V1 ulang dinonaktifkan pada mode pusat: menimpa seluruh koleksi lokal (termasuk transaksi yang masih antre ke server). Gunakan Pusat Data > Data lokal lama.'); return null; } // [P1_20 B]\n", 'runMigrationNow mode pusat', log);
+// --- pengecualian: scan, migrate, push ---
+L.rep(doc, "function centralLegacyScan(){\n  const rep = {rows:{}, transaksi:{pending:0, legacy:0, onServer:0, baru:0, dupKandidat:0},",
+  "/* [P1_20 B] Alasan transaksi lokal lama TIDAK boleh dikirim ke server ('' = boleh). */\nfunction v1Pengecualian_(t){\n  if(t._migratedFromV1 && !t._akunPemetaan) return 'PEMETAAN_AKUN_V1_DIPERLUKAN';\n  if(!t.akunId) return 'AKUN_KOSONG';\n  if(CentralMasterData.ready && !MasterAPI.accounts().some(a=>a.id===t.akunId && (a.jenis==='Kas' || a.jenis==='Bank'))) return 'AKUN_TIDAK_ADA_DI_SERVER';\n  return '';\n}\n" +
+  "function centralLegacyScan(){\n  const rep = {rows:{}, transaksi:{pending:0, legacy:0, onServer:0, baru:0, dupKandidat:0, pengecualian:[]},", 'v1Pengecualian_ + rep', log);
+L.rep(doc, "      if(ids.has(t.id)){ rep.transaksi.onServer++; return; }\n      rep.transaksi.legacy++;",
+  "      if(ids.has(t.id)){ rep.transaksi.onServer++; return; }\n      { const ex = v1Pengecualian_(t); if(ex){ rep.transaksi.pengecualian.push({id:t.id, jenis:t.jenis, tanggal:t.tanggal, nominal:Number(t.nominal||0), akunId:t.akunId||'', sumber:t._migratedFromV1 ? 'V1:' + t._migratedFromV1 : 'lokal', alasan:ex}); return; } } // [P1_20 B]\n      rep.transaksi.legacy++;", 'scan pengecualian', log);
+L.rep(doc, "      if(t.jenis !== 'PENERIMAAN' && t.jenis !== 'PENGELUARAN') return;\n      if(sigs.has(sig(t)) && !opts.includeDup){ done.dupDilewati++; return; }",
+  "      if(t.jenis !== 'PENERIMAAN' && t.jenis !== 'PENGELUARAN') return;\n      if(v1Pengecualian_(t)){ done.pengecualian = (done.pengecualian || 0) + 1; return; } // [P1_20 B] tidak dikirim tanpa akun yang jelas\n      if(sigs.has(sig(t)) && !opts.includeDup){ done.dupDilewati++; return; }", 'migrate pengecualian', log);
+const tolak = "{ok:false, code:'PEMETAAN_AKUN_V1_DIPERLUKAN', message:'Transaksi hasil migrasi V1 belum dipetakan ke akun secara eksplisit - tidak dikirim ke server'}";
+L.rep(doc, "function centralPushTrx_(t){\n  if(t._syncBlocked) return Promise.resolve(false);\n",
+  "function centralPushTrx_(t){\n  if(t._syncBlocked) return Promise.resolve(false);\n  if(t._migratedFromV1 && !t._akunPemetaan){ centralMarkError_('trx', t.id, " + tolak + "); return Promise.resolve(false); } // [P1_20 B]\n", 'push guard', log);
+L.rep(doc, "function centralPushTrxBatch_(list){\n", "function centralPushTrxBatch_(list){\n  list = list.filter(t=>{ if(t._migratedFromV1 && !t._akunPemetaan){ centralMarkError_('trx', t.id, " + tolak + "); return false; } return true; }); // [P1_20 B]\n  if(!list.length) return Promise.resolve(false);\n", 'batch guard', log);
+// --- pemetaan eksplisit + tampilan ---
+L.rep(doc, "function pdLegacyScan(){", "/* [P1_20 B] Pemetaan akun transaksi V1: hanya tindakan pengguna, akun Kas/Bank master server, alasan wajib, beraudit. Tidak ada aturan otomatis. */\n" +
+  "function v1PetakanAkun(ids, akunId, alasan, unit){\n  const akun = MasterAPI.accounts().find(a=>a.id===akunId && (a.jenis==='Kas' || a.jenis==='Bank'));\n  if(!akun) return {ok:false, code:'AKUN_TIDAK_VALID', message:'Akun Kas/Bank master server wajib dipilih'};\n  if(!String(alasan||'').trim()) return {ok:false, code:'ALASAN_WAJIB', message:'Alasan/dasar pemetaan wajib diisi'};\n" +
+  "  const set = new Set(ids || []), arr = Store.loadTransaksi(), now = new Date().toISOString(); let n = 0;\n  const pilih = arr.filter(t=>set.has(t.id) && t._migratedFromV1 && !t._synced);\n  unit = String(unit||'').trim().toUpperCase();\n  if(pilih.some(t=>!t.unit) && unit !== 'TK' && unit !== 'MI') return {ok:false, code:'UNIT_WAJIB', message:'Data V1 tidak memuat unit - pilih unit TK/MI secara eksplisit'};\n  arr.forEach(t=>{\n    if(!set.has(t.id) || !t._migratedFromV1 || t._synced) return;\n    const before = {id:t.id, akunId:t.akunId || '', unit:t.unit || '', _akunSumber:t._akunSumber || ''};\n    t._akunPemetaan = {akunId:akun.id, akunSebelumnya:t.akunId || '', unit:t.unit || unit, unitSebelumnya:t.unit || '', alasan:String(alasan).trim().slice(0, 300), oleh:CentralAuth.email || '', at:now};\n    t.akunId = akun.id; if(!t.unit) t.unit = unit; t._akunSumber = 'PEMETAAN_EKSPLISIT'; delete t._syncBlocked; delete t._syncError; t._syncAttempts = 0; n++;\n" +
+  "    auditTrailPush('PEMETAAN_AKUN_V1', before, {id:t.id, akunId:akun.id, unit:t.unit, alasan:t._akunPemetaan.alasan}, 'pemetaan-akun-v1');\n  });\n  Store.saveTransaksi(arr);\n  return {ok:true, dipetakan:n};\n}\n" +
+  "function openV1PemetaanAkun(){\n  const rep = centralLegacyScan(), ex = rep.transaksi.pengecualian.filter(x=>x.alasan === 'PEMETAAN_AKUN_V1_DIPERLUKAN');\n  State.v1Pemetaan = ex.map(x=>x.id);\n" +
+  "  openModal('<h3>Pemetaan Akun Transaksi V1</h3><p class=\"small-muted\">' + ex.length + ' transaksi hasil migrasi V1 memakai akun pertama (fallback historis) dan TIDAK akan dikirim ke server sampai dipetakan eksplisit. Pemetaan berlaku untuk semua transaksi di daftar ini; pisahkan dengan memindai ulang bila akun berbeda.</p>' +\n" +
+  "    '<div class=\"tablewrap\" style=\"max-height:30vh\"><table><thead><tr><th>Tanggal</th><th>Jenis</th><th>Nominal</th><th>Akun lama</th></tr></thead><tbody>' + ex.map(x=>'<tr><td>'+esc(x.tanggal)+'</td><td>'+esc(x.jenis)+'</td><td>'+fmtRp(x.nominal)+'</td><td>'+esc(x.akunId)+'</td></tr>').join('') + '</tbody></table></div>' +\n" +
+  "    fieldSelect('v1m_akun','Akun Kas/Bank (wajib)', [{value:'',label:'- Pilih Akun -'}].concat(MasterAPI.accounts().filter(a=>a.jenis==='Kas'||a.jenis==='Bank').map(a=>({value:a.id,label:a.nama+' ('+a.jenis+')'}))), '') + fieldSelect('v1m_unit','Unit (wajib bila data V1 tanpa unit)', [{value:'',label:'- Pilih Unit -'},{value:'TK',label:'TK'},{value:'MI',label:'MI'}], '') + fieldText('v1m_alasan','Dasar pemetaan (wajib)','') +\n" +
+  "    '<div class=\"modal-actions\"><button class=\"btn\" onclick=\"closeModal()\">Batal</button><button class=\"btn primary\" onclick=\"v1PetakanAkunDariModal()\">Petakan</button></div>', true);\n  return ex.length;\n}\n" +
+  "function v1PetakanAkunDariModal(){ const r = v1PetakanAkun(State.v1Pemetaan || [], val('v1m_akun'), val('v1m_alasan'), val('v1m_unit')); toast(r.ok ? ('Dipetakan: ' + r.dipetakan + ' transaksi') : r.message); if(r.ok){ closeModal(); pdLegacyScan(); } return r; }\n" +
+  "function pdLegacyScan(){", 'v1PetakanAkun + modal', log);
+L.rep(doc, "  if(done) h += '<p><b>Dijadwalkan:</b> ' + done.rows + ' baris koleksi, ' + done.transaksi + ' transaksi, ' + done.alokasi + ' alokasi, ' + done.masters + ' master. Duplikat dilewati: ' + done.dupDilewati + '.</p>';",
+  "  if(done) h += '<p><b>Dijadwalkan:</b> ' + done.rows + ' baris koleksi, ' + done.transaksi + ' transaksi, ' + done.alokasi + ' alokasi, ' + done.masters + ' master. Duplikat dilewati: ' + done.dupDilewati + '. Pengecualian (tidak dikirim): ' + (done.pengecualian || 0) + '.</p>';\n" +
+  "  const ex_ = (rep.transaksi.pengecualian || []); // [P1_20 B]\n  if(ex_.length) h += '<div class=\"tile warn\"><b>Pengecualian - tidak dikirim ke server (' + ex_.length + ')</b><br>' + ex_.slice(0, 50).map(x=>esc(x.tanggal + ' ' + x.jenis + ' ' + fmtRp(x.nominal) + ' [' + x.sumber + '] ' + x.alasan)).join('<br>') + '</div><button class=\"btn sm\" onclick=\"openV1PemetaanAkun()\">Petakan akun transaksi V1&hellip;</button>';", 'laporan pengecualian', log);
+L.save(doc);
+fs.writeFileSync(OUT + '_v1_migrasi_client_patch_log.txt', log.join('\n') + '\n');
+console.log('apply_v1_migrasi_client OK: ' + log.length + ' perubahan');

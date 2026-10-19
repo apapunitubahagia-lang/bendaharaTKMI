@@ -561,6 +561,8 @@ function v1DataPresent(){
   }catch(e){}
   return false;
 }
+/* [P1_20 B] id stabil dari isi record V1 (jenis + urutan + isi): migrasi ulang menghasilkan id yang sama. */
+function v1Id_(kind, rec, idx){ return 'v1' + kind.slice(0, 3) + '_' + impHash_(kind + '|' + idx + '|' + JSON.stringify(rec)).slice(0, 20); }
 function migrateV1ToV2(){
   const report = {ok:true, siswa:0, tagihan:0, penerimaan:0, pengeluaran:0, transferSaldo:0, mutasiBank:0, obligasi:0, dokumen:0, keringanan:0, warnings:[]};
   if(lsGet(lsKey('migratedFromV1'), false)) return null; // idempotent
@@ -607,33 +609,33 @@ function migrateV1ToV2(){
   const alokasiOut = [];
   const akunDefault = Store.loadSettings().akunKasBankList[0].id;
 
-  v1Pembayaran.forEach(p=>{
-    const tId = uid('trx');
+  v1Pembayaran.forEach((p, i)=>{
+    const tId = v1Id_('pembayaran', p, i); // [P1_20 B] deterministik
     transaksiOut.push({
       id:tId, jenis:'PENERIMAAN', tanggal:p.tanggal||p.tglBayar||todayISO(), noTransaksi:p.noResi||p.id||'',
       sumber:'Pembayaran Siswa', akunId:akunDefault, nominal:Number(p.nominal||0), metode:p.metode||'Tunai',
       status: (p.alokasi&&p.alokasi.length)? 'SELESAI':'TERIDENTIFIKASI', buktiId:p.buktiId?[p.buktiId]:[],
-      catatan:p.catatan||'', _migratedFromV1:'pembayaran'
+      catatan:p.catatan||'', _migratedFromV1:'pembayaran', _akunSumber:'FALLBACK_AKUN_PERTAMA_V1'
     });
-    (p.alokasi||[]).forEach(al=>{
-      alokasiOut.push({id:uid('alk'), transaksiId:tId, siswaId:al.studentId||al.siswaId||null, tagihanId:al.tagihanId||null, komponenId:null, nominal:Number(al.nominal||0), createdAt:p.tanggal||todayISO()});
+    (p.alokasi||[]).forEach((al, j)=>{
+      alokasiOut.push({id:v1Id_('alokasi', al, tId + '|' + j), transaksiId:tId, siswaId:al.studentId||al.siswaId||null, tagihanId:al.tagihanId||null, komponenId:null, nominal:Number(al.nominal||0), createdAt:p.tanggal||todayISO()});
     });
   });
-  v1Pemasukan.forEach(p=>{
+  v1Pemasukan.forEach((p, i)=>{
     transaksiOut.push({
-      id:uid('trx'), jenis:'PENERIMAAN', tanggal:p.tanggal||todayISO(), noTransaksi:p.referensi||'',
+      id:v1Id_('pemasukan', p, i), jenis:'PENERIMAAN', tanggal:p.tanggal||todayISO(), noTransaksi:p.referensi||'',
       sumber:p.kategori||'Penerimaan Lain', akunId:akunDefault, nominal:Number(p.nominal||p.penerimaan||0),
       metode:p.metode||'Tunai', status:'TERCATAT', buktiId:p.bukti?[p.bukti]:[], catatan:p.uraian||'',
-      _migratedFromV1:'pemasukan'
+      _migratedFromV1:'pemasukan', _akunSumber:'FALLBACK_AKUN_PERTAMA_V1'
     });
   });
-  v1Pengeluaran.forEach(p=>{
+  v1Pengeluaran.forEach((p, i)=>{
     transaksiOut.push({
-      id:uid('trx'), jenis:'PENGELUARAN', tanggal:p.tanggal||todayISO(), noTransaksi:p.noBukti||'',
+      id:v1Id_('pengeluaran', p, i), jenis:'PENGELUARAN', tanggal:p.tanggal||todayISO(), noTransaksi:p.noBukti||'',
       kategori:p.kategori||'Lainnya', subkategori:p.subkategori||'', penerima:p.penerima||'',
       akunId:akunDefault, nominal:Number(p.nominal||0), metode:p.metodePembayaran||'Tunai',
       status:(p.buktiId? 'SELESAI':'TERCATAT'), buktiId:p.buktiId?[p.buktiId]:[], catatan:p.keterangan||'',
-      _migratedFromV1:'pengeluaran'
+      _migratedFromV1:'pengeluaran', _akunSumber:'FALLBACK_AKUN_PERTAMA_V1'
     });
   });
   Store.saveTransaksi(transaksiOut);
@@ -6461,6 +6463,7 @@ function confirmDoRestore(){
   }catch(e){ toast('Gagal restore: '+e.message); }
 }
 function runMigrationNow(){
+  if(typeof ServerBridge !== 'undefined' && ServerBridge){ toast('Migrasi V1 ulang dinonaktifkan pada mode pusat: menimpa seluruh koleksi lokal (termasuk transaksi yang masih antre ke server). Gunakan Pusat Data > Data lokal lama.'); return null; } // [P1_20 B]
   lsSet(lsKey('migratedFromV1'), false);
   const report = migrateV1ToV2();
   if(report){ openModal('<h3>Hasil Migrasi V1 &rarr; V2</h3><div class="kv">'+Object.keys(report).filter(k=>k!=='warnings'&&k!=='ok').map(k=>'<div>'+k+'</div><div>'+report[k]+'</div>').join('')+'</div><div class="modal-actions"><button class="btn primary" onclick="closeModal();renderShell()">Tutup</button></div>'); }
@@ -9170,6 +9173,7 @@ function centralMarkTrxSynced_(t, serverId, sentAlk){
 }
 function centralPushTrx_(t){
   if(t._syncBlocked) return Promise.resolve(false);
+  if(t._migratedFromV1 && !t._akunPemetaan){ centralMarkError_('trx', t.id, {ok:false, code:'PEMETAAN_AKUN_V1_DIPERLUKAN', message:'Transaksi hasil migrasi V1 belum dipetakan ke akun secara eksplisit - tidak dikirim ke server'}); return Promise.resolve(false); } // [P1_20 B]
   const alk = Store.loadAlokasi().filter(a=>a.transaksiId===t.id && !a._synced);
   const payload = buildBridgePayloadFromTransaksi_(t);
   payload.clientRequestId = 'ui_' + t.id;
@@ -9222,6 +9226,8 @@ function centralCleanOverlay_(){
   if(ch) lsSet(lsKey('centralTrxOverlay'), ov);
 }
 function centralPushTrxBatch_(list){
+  list = list.filter(t=>{ if(t._migratedFromV1 && !t._akunPemetaan){ centralMarkError_('trx', t.id, {ok:false, code:'PEMETAAN_AKUN_V1_DIPERLUKAN', message:'Transaksi hasil migrasi V1 belum dipetakan ke akun secara eksplisit - tidak dikirim ke server'}); return false; } return true; }); // [P1_20 B]
+  if(!list.length) return Promise.resolve(false);
   if(!ServerBridge.opCreateTxBatch) return list.reduce((p,t)=>p.then(()=>centralPushTrx_(t)), Promise.resolve(false));
   const items = list.map(t=>{
     const alk = Store.loadAlokasi().filter(a=>a.transaksiId===t.id && !a._synced);
@@ -9824,8 +9830,15 @@ Object.keys(CC_BLOBS).forEach(function(name){
 })();
 
 /* ---- data lokal lama: scan / migrasi / bersihkan (eksplisit, tidak otomatis) ---- */
+/* [P1_20 B] Alasan transaksi lokal lama TIDAK boleh dikirim ke server ('' = boleh). */
+function v1Pengecualian_(t){
+  if(t._migratedFromV1 && !t._akunPemetaan) return 'PEMETAAN_AKUN_V1_DIPERLUKAN';
+  if(!t.akunId) return 'AKUN_KOSONG';
+  if(CentralMasterData.ready && !MasterAPI.accounts().some(a=>a.id===t.akunId && (a.jenis==='Kas' || a.jenis==='Bank'))) return 'AKUN_TIDAK_ADA_DI_SERVER';
+  return '';
+}
 function centralLegacyScan(){
-  const rep = {rows:{}, transaksi:{pending:0, legacy:0, onServer:0, baru:0, dupKandidat:0}, alokasi:{legacy:0, baru:0}, masters:{}};
+  const rep = {rows:{}, transaksi:{pending:0, legacy:0, onServer:0, baru:0, dupKandidat:0, pengecualian:[]}, alokasi:{legacy:0, baru:0}, masters:{}};
   Object.keys(CC_).forEach(function(name){
     if(!ccActive_(name)) return;
     const local = CC_ORIG_[name].load().filter(o=>o && o.id), m = ccSrv_(name), live = ccState_(name).headers || [];
@@ -9845,6 +9858,7 @@ function centralLegacyScan(){
       if(t.jenis !== 'PENERIMAAN' && t.jenis !== 'PENGELUARAN') return;
       if(t._pendingSync){ rep.transaksi.pending++; return; }
       if(ids.has(t.id)){ rep.transaksi.onServer++; return; }
+      { const ex = v1Pengecualian_(t); if(ex){ rep.transaksi.pengecualian.push({id:t.id, jenis:t.jenis, tanggal:t.tanggal, nominal:Number(t.nominal||0), akunId:t.akunId||'', sumber:t._migratedFromV1 ? 'V1:' + t._migratedFromV1 : 'lokal', alasan:ex}); return; } } // [P1_20 B]
       rep.transaksi.legacy++; rep.transaksi.baru++;
       if(sigs.has(sig(t))) rep.transaksi.dupKandidat++;
     });
@@ -9879,6 +9893,7 @@ function centralLegacyMigrate(opts){
     arr.forEach(function(t){
       if(t._synced || map[t.id] || t._pendingSync || ids.has(t.id)) return;
       if(t.jenis !== 'PENERIMAAN' && t.jenis !== 'PENGELUARAN') return;
+      if(v1Pengecualian_(t)){ done.pengecualian = (done.pengecualian || 0) + 1; return; } // [P1_20 B] tidak dikirim tanpa akun yang jelas
       if(sigs.has(sig(t)) && !opts.includeDup){ done.dupDilewati++; return; }
       t._pendingSync = true; flagged.add(t.id); done.transaksi++;
     });
@@ -10070,9 +10085,40 @@ function pdLegacyReportHtml_(rep, done){
     '<tr><td>transaksi (antre / lama tak terkirim / kandidat duplikat)</td><td colspan="4">' + rep.transaksi.pending + ' / ' + rep.transaksi.legacy + ' / ' + rep.transaksi.dupKandidat + '</td></tr>' +
     '<tr><td>alokasi lama tak terkirim</td><td colspan="4">' + rep.alokasi.legacy + ' (baru: ' + rep.alokasi.baru + ')</td></tr>' +
     Object.keys(rep.masters).map(k=>'<tr><td>master ' + esc(k) + '</td><td class="right">' + rep.masters[k].local + '</td><td class="right">' + rep.masters[k].onServer + '</td><td></td><td class="right">' + rep.masters[k].baru + '</td></tr>').join('') + '</tbody></table></div>';
-  if(done) h += '<p><b>Dijadwalkan:</b> ' + done.rows + ' baris koleksi, ' + done.transaksi + ' transaksi, ' + done.alokasi + ' alokasi, ' + done.masters + ' master. Duplikat dilewati: ' + done.dupDilewati + '.</p>';
+  if(done) h += '<p><b>Dijadwalkan:</b> ' + done.rows + ' baris koleksi, ' + done.transaksi + ' transaksi, ' + done.alokasi + ' alokasi, ' + done.masters + ' master. Duplikat dilewati: ' + done.dupDilewati + '. Pengecualian (tidak dikirim): ' + (done.pengecualian || 0) + '.</p>';
+  const ex_ = (rep.transaksi.pengecualian || []); // [P1_20 B]
+  if(ex_.length) h += '<div class="tile warn"><b>Pengecualian - tidak dikirim ke server (' + ex_.length + ')</b><br>' + ex_.slice(0, 50).map(x=>esc(x.tanggal + ' ' + x.jenis + ' ' + fmtRp(x.nominal) + ' [' + x.sumber + '] ' + x.alasan)).join('<br>') + '</div><button class="btn sm" onclick="openV1PemetaanAkun()">Petakan akun transaksi V1&hellip;</button>';
   return h;
 }
+/* [P1_20 B] Pemetaan akun transaksi V1: hanya tindakan pengguna, akun Kas/Bank master server, alasan wajib, beraudit. Tidak ada aturan otomatis. */
+function v1PetakanAkun(ids, akunId, alasan, unit){
+  const akun = MasterAPI.accounts().find(a=>a.id===akunId && (a.jenis==='Kas' || a.jenis==='Bank'));
+  if(!akun) return {ok:false, code:'AKUN_TIDAK_VALID', message:'Akun Kas/Bank master server wajib dipilih'};
+  if(!String(alasan||'').trim()) return {ok:false, code:'ALASAN_WAJIB', message:'Alasan/dasar pemetaan wajib diisi'};
+  const set = new Set(ids || []), arr = Store.loadTransaksi(), now = new Date().toISOString(); let n = 0;
+  const pilih = arr.filter(t=>set.has(t.id) && t._migratedFromV1 && !t._synced);
+  unit = String(unit||'').trim().toUpperCase();
+  if(pilih.some(t=>!t.unit) && unit !== 'TK' && unit !== 'MI') return {ok:false, code:'UNIT_WAJIB', message:'Data V1 tidak memuat unit - pilih unit TK/MI secara eksplisit'};
+  arr.forEach(t=>{
+    if(!set.has(t.id) || !t._migratedFromV1 || t._synced) return;
+    const before = {id:t.id, akunId:t.akunId || '', unit:t.unit || '', _akunSumber:t._akunSumber || ''};
+    t._akunPemetaan = {akunId:akun.id, akunSebelumnya:t.akunId || '', unit:t.unit || unit, unitSebelumnya:t.unit || '', alasan:String(alasan).trim().slice(0, 300), oleh:CentralAuth.email || '', at:now};
+    t.akunId = akun.id; if(!t.unit) t.unit = unit; t._akunSumber = 'PEMETAAN_EKSPLISIT'; delete t._syncBlocked; delete t._syncError; t._syncAttempts = 0; n++;
+    auditTrailPush('PEMETAAN_AKUN_V1', before, {id:t.id, akunId:akun.id, unit:t.unit, alasan:t._akunPemetaan.alasan}, 'pemetaan-akun-v1');
+  });
+  Store.saveTransaksi(arr);
+  return {ok:true, dipetakan:n};
+}
+function openV1PemetaanAkun(){
+  const rep = centralLegacyScan(), ex = rep.transaksi.pengecualian.filter(x=>x.alasan === 'PEMETAAN_AKUN_V1_DIPERLUKAN');
+  State.v1Pemetaan = ex.map(x=>x.id);
+  openModal('<h3>Pemetaan Akun Transaksi V1</h3><p class="small-muted">' + ex.length + ' transaksi hasil migrasi V1 memakai akun pertama (fallback historis) dan TIDAK akan dikirim ke server sampai dipetakan eksplisit. Pemetaan berlaku untuk semua transaksi di daftar ini; pisahkan dengan memindai ulang bila akun berbeda.</p>' +
+    '<div class="tablewrap" style="max-height:30vh"><table><thead><tr><th>Tanggal</th><th>Jenis</th><th>Nominal</th><th>Akun lama</th></tr></thead><tbody>' + ex.map(x=>'<tr><td>'+esc(x.tanggal)+'</td><td>'+esc(x.jenis)+'</td><td>'+fmtRp(x.nominal)+'</td><td>'+esc(x.akunId)+'</td></tr>').join('') + '</tbody></table></div>' +
+    fieldSelect('v1m_akun','Akun Kas/Bank (wajib)', [{value:'',label:'- Pilih Akun -'}].concat(MasterAPI.accounts().filter(a=>a.jenis==='Kas'||a.jenis==='Bank').map(a=>({value:a.id,label:a.nama+' ('+a.jenis+')'}))), '') + fieldSelect('v1m_unit','Unit (wajib bila data V1 tanpa unit)', [{value:'',label:'- Pilih Unit -'},{value:'TK',label:'TK'},{value:'MI',label:'MI'}], '') + fieldText('v1m_alasan','Dasar pemetaan (wajib)','') +
+    '<div class="modal-actions"><button class="btn" onclick="closeModal()">Batal</button><button class="btn primary" onclick="v1PetakanAkunDariModal()">Petakan</button></div>', true);
+  return ex.length;
+}
+function v1PetakanAkunDariModal(){ const r = v1PetakanAkun(State.v1Pemetaan || [], val('v1m_akun'), val('v1m_alasan'), val('v1m_unit')); toast(r.ok ? ('Dipetakan: ' + r.dipetakan + ' transaksi') : r.message); if(r.ok){ closeModal(); pdLegacyScan(); } return r; }
 function pdLegacyScan(){ const rep = centralLegacyScan(); pdOut_('pdLegacyOut', pdLegacyReportHtml_(rep)); return rep; }
 function pdLegacyMigrate(){
   openModal('<h3>Migrasikan data lokal ke Google Sheets</h3><p>Baris lokal yang belum ada di server akan dikirim (ID sama, idempoten). Transaksi yang mirip transaksi di server dilewati. Salinan lokal <b>tidak dihapus</b>.</p>' +
