@@ -249,6 +249,7 @@ var OP_MASTER_ = {
   siswa: {
     sheet: '01_SISWA', prefix: 'gas_siswa_', required: ['nama', 'unit'],
     enums: { unit: ['TK', 'MI'], status: ['Aktif', 'Nonaktif'] }, defaults: { status: 'Aktif' },
+    dates: ['tanggalMasuk', 'tanggalKeluar'], dateOrder: ['tanggalMasuk', 'tanggalKeluar'], // [P1-IMP F7] opMasterDateError_
     dupKey: function (r) { return opStr_(r.nisn) ? 'nisn:' + opNorm_(r.nisn) : 'n:' + opNorm_(r.nama) + '|' + opNorm_(r.kelas) + '|' + opNorm_(r.unit); }
   },
   komponen: {
@@ -325,6 +326,30 @@ function opValidateMaster_(cfg, m) {
   return null;
 }
 
+/* [P1-IMP F7] Field tanggal master (cfg.dates): opsional; bila DIBUAT atau DIUBAH wajib tanggal kalender YYYY-MM-DD
+   (sgDateError_, sama dengan jalur tulis transaksi). Nilai historis yang tidak berubah tidak diperiksa ulang (prinsip P0-T4).
+   cfg.dateOrder [awal, akhir]: bila salah satu berubah dan keduanya terisi sah, akhir >= awal. */
+function opMasterDateError_(cfg, base, merged, isUpdate) {
+  var ds = cfg.dates || [], i, f, changed = {};
+  for (i = 0; i < ds.length; i++) {
+    f = ds[i];
+    if (merged[f] === undefined) continue;
+    var nv = opStr_(sgDateStr_(merged[f])), ov = isUpdate ? opStr_(sgDateStr_(base[f])) : '';
+    if (isUpdate && nv === ov) continue;
+    changed[f] = true;
+    if (nv === '') continue;
+    var e = sgDateError_(nv);
+    if (e) return errResult_('VALIDATION_ERROR', f + ': ' + e, f);
+    merged[f] = nv;
+  }
+  var o = cfg.dateOrder;
+  if (o && (changed[o[0]] || changed[o[1]])) {
+    var a = opStr_(sgDateStr_(merged[o[0]])), b = opStr_(sgDateStr_(merged[o[1]]));
+    if (a && b && !sgDateError_(a) && !sgDateError_(b) && b < a) return errResult_('VALIDATION_ERROR', o[1] + ' (' + b + ') tidak boleh sebelum ' + o[0] + ' (' + a + ')', o[1]);
+  }
+  return null;
+}
+
 /* [P1-F] expect (opsional) = {field: nilai yang dilihat klien sebelum mengubah}. Bila nilai server sudah berbeda
    (dan bukan nilai baru yang sama) -> CONFLICT, data tidak diubah. Tanpa expect perilaku lama dipertahankan. */
 function opMasterUpsert(sheetKey, record, createId, expect) {
@@ -377,6 +402,8 @@ function opMasterUpsert(sheetKey, record, createId, expect) {
       }
       var vErr = opValidateMaster_(cfg, merged);
       if (vErr) return vErr;
+      var dErr = opMasterDateError_(cfg, base, merged, isUpdate); // [P1-IMP F7]
+      if (dErr) return dErr;
       if (isUpdate && live.every(function (h) { return !h || opStr_(opJsonSafe_(base[h])) === opStr_(opJsonSafe_(merged[h])); })) {
         // [GAP-031] replay/kirim ulang tanpa perubahan = satu efek: tidak menulis dan tidak mengaudit ulang
         var same = okResult_('Data master tidak berubah (sudah sama)', opJsonSafe_(merged)); same.data.unchanged = true; return same;

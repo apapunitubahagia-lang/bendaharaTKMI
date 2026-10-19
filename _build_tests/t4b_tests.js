@@ -60,6 +60,38 @@ const kpiShape = k => ({ periode: k.periode, overall: k.overall, overallStatus: 
   { const srv = makeServer(); const c = await boot(srv); const n0 = srv.sheets['13_AUDIT_LOG'].length; setPA(srv, '2026-10-01');
     rec('T4B-11', 'F8 tidak ada migrasi otomatis saat boot', (await boot(srv)) && srv.sheets['15_SETTINGS'].find(r => r[0] === 'periodeAktif')[1] === '2026-10-01' && !auditAksi(srv).includes('PERIODE_AKTIF_DINORMALISASI'), 'nilai tetap 2026-10-01 setelah boot ulang'); }
 
+  // ---------- F7 ----------
+  { const srv = makeServer(); const up = (rec, id) => srv.sb.opMasterUpsert('siswa', rec, id);
+    const a = up({ nama: 'Uji A', unit: 'MI', kelas: '1', tanggalMasuk: '05/09/2026' }, 'siswa_ujiA1');
+    const b = up({ nama: 'Uji B', unit: 'MI', kelas: '1', tanggalMasuk: '2026-02-30' }, 'siswa_ujiB1');
+    const c = up({ nama: 'Uji C', unit: 'MI', kelas: '1', tanggalMasuk: '2026-09-05', tanggalKeluar: '2026-08-01' }, 'siswa_ujiC1');
+    const d = up({ nama: 'Uji D', unit: 'MI', kelas: '1', tanggalMasuk: '2026-09-05', jenisKelamin: 'L' }, 'siswa_ujiD1');
+    const row = srv.sheets['01_SISWA'].find(r => r[0] === 'siswa_ujiD1'), H = srv.sheets['01_SISWA'][0];
+    rec('T4B-12', 'F7 server: tanggal siswa divalidasi (format, kalender, urutan)', a.code === 'VALIDATION_ERROR' && b.code === 'VALIDATION_ERROR' && c.code === 'VALIDATION_ERROR' && d.ok, [a.code, b.code, c.code, d.code].join(','));
+    rec('T4B-13', 'F7 server: tanggalMasuk & jenisKelamin tersimpan', row && row[H.indexOf('tanggalMasuk')] === '2026-09-05' && row[H.indexOf('jenisKelamin')] === 'L', J(row));
+    srv.sheets['01_SISWA'][1][H.indexOf('tanggalMasuk')] = '01/07/2020'; // data historis tidak sah
+    const e = up({ id: 's1', kontakWali: '0812' });
+    rec('T4B-14', 'F7 data historis tidak sah tidak memblokir perubahan field lain (tidak diperiksa ulang/dikoreksi)', e.ok && srv.sheets['01_SISWA'][1][H.indexOf('tanggalMasuk')] === '01/07/2020', e.code); }
+  { const srv = makeServer(); const c = await boot(srv);
+    c.a.State.importSession = { type: 'siswa', step: 'map', headers: ['namaSiswa', 'unit', 'kelas', 'tanggalMasuk', 'jenisKelamin'], rows: [{ namaSiswa: 'Siswa F7', unit: 'MI', kelas: '1', tanggalMasuk: '2026-09-05', jenisKelamin: 'P' }], headerMap: { namaSiswa: 'namaSiswa', unit: 'unit', kelas: 'kelas', tanggalMasuk: 'tanggalMasuk', jenisKelamin: 'jenisKelamin' }, results: null, batchId: 'b_s', rawFiles: [{ name: 's.csv' }] };
+    c.sb.importWizardProceedToPreview(); c.sb.importWizardConfirmSiswa(false); for (let i = 0; i < 4; i++) { await c.sb.centralRunSync(true); await tick(10); }
+    const H = srv.sheets['01_SISWA'][0], r = srv.sheets['01_SISWA'].find(x => x[H.indexOf('nama')] === 'Siswa F7');
+    rec('T4B-15', 'F7 klien: antrean master membawa tanggalMasuk & jenisKelamin', r && r[H.indexOf('tanggalMasuk')] === '2026-09-05' && r[H.indexOf('jenisKelamin')] === 'P', J(r)); }
+  { // dampak kewajiban: tanggalMasuk menentukan bulan pertama kewajiban Bulanan
+    const srv = makeServer(); srv.sb.opMasterUpsert('siswa', { nama: 'Masuk Sept', unit: 'MI', kelas: 'Madinah', tahunAjaran: '2026/2027', tanggalMasuk: '2026-09-05' }, 'siswa_sept1');
+    srv.sb.opMasterUpsert('siswa', { nama: 'Tanpa Tgl', unit: 'MI', kelas: 'Madinah', tahunAjaran: '2026/2027' }, 'siswa_tanpa1');
+    const per = id => (srv.sb.opObligations({ siswaId: id }).data.rows || []).filter(r => r.komponenId === 'kmp_spp').map(r => r.periode);
+    const a = per('siswa_sept1'), b = per('siswa_tanpa1');
+    rec('T4B-16', 'F7 dampak kewajiban: tanggalMasuk 2026-09-05 -> SPP mulai September 2026', a.length && a[0] === 'September 2026' && b[0] === 'Juli 2026' && b.length === a.length + 2, 'dengan tanggal ' + J(a) + ' | tanpa tanggal ' + J(b));
+    setPA(srv, '2026-10-01');
+    rec('T4B-17', 'F8 dampak kewajiban server saat periodeAktif tidak valid (TEMUAN)', null, 'periodeAktif "2026-10-01" -> SPP siswa tanpa tanggal: ' + J(per('siswa_tanpa1')) + ' (enumerasi berhenti karena label tidak dikenal; KPI kini gagal tertutup, tampilan kewajiban belum)'); }
+  { const srv = makeServer(); const H = srv.sheets['01_SISWA'][0];
+    srv.sheets['01_SISWA'][1][H.indexOf('jenisKelamin')] = 'L'; srv.sheets['01_SISWA'][2][H.indexOf('jenisKelamin')] = 'Perempuan';
+    srv.sheets['01_SISWA'][1][H.indexOf('nisn')] = '0012345678'; srv.sheets['01_SISWA'][2][H.indexOf('tanggalMasuk')] = '31/02/2026';
+    const before = J(srv.sheets['01_SISWA']); const r = srv.sb.opSiswaMasterAudit();
+    rec('T4B-18', 'D-IMP-8 audit master siswa read-only (distribusi, tanpa normalisasi)', r.ok && J(srv.sheets['01_SISWA']) === before && r.data.jenisKelamin.L === 1 && r.data.jenisKelamin.Perempuan === 1 && r.data.nisn.digit10 === 1 && r.data.tanggalMasuk.tidakSah === 1,
+      J({ jk: r.data.jenisKelamin, nisn: r.data.nisn.digit10 + '/10digit', tm: r.data.tanggalMasuk, kelas: r.data.kelasPerUnit })); }
+
   const pass = R.filter(r => r.st === 'PASS').length, fail = R.filter(r => r.st === 'FAIL').length, info = R.filter(r => r.st === 'INFO').length;
   R.forEach(r => console.log(r.st + ' ' + r.id + ' [' + r.tc + '] ' + r.d));
   console.log('\nPASS=' + pass + ' FAIL=' + fail + ' INFO=' + info);

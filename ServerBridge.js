@@ -86,6 +86,7 @@
     opAlokasiPengeluaranPlan: function () { return callServer('opAlokasiPengeluaranPlan', []); },
     opAlokasiPengeluaranImport: function (payload) { return callServer('opAlokasiPengeluaranImport', [payload]); },
     opPeriodeAktifPlan: function () { return callServer('opPeriodeAktifPlan', []); },
-    opPeriodeAktifApply: function (payload) { return callServer('opPeriodeAktifApply', [payload]); }
+    opPeriodeAktifApply: function (payload) { return callServer('opPeriodeAktifApply', [payload]); },
+    opSiswaMasterAudit: function () { return callServer('opSiswaMasterAudit', []); }
   };
 })(typeof window !== 'undefined' ? window : globalThis);
