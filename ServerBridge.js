@@ -87,6 +87,12 @@
     opAlokasiPengeluaranImport: function (payload) { return callServer('opAlokasiPengeluaranImport', [payload]); },
     opPeriodeAktifPlan: function () { return callServer('opPeriodeAktifPlan', []); },
     opPeriodeAktifApply: function (payload) { return callServer('opPeriodeAktifApply', [payload]); },
-    opSiswaMasterAudit: function () { return callServer('opSiswaMasterAudit', []); }
+    opSiswaMasterAudit: function () { return callServer('opSiswaMasterAudit', []); },
+    opImportSetup: function (confirm) { return callServer('opImportSetup', [confirm]); },
+    opImportPlan: function (payload) { return callServer('opImportPlan', [payload]); },
+    opImportCommit: function (payload) { return callServer('opImportCommit', [payload]); },
+    opImportStatus: function (batchId) { return callServer('opImportStatus', [batchId]); },
+    opImportReviewList: function (opts) { return callServer('opImportReviewList', [opts || {}]); },
+    opImportReviewResolve: function (payload) { return callServer('opImportReviewResolve', [payload]); }
   };
 })(typeof window !== 'undefined' ? window : globalThis);
