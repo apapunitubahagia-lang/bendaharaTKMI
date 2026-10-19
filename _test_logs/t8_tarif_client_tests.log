@@ -1,0 +1,42 @@
+PASS U0 bootstrap dari data mirip live: 14 sheet operasional + master termuat, siswa & komponen dibaca dari server
+PASS U1 panel "Tarif & Kewajiban" + "Hari Katering" + "Klasifikasi" tampil di Pengaturan > Backup; render tanpa galat
+PASS U2 "Lihat rencana" (dry-run) menampilkan ringkasan, pemeriksaan total (COCOK), 6 tarif lump dinonaktifkan, laporan dampak, 10 butir konfirmasi, peringatan skema; TIDAK menulis ke sheet
+PASS U3 menerapkan sebelum migrasi skema ditolak oleh server (pesan jelas), tidak ada perubahan
+PASS U4 setelah migrasi aditif, penerapan rencana: server menulis 31 komponen + 95 tarif, 6 tarif lump Nonaktif; UI memuat ulang master (41 komponen)
+PASS U5 komponen baru membawa sasaran/basisTarif/menggantikan sampai ke klien (normalizer)
+PASS U6 hari katering non-bulat ditolak (pesan), tidak ada antrean
+PASS U6b hari katering > 31 ditolak
+PASS U7 hari katering tersimpan ke 15_SETTINGS (blob.cateringHari.*) dan terbaca server
+PASS U8 klien menghitung katering sama: K1 Juli 20 hari x 13.000 = 260.000; jumlah hari & tarif satuan tercatat; K5 Agustus 18 x 11.000 = 198.000
+PASS U9 klasifikasi disimpan (blob.pendaftaranStatus) dan dibaca server; biaya masuk TK baru 3.000.000 muncul hanya untuk tkb
+PASS U10 verifikasi kewajiban klien vs server (periode aktif + SEMUA non-bulanan: tahunan, biaya masuk, daftar ulang, lump beku, katering per hari): COCOK, 0 perbedaan
+PASS U10b jumlah baris dibandingkan > 150 (cakupan nyata, bukan kosong)
+PASS U11 UI: dua baris pada kewajiban yang sama melebihi sisa (200.000+100.000 > 250.000) ditolak dengan pesan; tidak ada alokasi tersimpan
+PASS U12 UI: alokasi ke kewajiban yang tidak ada ditolak dengan pesan
+PASS U13 pembayaran gabungan dari UI: 3 alokasi (SPP, katering, ekskul tahunan) tertulis ke server dengan komponen+periode yang benar; total 570.000 <= 700.000; sisa dana 130.000 belum dialokasikan
+PASS U14 sisa kewajiban klien = server setelah sinkron (SPP Juli sisa 0)
+PASS U15 alokasi tak valid yang lolos ke antrean ditolak guard server: ditandai gagal (_syncBlocked, pesan OBLIGATION_NOT_FOUND), tidak ada baris tertulis, tidak diulang
+PASS U16 terbitkan snapshot katering Agustus: 12 siswa MI beku dengan tarifSatuan (13.000/11.000) dan jumlahHari 18 tersimpan; TK tidak ikut
+PASS U17 terbit ulang: tidak ada duplikat
+PASS U18 mengubah hari Agustus 18 -> 17 SETELAH snapshot: kewajiban beku tetap 18 hari (tidak berubah diam-diam), sisa data menunjukkan nilai beku di klien dan server
+PASS U19 mengubah tahun ajaran siswa lewat UI membekukan kewajiban TA lama lebih dulu (otomatis): baris beku tertulis ke 04_KEWAJIBAN sebelum perubahan master; audit tercatat
+PASS U20 sesudah naik TA, klien = server untuk siswa tsb (verifikasi menyeluruh siswa itu COCOK)
+PASS U21 validasi anggaran: tanpa unit / pemasukan tanpa komponen / pengeluaran tanpa kategori / campur pemasukan-pengeluaran / subkategori salah / komponen beda unit -> semua ditolak dengan pesan
+PASS U22 anggaran valid tersimpan ke 08_ANGGARAN dengan jenis + komponenId (pemasukan) / kategori + subkategori (pengeluaran) + unit; baris lama tidak berubah
+PASS U23 pemasukan SPP MI Sep: anggaran 5.000.000; aktual = ALOKASI SPP yang DIBAYAR pada September (250.000 + 250.000 + 250.000 pembayaran SPP Juli yang dibayar Sep = 750.000, basis kas), BUKAN nominal transaksi (1.600.000); tagihan SPP MI terpisah
+PASS U24 anggaran tahunan (periode "Tahun Ajaran 2026/2027") dibandingkan dengan alokasi atas kewajiban periode itu (ekskul: 100.000 + 100.000 dari mi5a lama?), tidak ikut garis bulanan
+PASS U25 pengeluaran: "ATK / Kertas" aktual 300.000 (hanya subkategori Kertas), komitmen 90.000 di kolom TERPISAH, tidak dijumlahkan ke aktual; "ATK" (tanpa sub) aktual 120.000, unit TK tidak ikut
+PASS U26 pengeluaran tanpa anggaran dilaporkan terpisah (Lainnya MI 77.000; ATK TK 50.000), penerimaan belum dialokasikan dipisah (900.000 - 500.000 - sisa dana transaksi lain)
+PASS U27 tidak ada pencampuran: anggaran, komitmen, tagihan, aktual berada di kolom berbeda; aktual pengeluaran tidak berubah oleh komitmen/anggaran
+PASS U28 Financial Control Center menampilkan "Anggaran vs Aktual per Komponen / Kategori" + peringatan tanpa-anggaran; render tanpa galat
+PASS U29 FCC klien = FCC server (termasuk baris anggaran vs aktual)
+PASS U30 tab "Anggaran vs Aktual" di halaman Anggaran render
+PASS U31 verifikasi akhir klien vs server setelah semua operasi: COCOK, 0 perbedaan (166 baris)
+PASS L1 mode lokal: rencana tarif dry-run bekerja (31 komponen baru) dan TIDAK mengubah Store
+PASS L2 mode lokal: penerapan rencana menambah tepat sebanyak rencana (tarif baru), menonaktifkan lump (tidak ada yang dihapus)
+PASS L3 penerapan lokal ulang idempoten
+PASS L4 mode lokal: tagihan tahunan K5 = 1.800.000, K1 = 2.200.000, katering K5 Juli = 20 x 11.000 = 220.000, SPP K1 = 350.000 (sumber sama dengan server)
+PASS L5 validasi alokasi batch aktif (jumlah > sisa ditolak)
+PASS L6 [P0-B] mode lokal: transaksi & alokasi DITOLAK eksplisit, tidak ada baris lokal, tidak ada panggilan server
+
+PASS=40 FAIL=0

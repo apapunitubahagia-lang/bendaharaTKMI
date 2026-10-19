@@ -1,7 +1,7 @@
 // Menjalankan seluruh suite sandbox dan menulis log ke ../_test_logs/<prefix>_<suite>.log
 const cp = require('child_process'), fs = require('fs'), path = require('path');
 const prefix = process.argv[2] || 'run';
-const suites = ['server_pass2', 'e2e_central2', 'tarif_server_tests', 'tarif_client_tests', 'schema_archive_tests', 'p0_tests', 'p1_tests', 'rab_tests', 'audit_p1_tests'];
+const suites = ['server_pass2', 'e2e_central2', 'tarif_server_tests', 'tarif_client_tests', 'schema_archive_tests', 'p0_tests', 'p1_tests', 'rab_tests', 'audit_p1_tests', 'p0_hardening_tests'];
 const dir = path.join(__dirname, '..', '_test_logs'); fs.mkdirSync(dir, { recursive: true });
 let bad = 0;
 suites.forEach(s => {

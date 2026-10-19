@@ -45,6 +45,19 @@ var OP_READ_ROLES_ = ['BENDAHARA', 'KEPALA_SEKOLAH', 'YAYASAN', 'AUDITOR']; // b
 var OP_READ_SHEETS_ = ['04_KEWAJIBAN', '05_TRANSAKSI', '06_ALOKASI', '08_ANGGARAN', '09_KOMITMEN', '10_BUKTI',
   '11_MUTASI_BANK', '12_DUP_REVIEW', '13_AUDIT_LOG', '14_KPI', '16_REKONSILIASI', '17_LAPORAN', '18_RKAT', '19_LPJ', '30_ALOKASI_PENGELUARAN']; // [P1-RAB]
 
+/* [P0-T8] Kolom wajib untuk pembacaan GENERIK (opReadSheet) yang dipakai cache klien (KPI, laporan, Beranda).
+   Sheet yang dibaca mesin hitung server memakai SG_REQUIRED_ (SchemaGuard.gs); sheet lain di sini. Hanya kolom yang
+   memang dibaca klien dan sudah ada di header FINAL - kolom aditif opsional tidak diwajibkan. */
+var OP_READ_REQUIRED_EXTRA_ = {
+  '10_BUKTI': ['id', 'transaksiId', 'tanggal'],
+  '11_MUTASI_BANK': ['id', 'tanggal', 'nominal', 'status', 'transaksiId'],
+  '12_DUP_REVIEW': ['id', 'pairKey', 'status'],
+  '13_AUDIT_LOG': ['id', 'timestamp', 'aksi'],
+  '14_KPI': ['id', 'periode', 'kpiKode'],
+  '17_LAPORAN': ['id', 'periode', 'tanggalDibuat', 'snapshot'],
+  '19_LPJ': ['id', 'tanggal', 'nominal', 'transaksiId']
+};
+function opReadRequired_(sheetName) { return SG_REQUIRED_[sheetName] || OP_READ_REQUIRED_EXTRA_[sheetName] || []; }
 function opStr_(v) { return String(v === null || v === undefined ? '' : v).trim(); }
 function opNorm_(v) { return opStr_(v).toLowerCase(); }
 
@@ -148,6 +161,12 @@ function opGetStudentPosition(siswaId) {
 // ============================================================
 // READ generik sheet operasional (header diambil dari sheet LIVE)
 // ============================================================
+/* [P0-T8] Respons dibedakan tegas:
+   - ok:true, data.readStatus 'COMPLETE' : seluruh baris (offset 0, returned === total) dengan kolom wajib lengkap;
+   - ok:true, data.readStatus 'PAGE'     : satu halaman dari pembacaan berhalaman (klien WAJIB merangkai sampai total);
+   - ok:false (SCHEMA_MISMATCH / READ_FAILED / NOT_FOUND) : ERROR - tidak pernah dikembalikan sebagai data kosong.
+   Kolom wajib (opReadRequired_) diperiksa setiap halaman; header ganda/hilang -> SCHEMA_MISMATCH + daftar kolom.
+   Sheet opsional 30_ALOKASI_PENGELUARAN yang BELUM ADA = data kosong yang sah (COMPLETE, sheetMissing). */
 function opReadSheet(sheetName, opts) {
   var g = opGate_(OP_READ_ROLES_); if (!g.ok) return g;
   if (OP_READ_SHEETS_.indexOf(sheetName) === -1) {
@@ -156,23 +175,32 @@ function opReadSheet(sheetName, opts) {
   opts = opts && typeof opts === 'object' ? opts : {};
   var offset = Math.max(0, Number(opts.offset) || 0);
   var limit = Math.min(20000, Math.max(1, Number(opts.limit) || 5000));
+  var required = opReadRequired_(sheetName);
   try {
     var sh = ss_().getSheetByName(sheetName);
     // [P1-RAB] 30_ALOKASI_PENGELUARAN opsional (dibuat hanya lewat opAlokasiPengeluaranSetup): belum ada = tanpa pemetaan eksplisit
-    if (!sh && sheetName === RAB_ALOKASI_SHEET_) return okResult_('OK', { sheet: sheetName, headers: [], rows: [], total: 0, offset: offset, returned: 0, sheetMissing: true });
-    if (!sh) return errResult_('SCHEMA_MISMATCH', 'Sheet tidak ditemukan', 'sheetName');
-    var lastRow = sh.getLastRow(), lastCol = sh.getLastColumn();
-    if (lastCol < 1) return okResult_('OK', { sheet: sheetName, headers: [], rows: [], total: 0, offset: offset, returned: 0 });
-    var headers = sh.getRange(1, 1, 1, lastCol).getValues()[0].map(opStr_);
+    if (!sh && sheetName === RAB_ALOKASI_SHEET_) return okResult_('OK', { sheet: sheetName, headers: [], rows: [], total: 0, offset: offset, returned: 0, sheetMissing: true, readStatus: 'COMPLETE', requiredHeaders: required });
+    if (!sh) return errResult_('SCHEMA_MISMATCH', 'Sheet tidak ditemukan: ' + sheetName, 'sheetName');
+    var hm;
+    try { hm = sgHeaderModel_(sheetName, required); } catch (se) {
+      if (!se || se.code !== 'SCHEMA_MISMATCH') throw se; // kegagalan baca -> READ_FAILED (bukan salah skema)
+      var r0 = errResult_('SCHEMA_MISMATCH', String(se.message || se), 'sheetName');
+      r0.sheet = sheetName; r0.missing = se.missing || []; r0.requiredHeaders = required;
+      return r0;
+    }
+    var headers = hm.live, lastRow = sh.getLastRow();
     var total = Math.max(0, lastRow - 1);
     var n = Math.max(0, Math.min(limit, total - offset));
-    var raw = n > 0 ? sh.getRange(2 + offset, 1, n, lastCol).getValues() : [];
+    var raw = n > 0 ? sh.getRange(2 + offset, 1, n, headers.length).getValues() : [];
+    if (raw.length !== n) return errResult_('READ_FAILED', 'Jumlah baris terbaca tidak sesuai (' + raw.length + ' dari ' + n + ')', 'sheetName');
     var rows = raw.map(function (r) {
       var o = {};
       headers.forEach(function (h, i) { if (h) o[h] = r[i]; });
       return o;
     });
-    return opJsonSafe_(okResult_('OK', { sheet: sheetName, headers: headers, rows: rows, total: total, offset: offset, returned: rows.length }));
+    var complete = offset === 0 && rows.length === total;
+    return opJsonSafe_(okResult_('OK', { sheet: sheetName, headers: headers, rows: rows, total: total, offset: offset, returned: rows.length,
+      readStatus: complete ? 'COMPLETE' : 'PAGE', requiredHeaders: required }));
   } catch (e) {
     return errResult_('READ_FAILED', 'Gagal membaca sheet', 'sheetName');
   }

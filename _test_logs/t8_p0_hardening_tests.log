@@ -1,0 +1,12 @@
+PASS HD-T8-01 [T8 / GAP-002 / TC-HDR-07] kolom wajib hilang -> ERROR SCHEMA_MISMATCH + daftar kolom di 15 sheet baca: {"04_KEWAJIBAN":"SCHEMA_MISMATCH:tagihanId","05_TRANSAKSI":"SCHEMA_MISMATCH:subkategori","06_ALOKASI":"SCHEMA_MISMATCH:tagihanId","08_ANGGARAN":"SCHEMA_MISMATCH:nominal","09_KOMITMEN":"SCHEMA_MISMATCH:status","10_BUKTI":"SCHEMA_MISMATCH:tanggal","11_MUTASI_BANK":"SCHEMA_MISMATCH:transaksiId","12_DUP_REVIEW":"SCHEMA_MISMATCH:status","13_AUDIT_LOG":"SCHEMA_MISMATCH:aksi","14_KPI":"SCHEMA_MISMATCH:kpiKode","16_REKONSILIASI":"SCHEMA_MISMATCH:status","17_LAPORAN":"SCHEMA_MISMATCH:snapshot","18_RKAT":"SCHEMA_MISMATCH:pagu","19_LPJ":"SCHEMA_MISMATCH:transaksiId","30_ALOKASI_PENGELUARAN":"SCHEMA_MISMATCH:nominal"}
+PASS HD-T8-02 [T8 / TC-HDR-03] SCHEMA_MISMATCH SCHEMA_MISMATCH pada 08_ANGGARAN: kolom wajib ganda: nominal
+PASS HD-T8-03 [T8 sheet tidak tersedia] {"opsional30":["SUCCESS","COMPLETE"],"lpjHilang":"SCHEMA_MISMATCH","headerKosong":"SCHEMA_MISMATCH"}
+PASS HD-T8-04 [T8 data kosong sah] komitmen 0 baris = COMPLETE; halaman parsial = PAGE; KPI tetap dihitung (overall 47)
+PASS HD-T8-05 [T8 kegagalan baca] getValues baris data melempar -> READ_FAILED (bukan OK kosong, bukan SCHEMA_MISMATCH)
+PASS HD-T8-06 [T8 data parsial klien] {"empty":{"error":"PARTIAL_READ","kpi":null},"shift":{"error":"PARTIAL_READ","kpi":null}}
+PASS HD-T8-07 [T8 dampak KPI / TC-HDR-07] {"30_ALOKASI_PENGELUARAN":{"overall":null,"alasan":true},"08_ANGGARAN":{"overall":null,"alasan":true},"11_MUTASI_BANK":{"overall":null,"alasan":true}}
+PASS HD-T8-08 [T8 tampilan & ekspor] {"kartuRAB":true,"tileSaldoTetap":true,"tindakanNA":true,"laporanBanner":true,"eksporTerunduh":0,"fcc":true,"laporanKasNormal":true}
+PASS HD-T8-09 [T8 regresi kondisi normal] {"banner":false,"exported":1}
+PASS HD-T8-10 [T8 kompatibilitas header FINAL] semua sheet baca dengan header FINAL tetap terbaca (30 tidak ada di FINAL = opsional)
+
+PASS=10 FAIL=0 INFO=0

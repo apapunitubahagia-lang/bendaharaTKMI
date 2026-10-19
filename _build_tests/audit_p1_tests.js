@@ -184,10 +184,10 @@ const BANK_NYATA = { '2026-09-30': 8000000, '2026-10-31': 8300000 }; // rekening
     const bad = { read: code(srv.sb.opReadSheet('30_ALOKASI_PENGELUARAN', {})), fcc: code(srv.sb.opFinancialControl('September 2026')), setup: code(safe(() => srv.sb.opAlokasiPengeluaranSetup('BUAT_SHEET_ALOKASI_PENGELUARAN'))) };
     rec('AU-S30-02', 'sheet 30 header salah: server gagal tertutup', bad.fcc === 'SCHEMA_MISMATCH' && bad.setup === 'SCHEMA_MISMATCH' && J(srv.sheets['30_ALOKASI_PENGELUARAN'][0]) === J(['id', 'transaksiId', 'nominal']),
       'opFinancialControl & setup menolak header salah, header tidak ditimpa: ' + J({ fcc: bad.fcc, setup: bad.setup }));
-    rec('AU-S30-04', 'T8 / GAP-002 (TEMUAN)', null, 'opReadSheet atas header salah mengembalikan ' + bad.read + ' (kolom wajib tidak diperiksa) - klien menerima baris tanpa anggaranId');
+    rec('AU-S30-04', 'T8 / GAP-002 (TEMUAN)', null, 'opReadSheet atas header salah mengembalikan ' + bad.read + (bad.read === 'OK' ? ' (TERBUKA: kolom wajib tidak diperiksa; klien menerima baris tanpa anggaranId)' : ' (TERTUTUP sejak P0-T8: ERROR, bukan data)'));
     const c = await bootClient(srv); const k = c.sb.kpiIndukSummary('September 2026');
     // TEMUAN T8: ekspektasi awal "KPI gagal tertutup" TIDAK terpenuhi (FAIL saat suite pertama kali dijalankan) -> dicatat sbg temuan, bukan dipaksa lulus
-    rec('AU-S30-03', 'T8 / GAP-002 (TEMUAN)', null, 'KPI klien TETAP dihitung saat kolom wajib 30_ALOKASI_PENGELUARAN hilang: overall=' + k.overall + ' "' + k.overallStatus + '" (pemetaan eksplisit diabaikan diam-diam; berlaku juga utk 08_ANGGARAN/11_MUTASI_BANK, P1_13 §5)');
+    rec('AU-S30-03', 'T8 / GAP-002 (TEMUAN)', null, (k.overall === null ? 'TERTUTUP sejak P0-T8: KPI tidak dihitung' : 'TERBUKA: KPI klien TETAP dihitung (pemetaan eksplisit diabaikan diam-diam)') + ' saat kolom wajib 30_ALOKASI_PENGELUARAN hilang: overall=' + k.overall + ' "' + k.overallStatus + '"');
   }
 
   { // T8 umum: kolom wajib hilang pada sheet yang dibaca klien lewat opReadSheet

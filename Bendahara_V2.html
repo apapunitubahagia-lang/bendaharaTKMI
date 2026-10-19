@@ -2270,8 +2270,10 @@ function renderBeranda(){
 
   html += renderQuickActions();
 
-  // ---- 4 kartu ringkasan utama ----
-  html += '<div class="tiles">'+
+  // ---- 4 kartu ringkasan utama ---- [P0-T8] sumber transaksi tidak lengkap -> DATA TIDAK TERSEDIA
+  const trxDs_ = centralSourcesStatus_(['transaksi']);
+  if(!trxDs_.ok) html += centralUnavailableCard_('Saldo, Penerimaan, dan Pengeluaran', trxDs_);
+  else html += '<div class="tiles">'+
     '<div class="tile good"><div class="label">Saldo Sekolah</div><div class="value">'+fmtRp(kas+bank)+'</div>'+pctChangeHtml(pctChange(kas+bank, saldoLalu))+'</div>'+
     '<div class="tile"><div class="label">Kas / Bank</div><div class="value" style="font-size:15px">Kas '+fmtRp(kas)+'</div><div class="small-muted">Bank '+fmtRp(bank)+'</div></div>'+
     '<div class="tile good"><div class="label">Penerimaan (Aktual)</div><div class="value">'+fmtRp(pemasukan)+'</div>'+pctChangeHtml(pctChange(pemasukan, pemasukanLalu))+'</div>'+
@@ -2288,6 +2290,7 @@ function renderBeranda(){
   const anggaranPeriode = Store.loadAnggaran().filter(a=>a.periode===periode);
   // [P1-RAB Keputusan 2, P1_10] tiga ukuran terpisah dari satu definisi (rabRingkasanPeriode_), tanpa hitung ganda:
   // A anggaran disetujui, B realisasi thd anggaran disetujui, C seluruh pengeluaran aktual (termasuk yang belum terpetakan)
+  const RS_DS_ = centralSourcesStatus_(RAB_SOURCE_KEYS_); // [P0-T8]
   const RS_ = rabRingkasanPeriode_(rabMatchClient_(), periode);
   const totalAnggaran = RS_.anggaranDisetujui;
   const totalRealisasi = RS_.realisasiDisetujui;
@@ -2302,13 +2305,13 @@ function renderBeranda(){
       '<div class="kv" style="margin-top:6px"><div>Belum Teridentifikasi</div><div>'+fmtRp(belumTeridentifikasi)+'</div></div>'+
     '</div>'+
     '<div class="card"><h3>Realisasi RAB Bulanan (' + esc(periode) + ') <a class="link small-muted" style="float:right" onclick="setPage(\'anggaran\');State.anggaranTab=\'realisasi\';renderShell()">Lihat Anggaran &rarr;</a></h3>'+
-      progressStat('Total Anggaran Disetujui', totalAnggaran, totalAnggaran, 'var(--primary)')+
+      (!RS_DS_.ok ? centralUnavailableInline_(RS_DS_) : progressStat('Total Anggaran Disetujui', totalAnggaran, totalAnggaran, 'var(--primary)')+
       progressStat('Realisasi terhadap Anggaran Disetujui', totalRealisasi, totalAnggaran, 'var(--green)')+
       progressStat('Sisa Anggaran Disetujui', sisaAnggaran, totalAnggaran, 'var(--amber)')+
       '<div class="kv" style="margin-top:6px"><div>Total Pengeluaran Aktual</div><div>'+fmtRp(RS_.pengeluaranAktual)+'</div>'+
       '<div>Belum terpetakan ke RAB disetujui</div><div>'+fmtRp(RS_.belumKeRabDisetujui)+'</div></div>'+
       '<div class="small-muted">RAB belum disetujui '+fmtRp(RS_.terpetakanBelumDisetujui)+' &middot; garis periode lain '+fmtRp(RS_.terpetakanPeriodeLain)+' &middot; sisa tidak terpetakan '+fmtRp(RS_.sisaTidakTerpetakan)+' &middot; tanpa RAB '+fmtRp(RS_.tanpaRab)+'</div>'+
-      '<div class="kv" style="margin-top:6px"><div>Anggaran belum disetujui (diajukan/tanpa status)</div><div>'+fmtRp(anggaranBelumDisetujui_)+'</div></div>'+
+      '<div class="kv" style="margin-top:6px"><div>Anggaran belum disetujui (diajukan/tanpa status)</div><div>'+fmtRp(anggaranBelumDisetujui_)+'</div></div>')+
     '</div>'+
     '</div>';
 
@@ -2338,18 +2341,19 @@ function renderBeranda(){
 
   // ---- Perlu Tindakan (ringkas) + Aktivitas Terbaru ----
   const perluTindakanRows = [
-    {masalah:'Penerimaan belum teridentifikasi', jumlah:penerimaanBelumTeridentifikasi().length, aksi:'Identifikasi', go:"setPage('tindakan')"},
-    {masalah:'Pembayaran belum dialokasi', jumlah:pembayaranBelumDialokasi().length, aksi:'Alokasi', go:"setPage('tindakan')"},
-    {masalah:'Mutasi rekening belum dicocokkan', jumlah:mutasiBelumDicocokkan(periode).length, aksi:'Rekonsiliasi', go:"setPage('tindakan')"},
-    {masalah:'Pengeluaran tanpa bukti', jumlah:pengeluaranTanpaBukti().length, aksi:'Lampirkan', go:"setPage('tindakan')"},
-    {masalah:'Pengeluaran di luar RAB', jumlah:pengeluaranDiLuarRabBulanIni(periode).length, aksi:'Periksa', go:"setPage('anggaran');State.anggaranTab='realisasi';renderShell()"},
-    {masalah:'RAB mendekati pagu (<20%)', jumlah:rabMendekatiPagu(periode).length, aksi:'Lihat Anggaran', go:"setPage('anggaran');State.anggaranTab='realisasi';renderShell()"},
-    {masalah:'Laporan bulan belum dikirim', jumlah:laporanBelumDibuat().length, aksi:'Kirim Laporan', go:"submitLaporanBulanan()"}
+    {src:['transaksi','alokasi'], masalah:'Penerimaan belum teridentifikasi', jumlah:penerimaanBelumTeridentifikasi().length, aksi:'Identifikasi', go:"setPage('tindakan')"},
+    {src:['transaksi','alokasi'], masalah:'Pembayaran belum dialokasi', jumlah:pembayaranBelumDialokasi().length, aksi:'Alokasi', go:"setPage('tindakan')"},
+    {src:['mutasiBank','transaksi'], masalah:'Mutasi rekening belum dicocokkan', jumlah:mutasiBelumDicocokkan(periode).length, aksi:'Rekonsiliasi', go:"setPage('tindakan')"},
+    {src:['transaksi','bukti'], masalah:'Pengeluaran tanpa bukti', jumlah:pengeluaranTanpaBukti().length, aksi:'Lampirkan', go:"setPage('tindakan')"},
+    {src:RAB_SOURCE_KEYS_, masalah:'Pengeluaran di luar RAB', jumlah:pengeluaranDiLuarRabBulanIni(periode).length, aksi:'Periksa', go:"setPage('anggaran');State.anggaranTab='realisasi';renderShell()"},
+    {src:RAB_SOURCE_KEYS_, masalah:'RAB mendekati pagu (<20%)', jumlah:rabMendekatiPagu(periode).length, aksi:'Lihat Anggaran', go:"setPage('anggaran');State.anggaranTab='realisasi';renderShell()"},
+    {src:['laporan'], masalah:'Laporan bulan belum dikirim', jumlah:laporanBelumDibuat().length, aksi:'Kirim Laporan', go:"submitLaporanBulanan()"}
   ];
+  perluTindakanRows.forEach(r=>{ const ds = centralSourcesStatus_(r.src); if(!ds.ok){ r.jumlah = null; r.na = ds.alasan.join('; '); } }); // [P0-T8] bukan 0
   html += '<div class="grid cols-2">'+
     '<div class="card"><h3>Perlu Tindakan ('+perluTindakanRows.filter(r=>r.jumlah>0).length+' item) <a class="link small-muted" style="float:right" onclick="setPage(\'tindakan\')">Lihat Semua &rarr;</a></h3>'+
     '<div class="tablewrap"><table><thead><tr><th>No</th><th>Masalah</th><th>Jumlah</th><th>Tindak Lanjut</th></tr></thead><tbody>'+
-    perluTindakanRows.map((r,i)=>'<tr><td>'+(i+1)+'</td><td>'+esc(r.masalah)+'</td><td>'+(r.jumlah? '<span class="badge red">'+r.jumlah+'</span>' : '<span class="badge green">0</span>')+'</td><td>'+(r.jumlah? '<button class="btn sm" onclick="'+r.go+'">'+esc(r.aksi)+'</button>' : '-')+'</td></tr>').join('')+
+    perluTindakanRows.map((r,i)=>'<tr><td>'+(i+1)+'</td><td>'+esc(r.masalah)+'</td><td>'+(r.na ? '<span class="badge gray" title="'+esc(r.na)+'">N/A</span>' : r.jumlah? '<span class="badge red">'+r.jumlah+'</span>' : '<span class="badge green">0</span>')+'</td><td>'+(r.jumlah? '<button class="btn sm" onclick="'+r.go+'">'+esc(r.aksi)+'</button>' : '-')+'</td></tr>').join('')+
     '</tbody></table></div></div>'+
     '<div class="card"><h3>Aktivitas Terbaru</h3>'+
     '<div class="tablewrap"><table><thead><tr><th>Tanggal</th><th>Aktivitas</th><th>Nominal</th><th>Status</th></tr></thead><tbody>'+
@@ -5244,6 +5248,9 @@ function downloadDOCX(filename, title, headers, rows, opts){
    diekspor = data hasil filter aktif, karena headers/rows datang dari fungsi
    yang SAMA dengan yang sudah menerapkan filter). */
 function exportReport(format, baseFilename, title, headers, rows, opts){
+  // [P0-T8] ekspor dari data tidak lengkap diblokir (berkas tidak membawa banner peringatan)
+  const ds_ = centralSourcesStatus_((State.page === 'laporan' && REPORT_SOURCE_KEYS_[State.laporanTab]) || (baseFilename === 'Anggaran' ? RAB_SOURCE_KEYS_ : []));
+  if(!ds_.ok){ toast('Ekspor dibatalkan - DATA TIDAK TERSEDIA: ' + ds_.alasan.join('; ')); return false; }
   if(format==='docx') downloadDOCX(baseFilename+'.docx', title, headers, rows, opts);
   else downloadXLSX(baseFilename+'.xlsx', title, headers, rows, opts);
 }
@@ -5400,6 +5407,8 @@ function renderLaporan(){
     },
     kpi: ()=>renderKpiReport()
   };
+  { const ds_ = centralSourcesStatus_(REPORT_SOURCE_KEYS_[State.laporanTab] || REPORT_SOURCE_KEYS_.pemasukan); // [P0-T8]
+    if(!ds_.ok) html += '<div class="card" style="border-left:4px solid #c62828"><span class="badge red">DATA TIDAK LENGKAP</span> <span class="small-muted">' + esc(ds_.alasan.join('; ')) + '. Angka di bawah TIDAK lengkap dan tidak boleh dipakai sebagai laporan resmi; ekspor dinonaktifkan.</span></div>'; }
   html += (fnMap[State.laporanTab]||fnMap.pemasukan)();
   return html;
 }
@@ -7981,6 +7990,29 @@ const MASTER_WRITE_FIELDS = {
 };
 function centralReady_(){ return typeof ServerBridge!=='undefined' && CentralAuth.authorized === true; }
 function centralOpLoaded_(k){ const st = OperationalCache.states[k]; return !!(st && st.loaded && !st.error); }
+/* [P0-T8] Kelengkapan sumber untuk tampilan NON-KPI (KPI tetap memakai kpiDataStatus_). ok=false bila server tidak
+   terhubung/belum terotorisasi, master belum termuat, atau salah satu sheet sumber belum termuat / gagal (mis. SCHEMA_MISMATCH,
+   PARTIAL_READ). Angka ringkasan TIDAK dihitung dari cadangan lokal maupun data kosong pengganti error. */
+const RAB_SOURCE_KEYS_ = ['transaksi', 'anggaran', 'alokasiPengeluaran'];
+const FCC_SOURCE_KEYS_ = ['transaksi', 'alokasi', 'anggaran', 'komitmen', 'rekonsiliasi', 'rkat', 'alokasiPengeluaran'];
+const REPORT_SOURCE_KEYS_ = { pemasukan:['transaksi','alokasi'], pengeluaran:['transaksi','bukti'], kas:['transaksi'], bank:['transaksi'],
+  tagihan:['kewajiban','alokasi','transaksi'], tunggakan:['kewajiban','alokasi','transaksi'], siswa:['kewajiban','alokasi','transaksi'],
+  anggaran:RAB_SOURCE_KEYS_, aruskas:['transaksi'], audit:['audit'], kpi:KPI_SOURCE_KEYS_, kontrol:FCC_SOURCE_KEYS_ };
+function centralSourcesStatus_(keys){
+  const alasan = [];
+  try{
+    if(typeof ServerBridge === 'undefined' || !ServerBridge) alasan.push('server tidak terhubung');
+    else if(!centralReady_()) alasan.push('pengguna belum terotorisasi');
+    else {
+      if(!CentralMasterData.ready) alasan.push('data master belum termuat');
+      const st = OperationalCache.states;
+      (keys || []).forEach(function(k){ const s = st[k]; if(!s || !s.loaded || s.error) alasan.push(OP_SHEETS[k] + (s && s.error ? ' gagal dimuat (' + s.error + ')' : ' belum termuat')); });
+    }
+  }catch(e){ alasan.push('status sumber data tidak dapat diperiksa'); }
+  return {ok: !alasan.length, alasan: alasan};
+}
+function centralUnavailableInline_(ds){ return '<div><span class="badge red">DATA TIDAK TERSEDIA</span></div><p class="small-muted">' + esc(ds.alasan.join('; ')) + '. Angka tidak ditampilkan agar tidak disalahartikan sebagai data lengkap.</p>'; }
+function centralUnavailableCard_(judul, ds){ return '<div class="card"><h3>' + esc(judul) + '</h3>' + centralUnavailableInline_(ds) + '</div>'; }
 function centralTxWriteActive(){
   return CENTRAL_CONFIG.writeTransactions && CENTRAL_CONFIG.readOperational && centralReady_() && centralOpLoaded_('transaksi') && centralOpLoaded_('alokasi')
     && !!ServerBridge.opCreateIncome && !!ServerBridge.opCreateExpense && !!ServerBridge.opCreateAllocation && !!ServerBridge.opUpdateTransaction;
@@ -7993,12 +8025,16 @@ function centralResolveTrxId(id){ const m = centralSyncMapGet(); return m[id] ||
 
 /* ---- READ: runtime cache dari server ---- */
 function centralReadAllPages_(sheet){
-  const rows = [];
+  const rows = []; let total0 = null;
   function page(offset){
     return ServerBridge.opReadSheet(sheet, {offset:offset, limit:5000}).then(function(r){
       if(!r || !r.ok || !r.data) return {ok:false, code:(r && r.code) || 'READ_FAILED'};
+      if(!Array.isArray(r.data.rows)) return {ok:false, code:'READ_FAILED'};
+      if(total0 === null) total0 = r.data.total;
+      else if(r.data.total !== total0) return {ok:false, code:'PARTIAL_READ'}; // [P0-T8] sheet berubah di tengah pembacaan
       Array.prototype.push.apply(rows, r.data.rows);
       if(rows.length < r.data.total && r.data.returned > 0) return page(offset + r.data.returned);
+      if(rows.length !== r.data.total) return {ok:false, code:'PARTIAL_READ'}; // [P0-T8] halaman kosong sebelum total tercapai / kelebihan baris
       return {ok:true, rows:rows, total:r.data.total, headers:r.data.headers || []};
     });
   }
@@ -8942,6 +8978,7 @@ function centralFccData_(periode){
     alokasi:OperationalAPI.alokasi(), alokasiPengeluaran:rabDataClient_().alokasiPengeluaran, komponen:MasterAPI.components(), kategoriPengeluaran:MasterAPI.expenseCategories(), tagihan:centralFccTagihan_(anggaran, periode || Store.loadSettings().periodeAktif)};
 }
 function renderFinancialControl(){
+  { const ds_ = centralSourcesStatus_(FCC_SOURCE_KEYS_); if(!ds_.ok) return centralUnavailableCard_('Kontrol Keuangan - ' + Store.loadSettings().periodeAktif, ds_); } // [P0-T8]
   const periode = Store.loadSettings().periodeAktif, r = fccCompute_(periode, centralFccData_(periode));
   let html = '<div class="card"><h3>Kontrol Keuangan - ' + esc(periode) + '</h3>' +
     '<p class="small-muted">Dihitung dari data Google Sheets (cache sesi ini). Bukan "surplus": posisi AKTUAL dipisahkan dari KOMITMEN, RENCANA, dan biaya yang BELUM TERCATAT.</p>' +
@@ -8972,6 +9009,7 @@ function centralFccVerify(){
     let msg;
     if(!res || !res.ok) msg = 'Server gagal: ' + centralErrText(res);
     else {
+      const ds_ = centralSourcesStatus_(FCC_SOURCE_KEYS_); if(!ds_.ok){ msg = 'Tidak dapat dibandingkan - data lokal TIDAK lengkap: ' + ds_.alasan.join('; '); if(out) out.textContent = msg; return msg; } // [P0-T8]
       const c = fccCompute_(periode, centralFccData_(periode)), s = res.data;
       const same = ['cashPosition'].every(k=>Math.abs(c.actual[k] - s.actual[k]) < 0.5) && Math.abs(c.committed.total - s.committed.total) < 0.5 && Math.abs(c.actual.incomePeriode - s.actual.incomePeriode) < 0.5 && Math.abs(c.actual.expensePeriode - s.actual.expensePeriode) < 0.5 && c.completeness.pct === s.completeness.pct && JSON.stringify(((c.anggaranVsAktual || {}).rows || []).map(r=>[r.jenis, r.nama, r.unit, r.periode, r.anggaran, r.aktual, r.komitmen])) === JSON.stringify((((s.anggaranVsAktual) || {}).rows || []).map(r=>[r.jenis, r.nama, r.unit, r.periode, r.anggaran, r.aktual, r.komitmen]));
       msg = same ? 'Cocok dengan server (kas, komitmen, penerimaan, pengeluaran, kelengkapan).' : 'BERBEDA dari server - ada perubahan lokal yang belum tersinkron atau cache usang; klik Sinkronkan lalu muat ulang.';
@@ -9372,6 +9410,7 @@ function renderAnggaranBandingHtml_(ab){
   return h;
 }
 function renderAnggaranBanding(){
+  { const ds_ = centralSourcesStatus_(FCC_SOURCE_KEYS_); if(!ds_.ok) return centralUnavailableCard_('Anggaran vs Aktual - ' + Store.loadSettings().periodeAktif, ds_); } // [P0-T8]
   const periode = Store.loadSettings().periodeAktif, r = fccCompute_(periode, centralFccData_(periode));
   return '<div class="card"><h3>Anggaran vs Aktual per Komponen/Kategori - ' + esc(periode) + '</h3>' + renderAnggaranBandingHtml_(r.anggaranVsAktual) + '</div>';
 }
