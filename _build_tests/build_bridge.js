@@ -12,7 +12,8 @@ const M = [
   ['opSchemaPlan', ''], ['opSchemaApply', 'confirm'], ['opUploadBukti', 'payload'], ['opObligations', 'opts', 'opts || {}'], ['opObligationSnapshot', 'periode, opts', 'periode, opts || {}'], ['opFinancialControl', 'periode'], ['opTarifPlan', ''], ['opTarifApply', 'confirm'],
   // [P1] penguncian periode, rekonsiliasi, pencocokan mutasi, pemetaan RAB
   ['opPeriodLockStatus', ''], ['opClosePeriod', 'periode'], ['opReopenPeriod', 'periode, reason'], ['opReconcileAccount', 'payload'], ['opMatchMutasi', 'payload'], ['opRabRealization', 'periode'],
-  ['opAlokasiPengeluaranSetup', 'confirm'], ['opAlokasiPengeluaranPlan', ''], ['opAlokasiPengeluaranImport', 'payload'] // [P1-RAB]
+  ['opAlokasiPengeluaranSetup', 'confirm'], ['opAlokasiPengeluaranPlan', ''], ['opAlokasiPengeluaranImport', 'payload'], // [P1-RAB]
+  ['opPeriodeAktifPlan', ''], ['opPeriodeAktifApply', 'payload'] // [P1-IMP F8]
 ];
 const lines = M.map(m => '    ' + m[0] + ': function (' + m[1] + ') { return callServer(\'' + m[0] + '\', [' + (m[2] !== undefined ? m[2] : m[1]) + ']); }');
 sb = sb.replace(anchor, anchor + ',\n    // --- OperationalAPI / RecordEngine / AdminAPI / BuktiDrive / ObligationEngine / FinanceEngine (semua authorized di server) ---\n' + lines.join(',\n'));

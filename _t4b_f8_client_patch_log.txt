@@ -1,0 +1,6 @@
+kpiPeriodeStatus_
+kpiIndukSummary gate
+kpiRow gate
+periodeBadge
+Beranda banner
+openPeriodeAktifNormalisasi

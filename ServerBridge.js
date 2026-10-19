@@ -84,6 +84,8 @@
     opRabRealization: function (periode) { return callServer('opRabRealization', [periode]); },
     opAlokasiPengeluaranSetup: function (confirm) { return callServer('opAlokasiPengeluaranSetup', [confirm]); },
     opAlokasiPengeluaranPlan: function () { return callServer('opAlokasiPengeluaranPlan', []); },
-    opAlokasiPengeluaranImport: function (payload) { return callServer('opAlokasiPengeluaranImport', [payload]); }
+    opAlokasiPengeluaranImport: function (payload) { return callServer('opAlokasiPengeluaranImport', [payload]); },
+    opPeriodeAktifPlan: function () { return callServer('opPeriodeAktifPlan', []); },
+    opPeriodeAktifApply: function (payload) { return callServer('opPeriodeAktifApply', [payload]); }
   };
 })(typeof window !== 'undefined' ? window : globalThis);

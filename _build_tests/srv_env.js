@@ -3,7 +3,7 @@ const G = require('./paths').G;
 const AB = require('./paths').AB;
 const OUT = require('./paths').OUT;
 const rd = f => fs.readFileSync(f, 'utf8');
-const SERVER_FILES = ['TransactionEngine.gs', 'SchemaGuard.gs', 'AuthCentral.gs', 'MasterDataRead.gs', 'CreateDatabaseStructure.gs', 'Code.gs', 'OperationalAPI.gs', 'RecordEngine.gs', 'AdminAPI.gs', 'BuktiDrive.gs', 'ObligationEngine.gs', 'FinanceEngine.gs', 'TarifPlan.gs', 'AllocationGuard.gs', 'PeriodLock.gs', 'RecordGuard.gs', 'ReconEngine.gs', 'RabMapping.gs', 'RabAllocation.gs']; // [P1] berkas baru; [P1-RAB] RabAllocation.gs
+const SERVER_FILES = ['TransactionEngine.gs', 'SchemaGuard.gs', 'AuthCentral.gs', 'MasterDataRead.gs', 'CreateDatabaseStructure.gs', 'Code.gs', 'OperationalAPI.gs', 'RecordEngine.gs', 'AdminAPI.gs', 'BuktiDrive.gs', 'ObligationEngine.gs', 'FinanceEngine.gs', 'TarifPlan.gs', 'AllocationGuard.gs', 'PeriodLock.gs', 'RecordGuard.gs', 'ReconEngine.gs', 'RabMapping.gs', 'RabAllocation.gs', 'PeriodeAktifAdmin.gs']; // [P1] berkas baru; [P1-RAB] RabAllocation.gs
 // [P0] AuthCentral.gs & CreateDatabaseStructure.gs kini berkas deploy di root repo (GAP-029); deps/ hanya basis build.
 function srcOf(f) { return rd(OUT + f); }
 
