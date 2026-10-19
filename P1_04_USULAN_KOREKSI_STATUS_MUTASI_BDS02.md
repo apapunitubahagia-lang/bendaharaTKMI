@@ -1,6 +1,19 @@
 # P1_04 — USULAN: Koreksi Beraudit Status Mutasi FINAL (BDS02-I02 / GAP-019)
 
-**Status: USULAN. TIDAK diimplementasikan.**
+**Status: DIPUTUSKAN (19-10-2026): Opsi C. Masalah pemetaan status BELUM TERSELESAIKAN.**
+
+> **Keputusan pengguna 19-10-2026: Opsi C.**
+> - Data **tidak diubah**: 544 status `TEREKONSILIASI` pada data FINAL tetap apa adanya; status asli dipertahankan.
+> - Rumus BDS02-I02 dan BDS02-I03 **tidak diubah**.
+> - Opsi A (koreksi data beraudit) dan Opsi B (perluasan definisi KPI) **tidak diterapkan** tanpa keputusan baru.
+> - Masalah pemetaan status mutasi FINAL vs kontrak Web V2 **belum terselesaikan**. Akibatnya, pada data FINAL, BDS02-I02 dan sebagian BDS02-I03 tetap rendah karena kosakata status data, bukan karena kinerja. Ini harus dibaca dengan catatan tersebut.
+> - **Angka 544 berasal dari dokumen audit `05_DAFTAR_GAP_DAN_RISIKO.xlsx` (GAP-019) dan BELUM dihitung ulang terhadap data FINAL** di lingkungan ini; data FINAL tidak tersedia di repositori. Penghitungan ulang dijadwalkan di uji integrasi (`P1_07`).
+> - TC-REK-02 direvisi menjadi status `DIPROSES` sesuai kontrak Web V2; alasan tercatat di `07_RANCANGAN_TEST_CASE.md` (Riwayat revisi).
+> - Kode tetap memperlakukan `TEREKONSILIASI`/tertaut sebagai sudah dicocokkan (mencegah pencocokan ganda, P1R-09); ini tidak mengubah data maupun KPI.
+
+Isi di bawah adalah analisis asli (17-10-2026), dipertahankan sebagai dasar bila keputusan baru diperlukan.
+
+**Status semula: USULAN. TIDAK diimplementasikan.**
 
 Sesuai keputusan pengguna 17-10-2026 butir 6:
 - 544 status mutasi FINAL **tidak dikoreksi**.

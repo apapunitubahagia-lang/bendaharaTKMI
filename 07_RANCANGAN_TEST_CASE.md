@@ -9,7 +9,7 @@
 > - Siswa uji: `SIS-T01` (MI kelas 1, tanpa keringanan) dan `SIS-T02` (MI kelas 3, keringanan saudara).
 > - Akun: `akun_bank_bsi_mi` dengan saldoAwal 10.000.000 (nilai uji) dan `akun_kas1` dengan saldoAwal 1.000.000.
 > - Periode aktif: "Oktober 2026".
-> - Periode Juli–September berstatus TERKUNCI.
+> - Periode Juli–September berstatus TERKUNCI (sejak revisi 17-10-2026: **penanda administratif**, bukan penguncian pencatatan; lihat "Riwayat revisi").
 
 ## A. Header dan kontrak
 
@@ -41,7 +41,7 @@
 | TC-CRUD-02 | DU. Transaksi impor (tanggal bertipe Date) | `opUpdateTransaction({id, status:'TERCATAT'})` tanpa field tanggal | `ok:true`. Sel status berubah. Tanggal tetap | P0 | 003 |
 | TC-CRUD-03 | DU. Alokasi 200.000 + 350.000 pada transaksi 550.000 | `opUpdateTransaction({id, nominal:500000})` | Ditolak `ALLOCATION_EXCEEDS_TRANSACTION` | P1 | 012 |
 | TC-CRUD-04 | DU | `opRecordUpsert('rekonsiliasi', {akunId:'tidak_ada', ...})` | `VALIDATION_ERROR` | P1 | 014 |
-| TC-CRUD-05 | DU. Juli TERKUNCI | `opCreateIncome` bertanggal 2026-07-15 | `PERIOD_LOCKED` | P1 | 015 |
+| TC-CRUD-05 | DU. Juli TERKUNCI | (a) `opCreateIncome` sah bertanggal 2026-07-15. (b) Ulangi (a) dengan penulisan `13_AUDIT_LOG` dibuat gagal. (c) Ulangi (a) dengan akun AUDITOR, dan dengan payload tidak valid (nominal 0). (d) `opPeriodLockStatus()` dan riwayat closing | (a) **Diterima.** Tanggal tetap 2026-07-15. Satu baris audit `CREATE_TRANSACTION` + satu baris `PERIODE_DITANDAI` (periode Juli 2026, status TERKUNCI) dengan timestamp sama dan aktor sama; respons memuat `periodeDitandai`. (b) Ditolak; **tidak ada** transaksi, catatan idempotensi, maupun baris audit/penanda yang tertinggal. (c) `ROLE_NOT_ALLOWED` / `VALIDATION_ERROR`; tidak ada baris baru. (d) Juli tetap TERKUNCI; nilai `periodeStatus.2026-07` dan riwayat closing tidak berubah. *(Direvisi 17-10-2026; ekspektasi lama `PERIOD_LOCKED` dicabut. Lihat "Riwayat revisi")* | P1 | 015 |
 | TC-CRUD-06 | DU | Hapus komponen yang punya riwayat (central) | Status menjadi Nonaktif. Tidak ada baris yang terhapus | P1 | – |
 | TC-CRUD-07 | DU | `opCreateIncome` dengan unit "MI+TK" | Ditolak, atau diterima sesuai keputusan GAP-023 (konsisten untuk create dan update) | P1 | 023 |
 
@@ -70,7 +70,7 @@
 | ID | Kondisi awal | Langkah | Hasil diharapkan | Prio | GAP |
 |---|---|---|---|---|---|
 | TC-REK-01 | DU | Impor mutasi Oktober (kredit dan debit) | Baris masuk ke 11 dengan akunId dan arah. **Tidak ada** transaksi yang dibuat otomatis | P1 | 041 |
-| TC-REK-02 | TC-REK-01 | Identifikasi 1 mutasi ke siswa | 05 dan 06 terbentuk. 11.transaksiId terisi. Status TERIDENTIFIKASI. Mutasi asli tidak berubah nominalnya | P1 | 019 |
+| TC-REK-02 | TC-REK-01 | Identifikasi 1 mutasi ke siswa | 05 dan 06 terbentuk. 11.transaksiId terisi. Status **`DIPROSES`** (kontrak Web V2). Mutasi asli tidak berubah nominalnya. Status `TEREKONSILIASI` pada data FINAL **tidak diubah** dan tetap dikenali sebagai sudah dicocokkan (tidak dapat dicocokkan ulang). *(Direvisi 19-10-2026; semula `TERIDENTIFIKASI`. Lihat "Riwayat revisi")* | P1 | 019 |
 | TC-REK-03 | Saldo rekening koran akhir Oktober tersedia | Rekonsiliasi `akun_bank_bsi_mi` | `saldoSistem` = saldo per 31-10 (bukan saldo hari ini). Selisih dihitung. SELESAI hanya bila selisih 0 atau ada penyesuaian yang disetujui | P1 | 009, 019 |
 | TC-REK-04 | Saldo awal kosong | Buka FCC | Tampil "Saldo awal tidak tersedia". Tidak ada angka "Actual Cash Position" yang menyesatkan | P0 | 009 |
 
@@ -124,3 +124,13 @@
 | TC-DSH-05 | DU | Pengeluaran yang ter-map ke RAB (ITEM) | Realisasi RAB muncul di FCC dan lulus BDS03-I03 | P1 | 018 |
 | TC-DSH-06 | DU | Komitmen COMMITTED 1.000.000 pada RAB X | FCC COMMITTED = 1.000.000. Sisa pagu = RAB − realisasi − komitmen | P1 | 017 |
 | TC-DSH-07 | Laporan September dikirim dua kali | – | Dua versi tersimpan. KPI BDS06-I02 memakai tanggal kirim pertama sesuai keputusan | P1 | 044 |
+
+## Riwayat revisi
+
+| Tanggal | TC | Ekspektasi lama | Ekspektasi baru | Alasan dan dasar keputusan |
+|---|---|---|---|---|
+| 17-10-2026 | TC-CRUD-05 | `opCreateIncome` pada periode TERKUNCI → `PERIOD_LOCKED` | Diterima pada tanggal aktual, ditandai dan diaudit secara atomik. Kegagalan audit tidak meninggalkan keadaan parsial. Otorisasi dan validasi tetap berlaku. Status periode dan riwayat closing tetap tersedia | Keputusan kebijakan pengguna 17-10-2026: status CLOSED/TERKUNCI adalah **penanda administratif, bukan hard lock** pencatatan rutin, karena pembayaran orang tua sering terlambat. Implementasi: commit `79e2b66`. Audit: `P1_03_POLICY_CHANGE_AUDIT.md`. Laporan: `P1_03_IMPLEMENTATION_REPORT.md`. Uji sandbox: P1L-01, P1L-13, P1P-06, P1P-10 |
+| 19-10-2026 | TC-REK-02 | Status mutasi teridentifikasi = `TERIDENTIFIKASI` | Status = `DIPROSES` | `TERIDENTIFIKASI` tidak ada di kontrak Web V2 (`DB_SCHEMA 11_MUTASI_BANK`: `BELUM_DIPROSES`, `DIPROSES`); KPI BDS02-I02/I03 memakai `DIPROSES`. Keputusan pengguna atas `P1_04`: **Opsi C**, yaitu tidak mengubah data maupun rumus KPI. 544 baris `TEREKONSILIASI` (angka dari dokumen 05, belum dihitung ulang terhadap data FINAL) tetap apa adanya; masalah pemetaan status **belum terselesaikan** |
+
+Kedua revisi **tidak menghapus** test case; langkah dan ekspektasinya diperluas agar tetap memeriksa kontrol keamanan dan integritas.
+
