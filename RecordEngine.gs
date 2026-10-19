@@ -36,7 +36,8 @@ var OP_RECORDS_ = {
   rekonsiliasi: { sheet: '16_REKONSILIASI', num: ['saldoSistem', 'saldoAktual', 'selisih'] },
   laporan: { sheet: '17_LAPORAN', num: [] },
   rkat: { sheet: '18_RKAT', num: ['tahun', 'volume', 'hargaSatuan', 'pagu', 'sourceRow'] },
-  lpj: { sheet: '19_LPJ', num: ['volume', 'hargaSatuan', 'diskon', 'nominal', 'sourceRow'] }
+  lpj: { sheet: '19_LPJ', num: ['volume', 'hargaSatuan', 'diskon', 'nominal', 'sourceRow'] },
+  alokasiPengeluaran: { sheet: '30_ALOKASI_PENGELUARAN', num: ['nominal'] } // [P1-RAB] pemetaan eksplisit pengeluaran -> RAB (RecordGuard)
 };
 
 /* Baca model sheet LIVE: header + seluruh baris (nilai mentah). */
@@ -88,7 +89,8 @@ function opRecordUpsert(key, record) {
   return opRecordBatch(key, [{ op: 'upsert', id: record.id, row: record }]);
 }
 
-function opRecordBatchLocked_(g, cfg, key, ops) {
+/* extraAudits (opsional) = baris audit tambahan yang ikut append audit yang SAMA dengan batch (dipakai impor P1-RAB). */
+function opRecordBatchLocked_(g, cfg, key, ops, extraAudits) {
   var m = opSheetModel_(cfg.sheet);
   if (!m) return errResult_('SCHEMA_MISMATCH', 'Sheet tidak ditemukan', 'key');
   var live = m.live, idCol = live.indexOf('id');
@@ -176,6 +178,7 @@ function opRecordBatchLocked_(g, cfg, key, ops) {
   Object.keys(touched).forEach(function (i) { m.sh.getRange(Number(i) + 2, 1, 1, m.lastCol).setValues([rows[i]]); });
   var nAppend = rows.length - origLen;
   if (nAppend > 0) m.sh.getRange(m.lastRow + 1, 1, nAppend, m.lastCol).setValues(rows.slice(origLen));
+  if (extraAudits && extraAudits.length) audits = audits.concat(extraAudits);
   try { opAuditBulk_(audits, g.identity.email); } catch (e) {
     // [P0-B] audit wajib gagal -> perubahan dibatalkan, bukan sukses + auditWarning
     try { opRestoreRows_(m.sh, m.lastCol, touchedList, m.lastRow + 1, Math.max(0, nAppend)); } catch (re) {

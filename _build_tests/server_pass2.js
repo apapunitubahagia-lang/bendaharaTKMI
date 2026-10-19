@@ -20,7 +20,7 @@ const defined = new Set(Object.keys(seen));
 ['RecordEngine', 'AdminAPI', 'BuktiDrive', 'ObligationEngine', 'FinanceEngine', 'TarifPlan', 'AllocationGuard'].forEach(f => {
   const body = srcOf(f + '.gs').replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '').replace(/'(?:[^'\\\n]|\\.)*'/g, "''").replace(/\/(?:[^\/\\\n]|\\.)+\/[gimy]*(?=[.\s;,)])/g, '/r/');
   const calls = new Set(); let mm; const re = /(^|[^.\w$])([A-Za-z_$][\w$]*)\s*\(/g; while ((mm = re.exec(body))) calls.add(mm[2]);
-  const locals = new Set(['mk', 'm', 'c', 'set', 'toObj', 'short', 'finish', 'matchFn', 'f', 'fn', 'cb', 'sum', 'byStatus', 'inP', 'alive', 'nominal', 'push', 'kn', 'all', 'addT', 'addK', 'tarifKomponenOk', 'tingkat']); // variabel fungsi lokal
+  const locals = new Set(['mk', 'm', 'c', 'set', 'toObj', 'short', 'finish', 'matchFn', 'f', 'fn', 'cb', 'sum', 'byStatus', 'inP', 'alive', 'nominal', 'push', 'kn', 'all', 'addT', 'addK', 'tarifKomponenOk', 'tingkat', 'inScope']); // variabel fungsi lokal ([P1-RAB] inScope di fccBudgetVsActual_)
   const bad = [...calls].filter(c => !defined.has(c) && !BUILTIN.has(c) && !locals.has(c));
   rec('S referensi fungsi terdefinisi di ' + f + '.gs', bad.length === 0, bad);
 });

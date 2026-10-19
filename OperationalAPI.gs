@@ -43,7 +43,7 @@ var OP_READ_ROLES_ = ['BENDAHARA', 'KEPALA_SEKOLAH', 'YAYASAN', 'AUDITOR']; // b
 // (administratif), 99_MIGRATION_LOG (schema belum terverifikasi), dan sheet
 // master (sudah dilayani MasterDataRead.gs).
 var OP_READ_SHEETS_ = ['04_KEWAJIBAN', '05_TRANSAKSI', '06_ALOKASI', '08_ANGGARAN', '09_KOMITMEN', '10_BUKTI',
-  '11_MUTASI_BANK', '12_DUP_REVIEW', '13_AUDIT_LOG', '14_KPI', '16_REKONSILIASI', '17_LAPORAN', '18_RKAT', '19_LPJ'];
+  '11_MUTASI_BANK', '12_DUP_REVIEW', '13_AUDIT_LOG', '14_KPI', '16_REKONSILIASI', '17_LAPORAN', '18_RKAT', '19_LPJ', '30_ALOKASI_PENGELUARAN']; // [P1-RAB]
 
 function opStr_(v) { return String(v === null || v === undefined ? '' : v).trim(); }
 function opNorm_(v) { return opStr_(v).toLowerCase(); }
@@ -158,6 +158,8 @@ function opReadSheet(sheetName, opts) {
   var limit = Math.min(20000, Math.max(1, Number(opts.limit) || 5000));
   try {
     var sh = ss_().getSheetByName(sheetName);
+    // [P1-RAB] 30_ALOKASI_PENGELUARAN opsional (dibuat hanya lewat opAlokasiPengeluaranSetup): belum ada = tanpa pemetaan eksplisit
+    if (!sh && sheetName === RAB_ALOKASI_SHEET_) return okResult_('OK', { sheet: sheetName, headers: [], rows: [], total: 0, offset: offset, returned: 0, sheetMissing: true });
     if (!sh) return errResult_('SCHEMA_MISMATCH', 'Sheet tidak ditemukan', 'sheetName');
     var lastRow = sh.getLastRow(), lastCol = sh.getLastColumn();
     if (lastCol < 1) return okResult_('OK', { sheet: sheetName, headers: [], rows: [], total: 0, offset: offset, returned: 0 });
@@ -190,6 +192,7 @@ function opSchemaReport() {
   expected['24_IDEMPOTENCY_LOG'] = typeof IDEMP_HEADERS !== 'undefined' ? IDEMP_HEADERS : null;
   expected['25_DEVICE_WHITELIST'] = typeof DEVICE_HEADERS !== 'undefined' ? DEVICE_HEADERS : null;
   expected['26_USER_ACCESS'] = typeof USER_ACCESS_HEADERS !== 'undefined' ? USER_ACCESS_HEADERS : null;
+  if (typeof RAB_ALOKASI_HEADERS_ !== 'undefined') expected[RAB_ALOKASI_SHEET_] = RAB_ALOKASI_HEADERS_; // [P1-RAB] opsional (MISSING_SHEET wajar sebelum setup)
   expected['99_MIGRATION_LOG'] = null; // header tidak didefinisikan di kode (hanya penulisan posisional 7 kolom)
   var report = Object.keys(expected).sort().map(function (name) {
     var sh = ss_().getSheetByName(name);

@@ -132,7 +132,8 @@ const annualSum = rs => sum(rs.filter(r => r.komponenId.indexOf('kmp_thn_') === 
     rec('U21 validasi anggaran: tanpa unit / pemasukan tanpa komponen / pengeluaran tanpa kategori / campur pemasukan-pengeluaran / subkategori salah / komponen beda unit -> semua ditolak dengan pesan', allRejected && nAng() === 0, why);
     const mkAng = o => { fa(o); c.sb.submitAnggaran(); };
     mkAng({ agf_jenis: 'PEMASUKAN', agf_program: 'Penerimaan SPP MI', agf_komponen: 'kmp_spp', agf_nominal: '5000000' });
-    mkAng({ agf_program: 'ATK Kertas', agf_kategori: 'ATK', agf_subkategori: 'Kertas', agf_nominal: '400000' });
+    // [P1-RAB] K-RAB-02/05: hanya RAB DISETUJUI yang menjadi pagu; U25 menguji pencocokan subkategori + komitmen terpisah, jadi RAB uji disetujui
+    mkAng({ agf_program: 'ATK Kertas', agf_kategori: 'ATK', agf_subkategori: 'Kertas', agf_nominal: '400000', agf_status: 'Disetujui' });
     mkAng({ agf_jenis: 'PEMASUKAN', agf_program: 'Penerimaan tahunan K5', agf_periode: 'Tahun Ajaran 2026/2027', agf_komponen: 'kmp_thn_ekskul', agf_nominal: '1200000' });
     await sync(c);
     const angRows = rows(srv, '08_ANGGARAN');

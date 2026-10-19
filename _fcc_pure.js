@@ -5,7 +5,8 @@
    COMMITTED   = komitmen berstatus COMMITTED (disetujui) dan INCURRED (terjadi, belum dibayar).
    PLANNED     = RAB/anggaran periode (08) dan pagu RKAT tahun periode (18).
    EXPECTED    = komitmen berstatus EXPECTED.
-   MISSING     = RAB periode tanpa realisasi dan tanpa komitmen (biaya yang diharapkan tapi belum tercatat) + kategori data kosong.
+   MISSING     = garis RAB pengeluaran periode berpagu DISETUJUI tanpa realisasi (pencocokan bersama rabMatchAll_) dan tanpa komitmen
+                 (biaya yang diharapkan tapi belum tercatat) + kategori data kosong. [P1-RAB]
    Completeness = persentase kategori data yang LENGKAP pada periode. Bila < 100 hasil BUKAN "surplus". */
 var FCC_BULAN_ = ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'];
 function fccPeriodeOfDate_(tanggal) {
@@ -34,11 +35,21 @@ function fccCompute_(periode, D) {
   var rabRows = ang.filter(function (a) { return a.periode === periode; });
   var year = (/\d{4}/.exec(String(periode || '')) || [''])[0];
   var rkatPagu = sum(rkat.filter(function (r) { return String(r.tahun) === year; }), function (r) { return r.pagu; });
-  var missing = rabRows.filter(function (a) {
-    var real = sum(exp.filter(function (t) { return t.kategori === a.program && inP(t); }), nominal);
-    var kt = sum(kom.filter(function (o) { return o.rabId === a.id && (o.status === 'COMMITTED' || o.status === 'INCURRED'); }), nominal);
-    return real + kt === 0;
-  }).map(function (a) { return { id: a.id, program: a.program, nominal: fccNum_(a.nominal) }; });
+  /* [P1-RAB] MISSING = garis anggaran pengeluaran periode ini dengan pagu DISETUJUI yang belum punya realisasi (aturan pencocokan
+     bersama rabMatchAll_, bukan lagi kategori === program) dan belum punya komitmen COMMITTED/INCURRED. */
+  var RM = rabMatchAll_(D), actL = {};
+  RM.transaksi.forEach(function (r) { if (r.periode === periode) r.bagian.forEach(function (b) { actL[b.lineKey] = (actL[b.lineKey] || 0) + b.nominal; }); });
+  var missing = RM.lines.filter(function (L) {
+    if (L.periode !== periode || !(L.paguDisetujui > 0)) return false;
+    var ids = {}; L.rabIds.forEach(function (id) { ids[id] = 1; });
+    var kt = sum(kom.filter(function (o) { return ids[o.rabId] && (o.status === 'COMMITTED' || o.status === 'INCURRED'); }), nominal);
+    return (actL[L.key] || 0) + kt === 0;
+  }).map(function (L) {
+    var first = ang.filter(function (a) { return String(a.id) === L.rabIdsDisetujui.slice().sort()[0]; })[0] || {};
+    return { id: first.id, program: first.program || (L.kategori + (L.subkategori ? ' / ' + L.subkategori : '')), nominal: L.paguDisetujui, lineKey: L.key, rabIds: L.rabIds.slice() };
+  });
+  var perStatus = { disetujui: 0, diajukan: 0, tanpaStatus: 0, statusLain: 0 };
+  RM.lines.forEach(function (L) { if (L.periode !== periode) return; perStatus.disetujui += L.paguDisetujui; perStatus.diajukan += L.paguDiajukan; perStatus.tanpaStatus += L.paguTanpaStatus; perStatus.statusLain += L.paguStatusLain; });
   var cats = [
     ['Penerimaan', inc.length > 0, inc.some(inP)], ['Pengeluaran', exp.length > 0, exp.some(inP)],
     ['Anggaran/RAB', ang.length > 0, rabRows.length > 0], ['Rekonsiliasi', rekon.length > 0, rekon.some(function (r) { return r.periode === periode; })],
@@ -54,7 +65,7 @@ function fccCompute_(periode, D) {
     periode: periode,
     actual: { incomePeriode: sum(inP2, nominal), expensePeriode: sum(exP2, nominal), netPeriode: sum(inP2, nominal) - sum(exP2, nominal), cashPosition: cashPosition, cashByAccount: cashByAccount },
     committed: { committed: committed, incurredUnpaid: incurred, total: committed + incurred },
-    planned: { rabPeriode: sum(rabRows, nominal), rkatPaguTahun: rkatPagu },
+    planned: { rabPeriode: sum(rabRows, nominal), rabPengeluaranPerStatus: perStatus, rkatPaguTahun: rkatPagu }, // [P1-RAB] rabPeriode tetap (semua status); rincian status terpisah
     expected: { expectedCost: expectedCost },
     missing: { rabTanpaRealisasi: missing, unrecordedExpectedCost: sum(missing, function (m) { return m.nominal; }) },
     afterCommitments: cashPosition - committed - incurred - expectedCost,

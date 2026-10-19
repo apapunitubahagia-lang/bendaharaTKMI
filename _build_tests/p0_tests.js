@@ -300,11 +300,27 @@ async function bootClient(srv, opts) {
     else {
       const run = async (code) => { const srv = makeServer(); const c = makeClient(srv, { js: code }); c.sb.initializeSeedData(); c.sb.bootstrapCentralAuth(); await until(() => Object.keys(c.a.OperationalCache.states).every(k => c.a.OperationalCache.states[k].loaded), 400); await tick(5); const s = c.sb.kpiIndukSummary('September 2026'); return J({ overall: s.overall, st: s.overallStatus, rows: s.rows.map(r => [r.kode, r.skor, r.status, r.jumlahMasalah, r.indicators.map(i => [i.kode, i.capaian, i.status, i.activityStatus, i.realisasi])]) }); };
       const a = await run(baseJs), b = await run(js);
-      rec('P0D-04', 'regresi KPI', a === b, a === b ? 'identik: ' + a.slice(0, 120) : 'BEDA\nbase=' + a.slice(0, 300) + '\nbaru=' + b.slice(0, 300));
+      /* [P1-RAB] Keputusan K-RAB-01..06 (19-10-2026) mengubah HANYA BDS03-I03/I04/I05 (pencocokan RAB disetujui). Gerbang dipecah:
+         P0D-04 = seluruh indikator lain identik dengan baseline (BDS03-I03/I04/I05 + turunan skor BDS03 & overall dikecualikan);
+         P0D-04b = nilai BDS03-I03/I04/I05 baru = ekspektasi manual pada fixture default (ang_1 status KOSONG -> bukan RAB disetujui). */
+      const RAB_IND = ['BDS03-I03', 'BDS03-I04', 'BDS03-I05'];
+      const mask = (sj) => { const o = JSON.parse(sj); o.overall = o.st = 'DIKECUALIKAN'; o.rows.forEach(r => { if (r[0] === 'BDS03') { r[1] = r[2] = r[3] = 'DIKECUALIKAN'; r[4] = r[4].filter(i => RAB_IND.indexOf(i[0]) === -1); } }); return J(o); };
+      const am = mask(a), bm = mask(b);
+      rec('P0D-04', 'regresi KPI', am === bm, am === bm ? 'identik di luar BDS03-I03/I04/I05 (+turunan): ' + am.slice(0, 120) : 'BEDA\nbase=' + am.slice(0, 300) + '\nbaru=' + bm.slice(0, 300));
+      const bI = Object.fromEntries(JSON.parse(b).rows.find(r => r[0] === 'BDS03')[4].map(i => [i[0], i]));
+      const expI = { 'BDS03-I03': [50, 'Perlu Perbaikan', 'MEASURED', 0], 'BDS03-I04': ['', 'BELUM ADA AKTIVITAS', 'NOT_STARTED', ''], 'BDS03-I05': [50, 'Perlu Perbaikan', 'MEASURED', 0] };
+      const okI = RAB_IND.every(k => J(bI[k].slice(1)) === J(expI[k]));
+      rec('P0D-04b', 'K-RAB BDS03', okI, 'BDS03 baru ' + J(RAB_IND.map(k => bI[k])) + ' (base ' + J(JSON.parse(a).rows.find(r => r[0] === 'BDS03')[4].filter(i => RAB_IND.indexOf(i[0]) !== -1)) + ')');
       const grab = (code, name) => { const m = new RegExp('^(?:function ' + name + '\\(|const ' + name + ' =)', 'm').exec(code); if (!m) return null; const e = code.indexOf('\n}', m.index); const e2 = code.indexOf('\n];', m.index); return code.slice(m.index, (name.endsWith('MASTER') ? e2 : e) + 2); };
       const names = ['KPI_MASTER', 'INDICATOR_MASTER', 'indDef', 'computeKpiRow', 'kpiIndukRow', 'computeIndicatorDimensions', 'computeIndicatorActivityStatus', 'computeIndicatorQuality', 'kpiStatusFromScore', 'mkAkt', 'financialAktivitasFeed', 'getIndicatorRealization', 'computeIndicatorQuantityScore'];
-      const diff = names.filter(n => grab(baseJs, n) !== grab(js, n));
-      rec('P0D-05', 'regresi KPI', diff.length === 0, diff.length ? 'berubah: ' + diff.join(',') : 'definisi & rumus KPI identik (' + names.length + ' simbol)');
+      /* [P1-RAB] dua simbol boleh berubah HANYA di bagian yang disetujui: INDICATOR_MASTER = teks population/formula BDS03-I03/I04/I05
+         (K-RAB-06; bobot/target/ambang/definisi lain identik), financialAktivitasFeed = blok BDS03 saja. */
+      const normMaster = (src) => (src || '').replace(/(indDef\('BDS03-I0[345]'[^\n]*\n\s*population:)'(?:[^'\\]|\\.)*',(\n\s*formula:)'(?:[^'\\]|\\.)*'/g, "$1'<K-RAB-06>',$2'<K-RAB-06>'");
+      const normFeed = (src) => (src || '').replace(/  \/\/ ===== BDS03 [\s\S]*?(?=  \/\/ ===== BDS04 )/, '<BDS03>');
+      const norm = { INDICATOR_MASTER: normMaster, financialAktivitasFeed: normFeed };
+      const diff = names.filter(n => (norm[n] || (x => x))(grab(baseJs, n)) !== (norm[n] || (x => x))(grab(js, n)));
+      const changedRaw = names.filter(n => grab(baseJs, n) !== grab(js, n));
+      rec('P0D-05', 'regresi KPI', diff.length === 0, diff.length ? 'berubah: ' + diff.join(',') : 'definisi & rumus KPI identik (' + names.length + ' simbol; berubah hanya di bagian K-RAB yang disetujui: ' + (changedRaw.join(',') || '-') + ')');
       const sumBase = grab(baseJs, 'kpiIndukSummary'), sumNew = (grab(js, 'kpiIndukSummaryCompute_') || '').replace(/^function kpiIndukSummaryCompute_\(/, 'function kpiIndukSummary(');
       rec('P0D-06', 'regresi KPI', !!sumBase && sumBase === sumNew, 'isi kpiIndukSummary asli dipertahankan utuh sebagai kpiIndukSummaryCompute_');
       // regresi UI statis: markup/CSS di luar <script> identik; tidak ada fungsi/halaman yang hilang

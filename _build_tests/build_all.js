@@ -1,6 +1,6 @@
-// Rantai build lengkap (P0 + P1). Semua langkah deterministik; HTML dan .gs hasil generate tidak diedit tangan.
+// Rantai build lengkap (P0 + P1 + P1-RAB; langkah *_rab_* terpisah agar mudah di-revert). Semua langkah deterministik; HTML dan .gs hasil generate tidak diedit tangan.
 const cp = require('child_process'), fs = require('fs');
-const steps = ['apply_central.js', 'apply_tarif.js', 'apply_p0_client.js', 'apply_p1_client.js', 'build_server_engines.js', 'apply_p0_server.js', 'apply_p1_server.js', 'build_bridge.js'];
+const steps = ['apply_central.js', 'apply_tarif.js', 'apply_p0_client.js', 'apply_p1_client.js', 'apply_p1_rab_client.js', 'build_server_engines.js', 'apply_p0_server.js', 'apply_p1_server.js', 'apply_p1_rab_server.js', 'build_bridge.js'];
 // [P1] akhir baris (CRLF/LF) berkas generate dipertahankan seperti di repo, agar diff hanya memuat perubahan isi
 const OUT = require('./paths').OUT, GEN = ['Bendahara_V2.html', 'TransactionEngine.gs', 'MasterDataRead.gs', 'ObligationEngine.gs', 'FinanceEngine.gs', 'TarifPlan.gs', 'ServerBridge.js', 'ServerBridge.html'];
 const eol = {}; GEN.forEach(f => { try { eol[f] = fs.readFileSync(OUT + f, 'utf8').includes('\r\n'); } catch (e) { /* belum ada */ } });

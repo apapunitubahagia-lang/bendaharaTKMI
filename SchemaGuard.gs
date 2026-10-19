@@ -114,7 +114,8 @@ var SG_REQUIRED_ = {
   '15_SETTINGS': ['key', 'value'],
   '16_REKONSILIASI': ['id', 'akunId', 'periode', 'status'],
   '18_RKAT': ['id', 'tahun', 'pagu'],
-  '21_KATEGORI_PENGELUARAN': ['id', 'kategori']
+  '21_KATEGORI_PENGELUARAN': ['id', 'kategori'],
+  '30_ALOKASI_PENGELUARAN': ['id', 'transaksiId', 'anggaranId', 'nominal'] // [P1-RAB] sheet opsional; tidak ada -> []
 };
 /* Baris sheet sebagai objek (semua kolom live, aman-JSON) setelah validasi kolom wajib. [] bila sheet tidak ada. */
 function sgRowsChecked_(sheetName) {

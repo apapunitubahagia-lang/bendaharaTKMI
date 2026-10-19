@@ -14,6 +14,10 @@
  *         Komitmen          : rabId wajib menunjuk 08_ANGGARAN aktif.
  *  [P1-E] Bukti (10_BUKTI)  : baris baru wajib berfile (driveFileId/fileRef); file & tautan transaksi yang sudah
  *                             terisi tidak dapat diubah/dikosongkan; transaksiId wajib transaksi aktif.
+ *  [P1-RAB] Alokasi pengeluaran (30_ALOKASI_PENGELUARAN): transaksi PENGELUARAN aktif; anggaran 08 aktif bukan
+ *                             PEMASUKAN; nominal > 0; Σ alokasi aktif per transaksi <= nominal transaksi; pasangan
+ *                             (transaksiId, anggaranId) aktif tidak ganda; transaksiId/anggaranId/nominal tidak dapat diubah
+ *                             (koreksi = arsip + baris baru).
  *
  * DEPENDENSI: PeriodLock.gs (plFlags_, plMarkContext_), ReconEngine.gs (rcCheckLink_), TransactionEngine.gs
  *             (readTrxRows_), SchemaGuard.gs (sgModel_), OperationalAPI.gs (opStr_).
@@ -34,6 +38,14 @@ function rgContext_(key, live, rows) {
   ctx.akunIds = function () {
     if (!ctx.akun) { ctx.akun = {}; var m = sgModel_('07_AKUN', ['id']); (m ? m.values : []).forEach(function (r) { ctx.akun[String(r[m.idx.id])] = true; }); }
     return ctx.akun;
+  };
+  ctx.angById = function () { // [P1-RAB] baris 08_ANGGARAN aktif beserta jenis
+    if (!ctx.angRows) {
+      ctx.angRows = {};
+      var m = sgModel_('08_ANGGARAN', ['id']);
+      (m ? m.values : []).forEach(function (r) { var a = sgGet_(m, r, 'archivedAt'); if (a === undefined || a === '' || a === null) ctx.angRows[String(r[m.idx.id])] = { jenis: opStr_(sgGet_(m, r, 'jenis')) }; });
+    }
+    return ctx.angRows;
   };
   ctx.rabIds = function () {
     if (!ctx.ang) {
@@ -97,6 +109,29 @@ function rgCheckOp_(ctx, op, cur, next) {
   if (key === 'komitmen') {
     var rab = opStr_(next.rabId);
     if (rab && !ctx.rabIds()[rab]) return rgFail_('INVALID_RAB', 'rabId tidak ditemukan di 08_ANGGARAN (atau sudah diarsipkan): ' + rab);
+    return null;
+  }
+  if (key === 'alokasiPengeluaran') { // [P1-RAB]
+    if (cur) {
+      var fx = ['transaksiId', 'anggaranId', 'nominal'].filter(function (h) { return opStr_(next[h]) !== opStr_(cur[h]); });
+      if (fx.length) return rgFail_('ALOKASI_IMMUTABLE', 'Field alokasi tidak dapat diubah (' + fx.join(', ') + '); koreksi = arsipkan lalu buat alokasi baru');
+      return null;
+    }
+    var at = opStr_(next.transaksiId), aa = opStr_(next.anggaranId), an = Number(next.nominal);
+    var tr = at ? ctx.activeTrx(at) : null;
+    if (!tr || tr.jenis !== 'PENGELUARAN') return rgFail_('INVALID_TRANSACTION', 'Alokasi hanya untuk transaksi PENGELUARAN aktif: ' + (at || '(kosong)'));
+    var ag = aa ? ctx.angById()[aa] : null;
+    if (!ag || ag.jenis === 'PEMASUKAN') return rgFail_('INVALID_RAB', 'anggaranId tidak ditemukan, diarsipkan, atau anggaran pemasukan: ' + (aa || '(kosong)'));
+    if (!(isFinite(an) && an > 0)) return rgFail_('VALIDATION_ERROR', 'nominal alokasi harus angka > 0');
+    var ic2 = ctx.col('id'), tc2 = ctx.col('transaksiId'), gc2 = ctx.col('anggaranId'), nc2 = ctx.col('nominal'), ac2 = ctx.col('archivedAt'), tot2 = 0, dup = false;
+    ctx.rows.forEach(function (r) {
+      if (String(r[ic2]) === String(next.id) || String(r[tc2]) !== at) return;
+      if (ac2 !== -1 && opStr_(r[ac2]) !== '') return;
+      tot2 += Number(r[nc2]) || 0;
+      if (String(r[gc2]) === aa) dup = true;
+    });
+    if (dup) return rgFail_('DUPLICATE', 'Transaksi ' + at + ' sudah punya alokasi aktif ke anggaran ' + aa);
+    if (tot2 + an > Number(tr.nominal) + 0.5) return rgFail_('ALOKASI_EXCEEDS_TRANSACTION', 'Total alokasi (' + (tot2 + an) + ') melebihi nominal transaksi ' + at + ' (' + tr.nominal + ')');
     return null;
   }
   if (key === 'bukti') {

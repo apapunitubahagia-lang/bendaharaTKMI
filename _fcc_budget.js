@@ -3,7 +3,9 @@
                Garis periode-bulan  : alokasi atas kewajiban bulanan, dibayar pada bulan tsb (basis kas).
                Garis non-bulan (mis. "Tahun Ajaran 2026/2027", "SekaliBayar"): alokasi dengan periode kewajiban yang SAMA.
                Setiap alokasi masuk TEPAT SATU jenis garis (tidak terhitung ganda).
-   Pengeluaran: anggaran jenis kosong/PENGELUARAN -> kategori (+subkategori) + unit + periode. Aktual = transaksi PENGELUARAN non-arsip.
+   Pengeluaran: anggaran jenis kosong/PENGELUARAN -> garis kategori (+subkategori) + unit + periode. Aktual = bagian transaksi PENGELUARAN
+               non-arsip menurut rabMatchAll_ ([P1-RAB]: eksplisit 30_ALOKASI_PENGELUARAN -> aturan kategori). Anggaran = pagu DISETUJUI;
+               DIAJUKAN / tanpa status / status lain ditampilkan terpisah.
    Komitmen (09) dan tagihan (04) ditampilkan di kolom TERPISAH, tidak pernah dijumlahkan ke aktual. */
 function fccIsMonthLabel_(p) { return /^(Januari|Februari|Maret|April|Mei|Juni|Juli|Agustus|September|Oktober|November|Desember) \d{4}$/.test(String(p || '')); }
 function fccTaOfPeriode_(p) {
@@ -48,41 +50,39 @@ function fccBudgetVsActual_(periode, D) {
     rows.push({ jenis: 'PEMASUKAN', periode: L.periode, unit: L.unit, komponenId: L.komponenId, nama: kmp ? kmp.nama : L.komponenId, anggaran: L.anggaran, komitmen: null, tagihan: tagihan, aktual: aktual,
       selisih: L.anggaran - aktual, status: aktual === 0 ? 'BELUM ADA PENERIMAAN' : (aktual >= L.anggaran ? 'TERCAPAI' : 'DI BAWAH ANGGARAN') });
   });
-  // ---- PENGELUARAN ----
-  var expLines = {}, specificSub = {};
+  // ---- PENGELUARAN ---- [P1-RAB] aktual dari aturan pencocokan bersama rabMatchAll_ (eksplisit -> kategori -> tanpa RAB);
+  // anggaran dipisah per status RAB; status baris dinilai terhadap anggaran DISETUJUI saja (K-RAB-02/05).
   lines.filter(function (a) { return a.jenis !== 'PEMASUKAN'; }).forEach(function (a) {
     if (!a.kategori) { invalid.push({ id: a.id, periode: a.periode, alasan: 'Anggaran pengeluaran tanpa kategori' }); return; }
-    if (a.unit !== 'TK' && a.unit !== 'MI') { invalid.push({ id: a.id, periode: a.periode, alasan: 'Unit anggaran pengeluaran tidak valid' }); return; }
-    var k = [kn(a.kategori), fccNorm_(a.subkategori), a.unit, a.periode].join('|');
-    expLines[k] = expLines[k] || { kategori: a.kategori, subkategori: a.subkategori || '', unit: a.unit, periode: a.periode, anggaran: 0, ids: {} };
-    expLines[k].anggaran += fccNum_(a.nominal); expLines[k].ids[a.id] = 1;
-    if (a.subkategori) {
-      var sk = [kn(a.kategori), a.unit, a.periode].join('|');
-      specificSub[sk] = specificSub[sk] || {}; specificSub[sk][fccNorm_(a.subkategori)] = 1;
+    if (a.unit !== 'TK' && a.unit !== 'MI') invalid.push({ id: a.id, periode: a.periode, alasan: 'Unit anggaran pengeluaran tidak valid' });
+  });
+  var M = rabMatchAll_(D);
+  var act = {}, actE = {}, actK = {}, noBudget = {}, sisa = { jumlahTransaksi: 0, total: 0 };
+  M.transaksi.forEach(function (r) {
+    if (r.periode !== periode) return;
+    r.bagian.forEach(function (b) {
+      act[b.lineKey] = (act[b.lineKey] || 0) + b.nominal;
+      if (b.sumber === 'EKSPLISIT') actE[b.lineKey] = (actE[b.lineKey] || 0) + b.nominal; else actK[b.lineKey] = (actK[b.lineKey] || 0) + b.nominal;
+    });
+    if (r.sisaTidakTerpetakan > 0.5) { sisa.jumlahTransaksi++; sisa.total += r.sisaTidakTerpetakan; }
+    if (r.tanpaRab > 0) {
+      var k = [fccNorm_(r.kategori), fccNorm_(r.subkategori), r.unit].join('|');
+      noBudget[k] = noBudget[k] || { kategori: r.kategori || '(tanpa kategori)', subkategori: r.subkategori || '', unit: r.unit, jumlah: 0, total: 0 };
+      noBudget[k].jumlah++; noBudget[k].total += r.tanpaRab;
     }
   });
-  var expTrx = trx.filter(function (t) { return t.jenis === 'PENGELUARAN' && fccPeriodeOfDate_(t.tanggal) === periode; });
-  var used = {};
-  Object.keys(expLines).sort().forEach(function (k) {
-    var L = expLines[k], aktual = 0, komitmen = 0, expected = 0;
-    var sp = specificSub[[kn(L.kategori), L.unit, L.periode].join('|')] || {};
-    expTrx.forEach(function (t) {
-      if (t.unit !== L.unit || kn(t.kategori) !== kn(L.kategori)) return;
-      var ts = fccNorm_(t.subkategori);
-      var match = L.subkategori ? ts === fccNorm_(L.subkategori) : (!ts || !sp[ts]);
-      if (match && fccIsMonthLabel_(L.periode)) { aktual += fccNum_(t.nominal); used[t.id] = 1; }
-    });
-    kom.forEach(function (o) { if (!L.ids[o.rabId]) return; if (o.status === 'COMMITTED' || o.status === 'INCURRED') komitmen += fccNum_(o.nominal); else if (o.status === 'EXPECTED') expected += fccNum_(o.nominal); });
-    rows.push({ jenis: 'PENGELUARAN', periode: L.periode, unit: L.unit, kategori: L.kategori, subkategori: L.subkategori, nama: L.kategori + (L.subkategori ? ' / ' + L.subkategori : ''), anggaran: L.anggaran, komitmen: komitmen, diharapkan: expected, tagihan: null, aktual: aktual,
-      selisih: L.anggaran - aktual - komitmen, status: (aktual + komitmen > L.anggaran) ? 'MELEBIHI ANGGARAN' : ((aktual + komitmen) === 0 ? 'BELUM ADA REALISASI' : 'DALAM ANGGARAN') });
+  M.lines.filter(function (L) { return L.byKategori && inScope(L); }).sort(function (x, y) { return x.key < y.key ? -1 : (x.key > y.key ? 1 : 0); }).forEach(function (L) {
+    var aktual = act[L.key] || 0, komitmen = 0, expected = 0, ids = {};
+    L.rabIds.forEach(function (id) { ids[id] = 1; });
+    kom.forEach(function (o) { if (!ids[o.rabId]) return; if (o.status === 'COMMITTED' || o.status === 'INCURRED') komitmen += fccNum_(o.nominal); else if (o.status === 'EXPECTED') expected += fccNum_(o.nominal); });
+    var ang = L.paguDisetujui;
+    rows.push({ jenis: 'PENGELUARAN', periode: L.periode, unit: L.unit, kategori: L.kategori, subkategori: L.subkategori, nama: L.kategori + (L.subkategori ? ' / ' + L.subkategori : ''), anggaran: ang, komitmen: komitmen, diharapkan: expected, tagihan: null, aktual: aktual,
+      selisih: ang - aktual - komitmen, status: ang <= 0 ? 'ANGGARAN BELUM DISETUJUI' : ((aktual + komitmen > ang) ? 'MELEBIHI ANGGARAN' : ((aktual + komitmen) === 0 ? 'BELUM ADA REALISASI' : 'DALAM ANGGARAN')),
+      anggaranDisetujui: L.paguDisetujui, anggaranDiajukan: L.paguDiajukan, anggaranTanpaStatus: L.paguTanpaStatus, anggaranStatusLain: L.paguStatusLain,
+      aktualEksplisit: actE[L.key] || 0, aktualKategori: actK[L.key] || 0, lineKey: L.key, rabIds: L.rabIds.slice() });
   });
-  var noBudget = {};
-  expTrx.forEach(function (t) {
-    if (used[t.id]) return;
-    var k = [kn(t.kategori), fccNorm_(t.subkategori), t.unit].join('|');
-    noBudget[k] = noBudget[k] || { kategori: t.kategori || '(tanpa kategori)', subkategori: t.subkategori || '', unit: t.unit, jumlah: 0, total: 0 };
-    noBudget[k].jumlah++; noBudget[k].total += fccNum_(t.nominal);
-  });
+  // garis tunggal tanpa kategori/unit valid: hanya dapat menerima pemetaan eksplisit; realisasinya dilaporkan di sini (bukan dihilangkan)
+  invalid.forEach(function (v) { var key = M.rowLine[String(v.id)]; if (key && act[key]) v.realisasiEksplisit = act[key]; });
   // ---- penerimaan yang belum dialokasikan ke komponen (bukan anggaran, bukan tagihan) ----
   var allocBy = {}; alok.forEach(function (a) { allocBy[a.transaksiId] = (allocBy[a.transaksiId] || 0) + fccNum_(a.nominal); });
   var unalloc = { jumlahTransaksi: 0, total: 0 };
@@ -90,5 +90,5 @@ function fccBudgetVsActual_(periode, D) {
     var sisa = fccNum_(t.nominal) - (allocBy[t.id] || 0);
     if (sisa > 0.5) { unalloc.jumlahTransaksi++; unalloc.total += sisa; }
   });
-  return { periode: periode, tahunAjaran: ta, rows: rows, transaksiTanpaAnggaran: Object.keys(noBudget).sort().map(function (k) { return noBudget[k]; }), pemasukanBelumDialokasi: unalloc, anggaranTidakValid: invalid };
+  return { periode: periode, tahunAjaran: ta, rows: rows, transaksiTanpaAnggaran: Object.keys(noBudget).sort().map(function (k) { return noBudget[k]; }), sisaTidakTerpetakan: sisa, pencocokanBermasalah: M.issues, pemasukanBelumDialokasi: unalloc, anggaranTidakValid: invalid };
 }

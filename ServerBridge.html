@@ -82,7 +82,10 @@
     opReopenPeriod: function (periode, reason) { return callServer('opReopenPeriod', [periode, reason]); },
     opReconcileAccount: function (payload) { return callServer('opReconcileAccount', [payload]); },
     opMatchMutasi: function (payload) { return callServer('opMatchMutasi', [payload]); },
-    opRabRealization: function (periode) { return callServer('opRabRealization', [periode]); }
+    opRabRealization: function (periode) { return callServer('opRabRealization', [periode]); },
+    opAlokasiPengeluaranSetup: function (confirm) { return callServer('opAlokasiPengeluaranSetup', [confirm]); },
+    opAlokasiPengeluaranPlan: function () { return callServer('opAlokasiPengeluaranPlan', []); },
+    opAlokasiPengeluaranImport: function (payload) { return callServer('opAlokasiPengeluaranImport', [payload]); }
   };
 })(typeof window !== 'undefined' ? window : globalThis);
 

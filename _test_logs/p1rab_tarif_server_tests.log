@@ -1,0 +1,54 @@
+PASS A1 jumlah komponen = total di sumber (XLSX/PDF/DOCX) pada 13 pemeriksaan; tidak ada selisih
+PASS A1b nominal per kelas dari sumber: K1 12 komponen=2.200.000 (2.080.000 XLSX + Komite PDF), K6 11 komponen (tanpa Magang)=1.700.000
+PASS A2 selisih komponen vs total sumber terdeteksi dan ditandai (kelas 3 selisih -500) - tidak ada koreksi otomatis
+PASS A3 dry-run pada data mirip live: 31 komponen baru, 95 tarif baru, 4 tarif SPP sudah sesuai, 6 tarif lump akan dinonaktifkan, 0 konflik
+PASS A4 dry-run TIDAK menulis apa pun (seluruh isi sheet identik)
+PASS A5 laporan dampak: selisih tagihan tahunan lump vs sumber (K3-5: 2.200.000 -> 1.800.000; K6 -> 1.700.000), alokasi pada lump terdata
+PASS A5b ada 9 butir konfirmasi manusia (Komite K1, Magang K6, katering flat vs per hari, dst) + skema belum siap terdeteksi
+PASS A6 apply tanpa token ditolak (CONFIRM_REQUIRED)
+PASS A7 apply sebelum migrasi skema aditif ditolak (SCHEMA_ADDITIVE_REQUIRED); tidak ada yang berubah
+PASS A8 AUDITOR: apply ditolak (ROLE_NOT_ALLOWED), melihat rencana diizinkan
+PASS A8b rencana skema memuat 09_KOMITMEN.rabId (+ arsip di UJUNG); 10_BUKTI.fileRef dan 07_AKUN.status TIDAK ditambah (tidak ada jalur aplikasi yang memerlukan)
+PASS A8c sebelum migrasi: komitmen dengan rabId ditolak server (UNKNOWN_FIELD), tidak ditulis diam-diam
+PASS A8d setelah migrasi: kolom lama 09/10 tidak berubah & urutan tetap (rabId di ujung; fileRef tidak ditambah); komitmen dengan rabId tertulis di kolom yang benar
+PASS A8e rencana skema kedua kali = tidak ada yang kurang (idempoten)
+PASS A9 penerapan berhasil: komponen +31, tarif +95, 6 tarif lump dinonaktifkan (status), audit TARIF_PLAN_APPLIED
+PASS A10 baris komponen/tarif lama TIDAK dihapus & isi lama tidak berubah (selain status tarif lump); transaksi & alokasi identik
+PASS A11 kewajiban dengan pembayaran historis pada lump DIBEKUKAN lebih dulu (3 baris: pendidikan x2, biaya awal TK x1; SPP tidak termasuk), tagihanId terisi, tarif+kelas+unit tersimpan
+PASS A12 penerapan ULANG idempoten: tidak ada baris baru, ringkasan semua nol
+PASS B1 SPP MI: kelas 1=350.000, kelas 2=300.000, kelas 3-6=250.000 per bulan; TK=200.000
+PASS B2 biaya tahunan MI tanpa pembayaran historis: K1=2.200.000, K2=2.200.000, K4=1.800.000, K5=1.800.000, K6=1.700.000 (jumlah komponen = total sumber)
+PASS B3 riwayat: siswa yang SUDAH membayar lump (mi3a 1.800.000) tetap melihat tagihan lump BEKU apa adanya (netto 2.080.000, terbayar 1.800.000, sisa 280.000) - tidak dihitung ulang diam-diam
+PASS B4 tidak ada tagihan GANDA: siswa dengan lump beku TIDAK ikut ditagih rincian tahunan (0 komponen kmp_thn_*), siswa yang belum membayar ditagih rincian saja (tanpa kmp_pendidikan)
+PASS B5 katering lump lama (kmp_catering 250.000) dan komite lump tidak lagi menagih siswa lain
+PASS B6 biaya masuk/daftar ulang TK TIDAK ditagih tanpa klasifikasi (tkb: hanya SPP), lump TK 3.000.000 yang menempel pembayaran tetap beku pada tka
+PASS B7 setelah klasifikasi: TK baru 3.000.000 (7 komponen), TK daftar ulang 1.450.000 (5 komponen), MI K1 baru 4.350.000 (6 komponen)
+PASS B8 tka (klasifikasi BARU tetapi punya lump beku berpembayaran): TIDAK ditagih rincian lagi (hindari ganda); mi1a (belum diklasifikasi) tidak ditagih biaya masuk
+PASS B9 klasifikasi per tahun ajaran dan unit: DAFTAR_ULANG tidak menagih biaya "baru" dan sebaliknya
+PASS B10 katering: tanpa hari terjadwal belum ada kewajiban (tidak ada nilai bawaan)
+PASS B11 katering = tarif/hari x hari terjadwal: K1 Juli 20x13.000=260.000; K4 Agustus 18x13.000=234.000; K5 Juli 20x11.000=220.000; K6 September 21x11.000=231.000; hari & tarif tersimpan di baris
+PASS B12 katering tidak bergantung kehadiran (tidak ada input absensi; siswa mana pun mendapat tagihan penuh), unit TK tidak ditagih katering MI
+PASS C1 setelah pembekuan Juli, mengubah hari terjadwal TIDAK mengubah kewajiban Juli (tetap 260.000, 20 hari), Agustus yang belum beku mengikuti (19 hari)
+PASS C2 pembekuan idempoten: ulang tidak menambah/mengubah baris 04_KEWAJIBAN
+PASS C3 tarif SPP kelas 1 naik 350.000 -> 400.000: kewajiban yang sudah BEKU tidak berubah; periode BARU (belum beku) memakai tarif baru
+PASS C4 periode berikutnya (Oktober, belum beku) otomatis memakai tarif baru 400.000, kewajiban Juli-September tetap 350.000
+PASS C5 siswa naik kelas + pindah TA 2027/2028 SETELAH dibekukan: kewajiban TA lama tetap tampil dengan tarif kelas lama (SPP Sep 300.000), tidak lenyap
+PASS C7 alokasi yang dibuat SEBELUM kewajiban dibekukan (tanpa tagihanId) tetap terhitung sesudah beku (terbayar 100.000, sisa 150.000)
+PASS C6 kontras: siswa TANPA pembekuan sebelum naik TA kehilangan tampilan TA lama (itulah sebabnya UI membekukan otomatis sebelum perubahan TA)
+PASS D1 pembayaran sebagian: SPP Juli 100.000 dari 250.000 -> terbayar 100.000, sisa 150.000
+PASS D2 pembayaran GABUNGAN 4 komponen dalam satu transaksi: tiap komponen terisi sesuai alokasi (SPP Juli lunas, katering Juli lunas, ekskul tahunan lunas, buku paket 230.000), total = nominal
+PASS D3 nominal 250.000 dialokasikan EKSPLISIT ke SPP: katering/komponen lain dengan nominal berdekatan tidak ikut terisi (identitas = siswa+komponen+periode)
+PASS D4 alokasi MELEBIHI sisa kewajiban ditolak (ALLOCATION_EXCEEDS_OBLIGATION); tidak ada transaksi/alokasi tertulis
+PASS D5 dua baris pada kewajiban yang SAMA dalam satu permintaan dijumlahkan: 400.000 > sisa 250.000 -> ditolak
+PASS D6 alokasi ke kewajiban yang belum ada (periode di luar periode aktif) ditolak OBLIGATION_NOT_FOUND
+PASS D7 alokasi ke komponen yang tidak berlaku bagi siswa (TK ke siswa MI / belum diklasifikasi) ditolak OBLIGATION_NOT_FOUND
+PASS D8 alokasi untuk siswa lain pada transaksi bersiswa berbeda ditolak engine (INVALID_ALLOCATION)
+PASS D9 KELEBIHAN bayar: hanya 250.000 yang dialokasikan, sisa 750.000 tetap sebagai dana belum dialokasikan di transaksi (tidak masuk kewajiban lain otomatis); terbayar kewajiban tidak melebihi netto
+PASS D10 replay clientRequestId yang sama: tidak ditolak guard (replay), tidak ada transaksi/alokasi ganda
+PASS D11 reversal alokasi (arsip, bukan hapus): sisa SPP Juli kembali bertambah 100.000 (terbayar 150.000 dari p2), baris tetap ada
+PASS D12 alokasi pengganti setelah reversal diterima (terbayar kembali 250.000)
+PASS D13 arsip transaksi pembayaran gabungan: semua alokasinya ikut diarsipkan; katering Juli kembali belum dibayar; tidak ada baris hilang
+PASS E1 120 operasi acak (bayar gabungan/melebihi/replay/arsip alokasi/arsip transaksi/pembekuan): SEMUA invarian terjaga [alokasi aktif <= pembayaran; sisa dana >= 0; terbayar <= netto; tidak ada ID ganda/alokasi yatim; replay tidak menggandakan] {"ok":24,"tolak":39,"replay":10,"arsipAlk":26,"arsipTrx":15}
+PASS E2 total terbayar (semua kewajiban) = jumlah alokasi aktif yang cocok dengan kewajiban; tidak ada kewajiban yang kelebihan bayar
+
+PASS=52 FAIL=0

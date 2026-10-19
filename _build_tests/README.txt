@@ -25,3 +25,10 @@ Tambahan (2026-10-14):
   node edit_gen_archive.js       # SUDAH diterapkan ke build_server_engines.js (idempoten; jangan perlu dijalankan lagi)
   node schema_archive_tests.js   # skema aditif, rabId, transaksi arsip, penerapan ulang, 27 tes
 Hasil terakhir: server_pass2 58, e2e_central2 80, tarif_server_tests 52, tarif_client_tests 40, schema_archive_tests 27 (semua PASS, sandbox).
+
+Tambahan P1-RAB (2026-10-19; keputusan K-RAB-01..06, 08; paket terpisah dari P1-POLICY):
+  Sumber tunggal pencocokan RAB: ../_rab_match.js (disuntikkan ke Bendahara_V2.html oleh apply_p1_rab_client.js dan
+  ke FinanceEngine.gs oleh apply_p1_rab_server.js). Berkas server tulisan tangan baru: ../RabAllocation.gs.
+  Urutan lengkap ada di build_all.js (node build_all.js).
+  node rab_tests.js              # pencocokan, FCC, RecordGuard, setup/uji kering/impor, diferensial BDS03, 26 tes + 2 INFO
+  node run_all_tests.js <prefix> # seluruh suite -> ../_test_logs/<prefix>_*.log (jangan pakai prefix 'final')
