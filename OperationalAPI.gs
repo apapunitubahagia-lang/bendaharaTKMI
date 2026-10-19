@@ -110,6 +110,9 @@ function opEngineWrite_(action, payload, engineFn, requireClientRequestId, keepI
   if (requireClientRequestId && !opStr_(p.clientRequestId)) {
     return errResult_('VALIDATION_ERROR', 'clientRequestId wajib diisi (idempotency)', 'clientRequestId');
   }
+  if ((action === 'CREATE_INCOME' || action === 'CREATE_EXPENSE') && !opStr_(p.akunId)) { // [P1-IMP B] tidak ada akun bawaan di server
+    return errResult_('VALIDATION_ERROR', 'akunId wajib dipilih eksplisit (akun Kas/Bank)', 'akunId');
+  }
   var guard = (typeof opAllocGuard_ === 'function') ? opAllocGuard_(action, p) : null;
   if (guard) return guard;
   var res, apiWritten = false;

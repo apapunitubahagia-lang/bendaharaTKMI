@@ -3116,7 +3116,7 @@ function renderCatatPenerimaanWizard(){
     '</div>';
   const pwUnit = document.getElementById('pw_unit') ? val('pw_unit') : (w.data.unit || suggestUnitFromSiswaIds(w.rows.filter(r=>r.siswaId).map(r=>r.siswaId)));
   html += '<div class="grid cols-2">'+
-    fieldSelect('pw_akun','Akun Kas/Bank', akunList().map(a=>({value:a.id,label:a.nama+' ('+a.jenis+')'})), w.data.akunId||'')+
+    fieldSelect('pw_akun','Akun Kas/Bank', [{value:'',label:'- Pilih Akun Kas/Bank (wajib) -'}].concat(akunList().map(a=>({value:a.id,label:a.nama+' ('+a.jenis+')'}))), w.data.akunId||'')+
     unitFieldHtml('pw_unit', pwUnit)+
     '</div>';
   html += '<div class="grid cols-2">'+
@@ -3495,7 +3495,7 @@ function penerimaanFormHtml(){
   const pf = State.penerimaanForm;
   const tanggal = document.getElementById('pf_tanggal') ? val('pf_tanggal') : todayISO();
   const sumber = document.getElementById('pf_sumber') ? val('pf_sumber') : 'Pembayaran Siswa';
-  const akun = document.getElementById('pf_akun') ? val('pf_akun') : akunList()[0].id;
+  const akun = document.getElementById('pf_akun') ? val('pf_akun') : ''; // [P1-IMP B] tanpa akun bawaan
   const metode = document.getElementById('pf_metode') ? val('pf_metode') : 'Tunai';
   const catatan = document.getElementById('pf_catatan') ? val('pf_catatan') : '';
   const unit = document.getElementById('pf_unit') ? val('pf_unit') : suggestUnitFromSiswaId(pf.siswaId);
@@ -3504,7 +3504,7 @@ function penerimaanFormHtml(){
   html += fieldText('pf_tanggal','Tanggal', tanggal||todayISO(), 'date')+
     fieldSelect('pf_sumber','Sumber', ['Pembayaran Siswa'].concat(kategoriPenerimaanNames()), sumber)+
     fieldSelect('pf_siswa','Siswa (jika sumber Pembayaran Siswa)', [{value:'',label:'- Pilih -'}].concat(siswaOptions()), pf.siswaId).replace('id="pf_siswa"','id="pf_siswa" onchange="setPenerimaanFormSiswa()"')+
-    fieldSelect('pf_akun','Akun Kas/Bank', akunList().map(a=>({value:a.id,label:a.nama})), akun)+
+    fieldSelect('pf_akun','Akun Kas/Bank', [{value:'',label:'- Pilih Akun Kas/Bank (wajib) -'}].concat(akunList().map(a=>({value:a.id,label:a.nama}))), akun)+
     unitFieldHtml('pf_unit', unit)+
     fieldSelect('pf_metode','Metode', ['Tunai','Transfer Bank','Lainnya'], metode)+
     fieldTextarea('pf_catatan','Catatan', catatan)+
@@ -3545,6 +3545,7 @@ function submitPenerimaan(){
   const tanggal = val('pf_tanggal'), sumber = val('pf_sumber'), catatan = val('pf_catatan');
   const unit = val('pf_unit');
   if(!unit){ toast('Unit (TK/MI) wajib dipilih'); return; }
+  if(!akunList().some(a=>a.id===val('pf_akun'))){ toast('Akun Kas/Bank wajib dipilih (tidak ada akun bawaan)'); return; } // [P1-IMP B]
   const agg = siswa ? pfAggregateFromRows(siswa, pf.rows.filter(r=>r.komponen)) : null;
   const nominal = siswa ? agg.totalNominal : numval('pf_nominal_generic');
   if(nominal<=0){ toast('Nominal harus lebih dari 0'); return; }
@@ -3642,7 +3643,7 @@ function pengeluaranFormHtml(){
   const kategori = document.getElementById('gf_kategori') ? val('gf_kategori') : kategoriPengeluaranNames()[0];
   const subkategori = document.getElementById('gf_subkategori') ? val('gf_subkategori') : '';
   const penerima = document.getElementById('gf_penerima') ? val('gf_penerima') : '';
-  const akun = document.getElementById('gf_akun') ? val('gf_akun') : akunList()[0].id;
+  const akun = document.getElementById('gf_akun') ? val('gf_akun') : ''; // [P1-IMP B] tanpa akun bawaan
   const nominal = document.getElementById('gf_nominal') ? val('gf_nominal') : '';
   const metode = document.getElementById('gf_metode') ? val('gf_metode') : 'Tunai';
   const catatan = document.getElementById('gf_catatan') ? val('gf_catatan') : '';
@@ -3653,7 +3654,7 @@ function pengeluaranFormHtml(){
     fieldSelect('gf_kategori','Kategori', kategoriPengeluaranNames(), kategori).replace('id="gf_kategori"','id="gf_kategori" onchange="onGfKategoriChange()"')+
     pengeluaranSubkategoriFieldHtml(kategori, subkategori)+
     fieldText('gf_penerima','Penerima', penerima)+
-    fieldSelect('gf_akun','Akun Kas/Bank', akunList().map(a=>({value:a.id,label:a.nama})), akun)+
+    fieldSelect('gf_akun','Akun Kas/Bank', [{value:'',label:'- Pilih Akun Kas/Bank (wajib) -'}].concat(akunList().map(a=>({value:a.id,label:a.nama}))), akun)+
     unitFieldHtml('gf_unit', unit)+
     fieldText('gf_nominal','Nominal', nominal, 'number')+
     fieldSelect('gf_metode','Metode', ['Tunai','Transfer Bank','Lainnya'], metode)+
@@ -3667,6 +3668,7 @@ function submitPengeluaran(){
   if(!val('gf_penerima')){ toast('Penerima wajib diisi'); return; }
   const unit = val('gf_unit');
   if(!unit){ toast('Unit (TK/MI) wajib dipilih'); return; }
+  if(!akunList().some(a=>a.id===val('gf_akun'))){ toast('Akun Kas/Bank wajib dipilih (tidak ada akun bawaan)'); return; } // [P1-IMP B]
   const tanggal = val('gf_tanggal'), penerima = val('gf_penerima'), catatan = val('gf_catatan');
   if(!State.pengeluaranForm.confirmDuplicate){
     const dup = findDuplicateTransaksi(tanggal, nominal, {uraian:catatan, sumber:penerima});
@@ -4718,6 +4720,7 @@ function openCreateTransaksiFromMutasiUnitModal(mutId){
     '<div class="kv"><div>Tanggal</div><div>'+fmtDate(m.tanggal)+'</div><div>Nominal</div><div>'+fmtRp(m.nominal)+'</div><div>Keterangan</div><div>'+esc(m.keterangan||'-')+'</div></div>'+
     '<p class="small-muted">Mutasi bank belum tertaut ke siswa tertentu - pilih Unit (TK/MI) secara manual untuk transaksi yang akan dibuat.</p>'+
     unitFieldHtml('mtu_unit','')+
+    fieldSelect('mtu_akun','Akun Bank penerima (wajib)', [{value:'',label:'- Pilih Akun Bank -'}].concat(akunList().filter(a=>a.jenis==='Bank').map(a=>({value:a.id,label:a.nama}))), '')+ // [P1-IMP B]
     '<div class="modal-actions"><button class="btn" onclick="openMutasiReconcileReview(\''+mutId+'\')">Batal</button>'+
     '<button class="btn primary" onclick="createTransaksiFromMutasi(\''+mutId+'\')">Buat Transaksi</button></div>';
   openModal(body, false);
@@ -4751,6 +4754,8 @@ function ccMutasiOnServer_(mutId){ return ccWriteActive_() && ccActive_('mutasiB
 function createTransaksiFromMutasi(mutId){
   const unit = val('mtu_unit');
   if(!unit){ toast('Unit (TK/MI) wajib dipilih'); return; }
+  const akunMut = akunList().find(a=>a.id===val('mtu_akun') && a.jenis==='Bank'); // [P1-IMP B] sebelumnya akun Bank pertama otomatis
+  if(!akunMut){ toast('Akun Bank penerima wajib dipilih (tidak ada akun bawaan)'); return; }
   const arr = Store.loadMutasiBank();
   const idx = arr.findIndex(m=>m.id===mutId);
   const m = arr[idx];
@@ -4758,7 +4763,7 @@ function createTransaksiFromMutasi(mutId){
   if(onServer && !ServerBridge.opMatchMutasi){ toast('Gagal memproses mutasi: server belum mendukung pencocokan mutasi - TIDAK disimpan.'); return; }
   let trx;
   try{
-    trx = postTransaksi({jenis:'PENERIMAAN', tanggal:m.tanggal, sumber:'Mutasi Bank', akunId:akunList().find(a=>a.jenis==='Bank')?.id||akunList()[0].id, unit, nominal:m.nominal, metode:'Transfer Bank', status:'TERCATAT', catatan:m.keterangan, namaPengirim:m.namaPengirim||undefined, ftNumber:m.ftNumber||undefined});
+    trx = postTransaksi({jenis:'PENERIMAAN', tanggal:m.tanggal, sumber:'Mutasi Bank', akunId:akunMut.id, unit, nominal:m.nominal, metode:'Transfer Bank', status:'TERCATAT', catatan:m.keterangan, namaPengirim:m.namaPengirim||undefined, ftNumber:m.ftNumber||undefined});
   }catch(e){ toast('Gagal memproses mutasi: '+e.message); return; }
   if(onServer){
     /* [P1-C] Mutasi dicocokkan (opMatchMutasi) SETELAH transaksi barunya dikonfirmasi server - lihat ccMutMatchJobs_. */
@@ -6757,6 +6762,7 @@ function importWizardHtml(){
         '</select></td></tr>').join('')+
       '</tbody></table></div>'+
       '<p class="small-muted">Kolom yang tidak dipetakan tetap disimpan sebagai info tambahan (EXTRA_COLUMN), tidak dibuang.</p>'+
+      (s.type==='mutasibank' ? '<div class="field"><label>Akun Bank penerima untuk seluruh berkas (wajib)</label><select id="imp_mb_akun" onchange="State.importSession.akunId=this.value"><option value="">- Pilih Akun Bank -</option>'+akunList().filter(a=>a.jenis==='Bank').map(a=>'<option value="'+esc(a.id)+'"'+(s.akunId===a.id?' selected':'')+'>'+esc(a.nama)+'</option>').join('')+'</select></div>' : '')+ // [P1-IMP B]
       '<div class="modal-actions"><button class="btn" onclick="closeModal()">Batal</button><button class="btn primary" '+(s.structurallyValid?'':'disabled title="Perbaiki delimiter dulu"')+' onclick="'+(s.structurallyValid?'importWizardProceedToPreview()':'toast(\'Perbaiki delimiter terlebih dahulu - struktur kolom belum valid\')')+'">2. Lanjut ke Preview</button></div>';
   } else if(s.step==='preview'){
     html += s.type==='siswa' ? importWizardPreviewSiswaHtml() : importWizardPreviewGenericHtml();
@@ -6854,6 +6860,7 @@ function importWizardReadFile(){
 }
 function importWizardProceedToPreview(){
   const s = State.importSession;
+  if(s.type==='mutasibank' && !akunList().some(a=>a.id===s.akunId && a.jenis==='Bank')){ toast('Akun Bank penerima wajib dipilih (tidak ada akun bawaan)'); return; } // [P1-IMP B]
   if(s.type==='siswa'){
     const perRow = classifySiswaBatch(s.rows, s.headerMap);
     const results = {total:s.rows.length, perRow,
@@ -6889,10 +6896,10 @@ function importWizardConfirm(){
     const extra = extraColumnsFor(row, s.headerMap);
     if(res.status==='VALID'){
       try{ committer(get, extra, res, row, s.headerMap); created++; }
-      catch(e){ queue.push({id:uid('impq'), type:'HOLD', importType:s.type, row, headerMap:s.headerMap, reason:'Gagal disimpan: '+e.message, candidates:null, createdAt:new Date().toISOString(), resolved:false}); }
+      catch(e){ queue.push({id:uid('impq'), type:'HOLD', importType:s.type, akunId:s.akunId||null, row, headerMap:s.headerMap, reason:'Gagal disimpan: '+e.message, candidates:null, createdAt:new Date().toISOString(), resolved:false}); }
     }
     else if(res.status==='DUPLICATE'||res.status==='AMBIGUOUS'||res.status==='HOLD'){
-      queue.push({id:uid('impq'), type:res.status, importType:s.type, row, headerMap:s.headerMap, reason:res.reason, candidates:res.candidates||null, createdAt:new Date().toISOString(), resolved:false});
+      queue.push({id:uid('impq'), type:res.status, importType:s.type, akunId:s.akunId||null, row, headerMap:s.headerMap, reason:res.reason, candidates:res.candidates||null, createdAt:new Date().toISOString(), resolved:false});
     }
   });
   Store.saveImportQueue(queue);
@@ -7092,10 +7099,17 @@ function validateMutasiBankRow(get, rawRow, headerMap){
    pada baris ini menjadi SATU alokasi jika siswa berhasil di-match. Jumlah
    kolom komponen TIDAK PERNAH membuat transaksi tambahan - tetap 1 mutasi
    = 1 transaksi + N alokasi. */
+/* [P1-IMP B] Akun Bank untuk baris mutasi: dipilih eksplisit di wizard (State.importSession.akunId) atau tersimpan di item antrean. */
+function impMbAkun_(res){
+  const id = (res && res.akunId) || (State.importSession && State.importSession.type==='mutasibank' && State.importSession.akunId) || '';
+  const a = akunList().find(x=>x.id===id && x.jenis==='Bank');
+  if(!a) throw new Error('Akun Bank penerima wajib dipilih eksplisit (tidak ada akun bawaan)');
+  return a.id;
+}
 function commitMutasiBankRow(get, extra, res, rawRow, headerMap){
   const s = Store.loadSettings();
   const t = postTransaksi({jenis:'PENERIMAAN', tanggal:res.tanggal, sumber:'Mutasi Bank', siswaId:res.siswaId||null,
-    akunId:(s.akunKasBankList.find(a=>a.jenis==='Bank')||s.akunKasBankList[0]).id, unit:res.unit, nominal:res.nominal, metode:'Transfer Bank',
+    akunId:impMbAkun_(res), unit:res.unit, nominal:res.nominal, metode:'Transfer Bank', // [P1-IMP B] akun Bank eksplisit
     status: res.siswaId?'TERIDENTIFIKASI':'TERCATAT', catatan:get('deskripsi'), namaPengirim:get('namaPengirim')||undefined, ftNumber:get('ftNumber')||undefined, _extra: Object.keys(extra).length?extra:undefined});
   auditTrailPush('CREATE_TRANSACTION', null, {transaksiId:t.id, jenis:'PENERIMAAN', nominal:res.nominal, sumber:'Mutasi Bank'}, 'import-wizard');
   if(res.siswaId && rawRow && headerMap){
@@ -8211,7 +8225,8 @@ function resolveImportQueueAmbiguous(id){
   const get = fieldGetterFor(q.row, q.headerMap);
   const extra = extraColumnsFor(q.row, q.headerMap);
   const committerMap = {siswa:commitSiswaRow, penerimaan:commitPenerimaanRow, mutasibank:commitMutasiBankRow, pengeluaran:commitPengeluaranRow};
-  const res = {siswaId, tanggal:normalizeDateValue(get('tanggal')), nominal:numFromStr(get('nominal'))||(numFromStr(get('cash'))+numFromStr(get('transfer')))};
+  if(q.importType==='mutasibank' && !q.akunId){ toast('Item mutasi bank lama tanpa akun Bank pilihan - impor ulang berkas dan pilih akun Bank secara eksplisit'); return; } // [P1-IMP B]
+  const res = {akunId:q.akunId, siswaId, tanggal:normalizeDateValue(get('tanggal')), nominal:numFromStr(get('nominal'))||(numFromStr(get('cash'))+numFromStr(get('transfer')))};
   committerMap[q.importType](get, extra, res, q.row, q.headerMap);
   auditTrailPush('MATCH_STUDENT', null, {importQueueId:id, siswaId, hasil:'AMBIGUOUS_RESOLVED'}, 'import-resolver');
   markImportQueueResolved(id); closeModal(); toast('Item diimport dengan siswa terpilih'); renderContent();
@@ -8223,7 +8238,8 @@ function resolveImportQueueAsNew(id){
   const extra = extraColumnsFor(q.row, q.headerMap);
   const committerMap = {siswa:commitSiswaRow, penerimaan:commitPenerimaanRow, mutasibank:commitMutasiBankRow, pengeluaran:commitPengeluaranRow};
   const nominal = numFromStr(get('nominal'))||(numFromStr(get('cash'))+numFromStr(get('transfer')))||(numFromStr(get('qty'))*numFromStr(get('hargaSatuan'))-numFromStr(get('diskon')));
-  const res = {siswaId:null, tanggal:normalizeDateValue(get('tanggal')), nominal};
+  if(q.importType==='mutasibank' && !q.akunId){ toast('Item mutasi bank lama tanpa akun Bank pilihan - impor ulang berkas dan pilih akun Bank secara eksplisit'); return; } // [P1-IMP B]
+  const res = {akunId:q.akunId, siswaId:null, tanggal:normalizeDateValue(get('tanggal')), nominal};
   committerMap[q.importType](get, extra, res, q.row, q.headerMap);
   markImportQueueResolved(id); closeModal(); toast('Diimport sebagai data baru'); renderContent();
 }
