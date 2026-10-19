@@ -3640,7 +3640,7 @@ function pengeluaranFormHtml(){
   const s = Store.loadSettings();
   const gf = State.pengeluaranForm||{};
   const tanggal = document.getElementById('gf_tanggal') ? val('gf_tanggal') : todayISO();
-  const kategori = document.getElementById('gf_kategori') ? val('gf_kategori') : kategoriPengeluaranNames()[0];
+  const kategori = document.getElementById('gf_kategori') ? val('gf_kategori') : ''; // [P1_19 C] tanpa kategori bawaan
   const subkategori = document.getElementById('gf_subkategori') ? val('gf_subkategori') : '';
   const penerima = document.getElementById('gf_penerima') ? val('gf_penerima') : '';
   const akun = document.getElementById('gf_akun') ? val('gf_akun') : ''; // [P1-IMP B] tanpa akun bawaan
@@ -3651,7 +3651,7 @@ function pengeluaranFormHtml(){
   let html = '<h3>Input Pengeluaran</h3>';
   if(gf.dupWarning) html += '<p class="small-muted" style="color:#b45309">&#9888; '+esc(gf.dupWarning)+'</p>';
   html += fieldText('gf_tanggal','Tanggal', tanggal||todayISO(), 'date')+
-    fieldSelect('gf_kategori','Kategori', kategoriPengeluaranNames(), kategori).replace('id="gf_kategori"','id="gf_kategori" onchange="onGfKategoriChange()"')+
+    fieldSelect('gf_kategori','Kategori', [{value:'',label:'- Pilih Kategori (wajib) -'}].concat(kategoriPengeluaranNames().map(k=>({value:k,label:k}))), kategori).replace('id="gf_kategori"','id="gf_kategori" onchange="onGfKategoriChange()"')+
     pengeluaranSubkategoriFieldHtml(kategori, subkategori)+
     fieldText('gf_penerima','Penerima', penerima)+
     fieldSelect('gf_akun','Akun Kas/Bank', [{value:'',label:'- Pilih Akun Kas/Bank (wajib) -'}].concat(akunList().map(a=>({value:a.id,label:a.nama}))), akun)+
@@ -3669,6 +3669,7 @@ function submitPengeluaran(){
   const unit = val('gf_unit');
   if(!unit){ toast('Unit (TK/MI) wajib dipilih'); return; }
   if(!akunList().some(a=>a.id===val('gf_akun'))){ toast('Akun Kas/Bank wajib dipilih (tidak ada akun bawaan)'); return; } // [P1-IMP B]
+  if(kategoriPengeluaranNames().indexOf(val('gf_kategori')) === -1){ toast('Kategori pengeluaran wajib dipilih (tidak ada kategori bawaan)'); return; } // [P1_19 C]
   const tanggal = val('gf_tanggal'), penerima = val('gf_penerima'), catatan = val('gf_catatan');
   if(!State.pengeluaranForm.confirmDuplicate){
     const dup = findDuplicateTransaksi(tanggal, nominal, {uraian:catatan, sumber:penerima});
@@ -7071,7 +7072,7 @@ function buildAllocListForRow(siswaId, headerMap, rawRow, get, nominal){
 function commitPenerimaanRow(get, extra, res, rawRow, headerMap){
   const s = Store.loadSettings();
   const t = postTransaksi({jenis:'PENERIMAAN', tanggal:res.tanggal, sumber: get('namaSiswa')?'Pembayaran Siswa':(get('uraian')||'Import'), siswaId:res.siswaId||null,
-    akunId:(s.akunKasBankList.find(a=>a.nama===get('akun'))||s.akunKasBankList[0]).id, unit:res.unit, nominal:res.nominal, metode:get('metode')||(numFromStr(get('transfer'))>0?'Transfer Bank':'Tunai'),
+    akunId:impLamaAkun_(get), unit:res.unit, nominal:res.nominal, metode:get('metode')||(numFromStr(get('transfer'))>0?'Transfer Bank':'Tunai'), // [P1_19 C] tanpa akun pertama
     status: res.siswaId?'TERIDENTIFIKASI':'TERCATAT', catatan:get('uraian'), namaPengirim:get('namaPengirim')||undefined, ftNumber:get('ftNumber')||undefined, _extra: Object.keys(extra).length?extra:undefined});
   auditTrailPush('CREATE_TRANSACTION', null, {transaksiId:t.id, jenis:'PENERIMAAN', nominal:res.nominal}, 'import-wizard');
   if(res.siswaId && rawRow && headerMap){
@@ -7132,10 +7133,13 @@ function validatePengeluaranRow(get, rawRow, headerMap){
   if(!unit) return {status:'HOLD', reason:'Unit (TK/MI) tidak diketahui - isi kolom Unit di file, atau namai sheet persis "TK"/"MI"'};
   return {status:'VALID', reason:(get('uraian')||get('penerima')||'-')+' - '+fmtRp(nominal), nominal, unit, tanggal};
 }
+/* [P1_19 C] Wizard impor lama: akun & kategori harus disebut eksplisit di berkas dan cocok dengan master; tidak ada pengganti. */
+function impLamaAkun_(get){ const n = String(get('akun')||'').trim().toLowerCase(); const a = n ? akunList().filter(x=>(x.jenis==='Kas'||x.jenis==='Bank') && (String(x.nama).toLowerCase()===n || String(x.id).toLowerCase()===n)) : []; if(a.length!==1) throw new Error('Akun Kas/Bank wajib disebut eksplisit dan cocok dengan master (tidak ada akun bawaan): "' + (get('akun')||'') + '"'); return a[0].id; }
+function impLamaKategori_(get){ const n = String(get('kategori')||'').trim(); const k = kategoriPengeluaranNames().find(x=>x.toLowerCase()===n.toLowerCase()); if(!k) throw new Error('Kategori pengeluaran wajib disebut eksplisit dan dikenal (tidak ada kategori bawaan): "' + n + '"'); return k; }
 function commitPengeluaranRow(get, extra, res){
   const s = Store.loadSettings();
-  const t = postTransaksi({jenis:'PENGELUARAN', tanggal:res.tanggal, kategori:get('kategori')||s.kategoriPengeluaranList[0], penerima:get('penerima')||get('uraian')||'-',
-    akunId:(s.akunKasBankList.find(a=>a.nama===get('akun'))||s.akunKasBankList[0]).id, unit:res.unit, nominal:res.nominal, metode:get('metode')||'Tunai',
+  const t = postTransaksi({jenis:'PENGELUARAN', tanggal:res.tanggal, kategori:impLamaKategori_(get), penerima:get('penerima')||get('uraian')||'-', // [P1_19 C] tanpa kategori/akun pertama
+    akunId:impLamaAkun_(get), unit:res.unit, nominal:res.nominal, metode:get('metode')||'Tunai',
     status:'TERCATAT', catatan:get('uraian'), _extra: Object.keys(extra).length?extra:undefined});
   auditTrailPush('CREATE_TRANSACTION', null, {transaksiId:t.id, jenis:'PENGELUARAN', nominal:res.nominal}, 'import-wizard');
   return t.id;

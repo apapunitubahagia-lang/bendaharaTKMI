@@ -13,6 +13,8 @@ const col = (srv, n, h) => srv.sheets[n][0].map(x => String(x).trim()).indexOf(h
 async function boot(srv) { const c = makeClient(srv); c.sb.initializeSeedData(); c.sb.bootstrapCentralAuth();
   await until(() => Object.keys(c.a.OperationalCache.states).every(k => c.a.OperationalCache.states[k].loaded || c.a.OperationalCache.states[k].error), 400); await tick(5); return c; }
 const sync = async c => { for (let i = 0; i < 4; i++) { await c.sb.centralRunSync(true); await tick(10); } };
+/* [P1_19 C, diminta eksplisit] IA-05/06/09/10: berkas uji kini menyebut akun & kategori eksplisit (wizard lama tidak lagi memakai
+   akun/kategori pertama); kontrol yang diuji (duplikat, antrean, skala) tidak berubah. IA-03/04 tetap tanpa akun -> kini tidak tersimpan. */
 /* menjalankan wizard yang ADA tanpa UI berkas: sesi impor diisi seperti hasil parsing CSV, header dipetakan 1:1 */
 async function runImport(c, type, headers, data) {
   const A = c.a;
@@ -42,12 +44,12 @@ const pendErrors = (c, name) => Object.values(c.sb.ccPend_(name)).filter(p => p.
     const t = rows(srv, '05_TRANSAKSI').find(x => x[col(srv, '05_TRANSAKSI', 'nominal')] === 120000);
     rec('IA-04', 'Pemasukan akun tidak dikenal (TEMUAN)', null, 'akun "Rekening Tidak Ada" -> tersimpan akun=' + (t && t[col(srv, '05_TRANSAKSI', 'akunId')]) + ' (jatuh ke akun pertama tanpa peringatan)'); }
   { const srv = makeServer(); const c = await boot(srv);
-    const a = await runImport(c, 'pengeluaran', ['tanggal', 'nominal', 'uraian', 'unit'], [['2026-10-02', '75000', 'Spidol', 'MI']]);
-    const b = await runImport(c, 'pengeluaran', ['tanggal', 'nominal', 'uraian', 'unit'], [['2026-10-02', '75000', 'Spidol', 'MI']]);
+    const a = await runImport(c, 'pengeluaran', ['tanggal', 'nominal', 'uraian', 'unit', 'akun', 'kategori'], [['2026-10-02', '75000', 'Spidol', 'MI', 'Kasir', 'ATK']]);
+    const b = await runImport(c, 'pengeluaran', ['tanggal', 'nominal', 'uraian', 'unit', 'akun', 'kategori'], [['2026-10-02', '75000', 'Spidol', 'MI', 'Kasir', 'ATK']]);
     const n = rows(srv, '05_TRANSAKSI').filter(x => x[col(srv, '05_TRANSAKSI', 'nominal')] === 75000).length;
     rec('IA-05', 'impor ulang berkas sama', a.valid.length === 1 && b.duplicate.length === 1 && n === 1, 'impor kedua: duplikat ' + b.duplicate.length + ', transaksi di server ' + n + ' (deteksi sidik jari klien, bukan idempotensi server)'); }
   { const srv = makeServer(); const c = await boot(srv);
-    const r = await runImport(c, 'pengeluaran', ['tanggal', 'nominal', 'uraian', 'unit'], [['2026-10-04', '33000', 'Air galon', 'MI'], ['2026-10-04', '33000', 'Air galon', 'MI']]);
+    const r = await runImport(c, 'pengeluaran', ['tanggal', 'nominal', 'uraian', 'unit', 'akun', 'kategori'], [['2026-10-04', '33000', 'Air galon', 'MI', 'Kasir', 'ATK'], ['2026-10-04', '33000', 'Air galon', 'MI', 'Kasir', 'ATK']]);
     const n = rows(srv, '05_TRANSAKSI').filter(x => x[col(srv, '05_TRANSAKSI', 'nominal')] === 33000).length;
     rec('IA-06', 'duplikat di dalam satu berkas (TEMUAN)', null, 'dua baris identik dalam satu berkas: valid ' + r.valid.length + ', duplikat ' + r.duplicate.length + ', tersimpan ' + n + ' (sidik jari hanya dibandingkan dengan data yang SUDAH ada)'); }
   { const srv = makeServer(); srv.sb.opSchemaApply('TAMBAH_KOLOM_ADITIF'); const c = await boot(srv); const n0 = rows(srv, '05_TRANSAKSI').length;
@@ -55,15 +57,15 @@ const pendErrors = (c, name) => Object.values(c.sb.ccPend_(name)).filter(p => p.
     rec('IA-07', 'LPJ tidak membuat transaksi', rows(srv, '05_TRANSAKSI').length === n0, 'impor LPJ: transaksi baru ' + (rows(srv, '05_TRANSAKSI').length - n0));
     rec('IA-08', 'LPJ validasi klien vs server (TEMUAN)', null, 'pratinjau valid ' + r.valid.length + ' (termasuk 2026-02-30), tersimpan ' + rows(srv, '19_LPJ').length + ', gagal sinkron ' + J(pendErrors(c, 'lpj')) + ' -> pratinjau menyatakan valid, server menolak SETELAH konfirmasi'); }
   { const srv = makeServer(); const c = await boot(srv);
-    await runImport(c, 'pengeluaran', ['tanggal', 'nominal', 'uraian', 'unit'], [['2026-10-02', '75000', 'Spidol', 'MI']]);
-    await runImport(c, 'pengeluaran', ['tanggal', 'nominal', 'uraian', 'unit'], [['2026-10-02', '75000', 'Spidol', 'MI']]);
+    await runImport(c, 'pengeluaran', ['tanggal', 'nominal', 'uraian', 'unit', 'akun', 'kategori'], [['2026-10-02', '75000', 'Spidol', 'MI', 'Kasir', 'ATK']]);
+    await runImport(c, 'pengeluaran', ['tanggal', 'nominal', 'uraian', 'unit', 'akun', 'kategori'], [['2026-10-02', '75000', 'Spidol', 'MI', 'Kasir', 'ATK']]);
     const q = c.a.Store.loadImportQueue();
     rec('IA-09', 'antrean DUPLIKAT/HOLD (TEMUAN)', null, 'antrean impor ' + q.length + ' baris (' + q.map(x => x.type).join(',') + ') hanya di localStorage perangkat ini (Store.loadImportQueue), tidak di server'); }
   { const out = [];
     for (const n of [10, 50, 100, 500]) {
       const srv = makeServer(); const c = await boot(srv); let calls = 0; const o = srv.sb.opCreateTxBatch; srv.sb.opCreateTxBatch = x => { calls++; return o(x); };
-      const data = Array.from({ length: n }, (_, i) => ['2026-10-' + String(1 + (i % 28)).padStart(2, '0'), String(10000 + i), 'Barang ' + i, 'MI']);
-      const r = await runImport(c, 'pengeluaran', ['tanggal', 'nominal', 'uraian', 'unit'], data);
+      const data = Array.from({ length: n }, (_, i) => ['2026-10-' + String(1 + (i % 28)).padStart(2, '0'), String(10000 + i), 'Barang ' + i, 'MI', 'Kasir', 'ATK']);
+      const r = await runImport(c, 'pengeluaran', ['tanggal', 'nominal', 'uraian', 'unit', 'akun', 'kategori'], data);
       out.push(n + ' baris: valid ' + r.valid.length + ', tersimpan ' + (rows(srv, '05_TRANSAKSI').length - 2) + ', RPC opCreateTxBatch ' + calls);
     }
     rec('IA-10', 'skala 10/50/100/500 (sandbox)', null, out.join(' | ') + ' (jumlah RPC = ceil(n/20); waktu Apps Script nyata BELUM diukur)'); }

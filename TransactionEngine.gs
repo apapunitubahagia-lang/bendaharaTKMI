@@ -835,7 +835,7 @@ function updateTransaction_(payload) {
         else if (k === 'nominal') { e1 = validateNominal_(next.nominal); if (!e1 && Number(next.nominal) + 0.5 < allocSum) { e1 = 'nominal (' + next.nominal + ') lebih kecil dari total alokasi aktif (' + allocSum + ')'; code = 'ALLOCATION_EXCEEDS_TRANSACTION'; } }
         else if (k === 'metode') { if (!next.metode || typeof next.metode !== 'string') e1 = 'metode wajib diisi'; }
         else if (k === 'status') e1 = validateStatus_(next.status);
-        else if (k === 'akunId') { if (next.akunId && !akunExists_(next.akunId)) { e1 = 'akunId tidak ditemukan di ' + SHT_AKUN + ': ' + next.akunId; code = 'INVALID_ACCOUNT'; } }
+        else if (k === 'akunId') { if (!next.akunId) { e1 = 'akunId tidak boleh dikosongkan (akun Kas/Bank wajib eksplisit)'; } else if (!akunExists_(next.akunId)) { /* [P1_19 C] */ e1 = 'akunId tidak ditemukan di ' + SHT_AKUN + ': ' + next.akunId; code = 'INVALID_ACCOUNT'; } }
         else if (k === 'siswaId') { if (allocSum > 0) { e1 = 'siswaId tidak dapat diubah: transaksi memiliki alokasi aktif (arsipkan alokasi lebih dulu)'; code = 'ALLOCATION_LOCKED'; } else if (next.siswaId && !siswaExists_(next.siswaId)) { e1 = 'siswaId tidak ditemukan di ' + SHT_SISWA + ': ' + next.siswaId; code = 'INVALID_STUDENT'; } } // [P1_19 B]
         else if (k === '_komponenHint') { if (next._komponenHint && !komponenExists_(next._komponenHint)) { e1 = 'komponen tidak ditemukan di ' + SHT_KOMPONEN + ': ' + next._komponenHint; code = 'INVALID_COMPONENT'; } }
         if (e1) field = k;
