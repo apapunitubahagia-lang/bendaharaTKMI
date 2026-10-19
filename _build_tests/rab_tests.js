@@ -242,6 +242,87 @@ const kpiPack = s => ({ overall: s.overall, st: s.overallStatus, rows: s.rows.ma
     rec('RAB-28', 'tampilan', err.length === 0 && /Total Anggaran Disetujui/.test(b) && /1\.240\.000/.test(b),
       err.length ? 'error: ' + err.join(' | ') : 'beranda/anggaran/laporan dirender, ekspor anggaran jalan; Total Anggaran Disetujui = Σ pagu DISETUJUI per garis unik (1.240.000)' + (/1\.240\.000/.test(b) ? '' : ' [nilai tidak ditemukan]'));
   }
+  // ================= Keputusan 2 (P1_10): Kartu Beranda A/B/C, laporan, ekspor; tanpa hitung ganda =================
+  const setPeriode = (c, p) => { const st = c.a.Store.loadSettings(); st.periodeAktif = p; c.a.Store.saveSettings(st); };
+  const rp = n => 'Rp ' + Number(n).toLocaleString('id-ID', { maximumFractionDigits: 0 });
+  const RS_KEYS = ['anggaranDisetujui', 'realisasiDisetujui', 'pengeluaranAktual', 'terpetakanBelumDisetujui', 'terpetakanPeriodeLain', 'sisaTidakTerpetakan', 'tanpaRab', 'belumKeRabDisetujui', 'sisaAnggaranDisetujui', 'anggaranBelumDisetujui'];
+  const pickRS = r => RS_KEYS.map(k => r[k]);
+  const invRS = r => near(r.realisasiDisetujui + r.terpetakanBelumDisetujui + r.terpetakanPeriodeLain + r.sisaTidakTerpetakan + r.tanpaRab, r.pengeluaranAktual);
+  { const srv = fixture(makeServer());
+    const fc = safe(() => srv.sb.opFinancialControl('Oktober 2026')), S = fc.ok && fc.data.anggaranVsAktual.ringkasanPeriode;
+    const exp = { anggaranDisetujui: 1240000, realisasiDisetujui: 1100000, pengeluaranAktual: 1650000, terpetakanBelumDisetujui: 200000, terpetakanPeriodeLain: 0, sisaTidakTerpetakan: 300000, tanpaRab: 50000, belumKeRabDisetujui: 550000, sisaAnggaranDisetujui: 140000, anggaranBelumDisetujui: 1000000 };
+    const c = await bootClient(srv); setPeriode(c, 'Oktober 2026');
+    const CS = c.sb.rabRingkasanPeriode_(c.sb.rabMatchClient_(), 'Oktober 2026'), tile = c.sb.totalPengeluaran('Oktober 2026');
+    rec('RAB-29', 'Keputusan 2 ukuran A/B/C', !!S && J(pickRS(S)) === J(RS_KEYS.map(k => exp[k])) && J(pickRS(CS)) === J(pickRS(S)) && invRS(S) && S.pengeluaranAktual === tile && S.jumlahTransaksi === 6,
+      'A=' + (S && S.anggaranDisetujui) + ' B=' + (S && S.realisasiDisetujui) + ' C=' + (S && S.pengeluaranAktual) + ' (tile Pengeluaran Aktual ' + tile + ') rincian C-B: RAB belum disetujui ' + (S && S.terpetakanBelumDisetujui) + ', periode lain ' + (S && S.terpetakanPeriodeLain) + ', sisa ' + (S && S.sisaTidakTerpetakan) + ', tanpa RAB ' + (S && S.tanpaRab) + '; klien == server');
+    const b = String(c.sb.renderBeranda() || '');
+    const shown = [['Total Anggaran Disetujui', 1240000], ['Realisasi terhadap Anggaran Disetujui', 1100000], ['Sisa Anggaran Disetujui', 140000], ['Total Pengeluaran Aktual', 1650000], ['Belum terpetakan ke RAB disetujui', 550000]];
+    const miss = shown.filter(([lbl, n]) => b.indexOf(lbl) === -1 || b.indexOf(rp(n)) === -1);
+    rec('RAB-30', 'Keputusan 2 kartu Beranda', miss.length === 0 && b.indexOf('tanpa RAB ' + rp(50000)) !== -1, miss.length ? 'tidak tampil: ' + J(miss) : 'A, B, Sisa, C, C-B + rincian tampil terpisah; pengeluaran tanpa RAB disetujui tetap terlihat di C');
+    // laporan anggaran (layar) + ekspor memakai definisi yang sama
+    let cap = null; c.sb.exportReport = (format, base, title, headers, rows) => { cap = rows; };
+    c.sb.exportAnggaranReport('xlsx');
+    const ex = (lbl, p) => { const r = (cap || []).find(x => String(x[0]).indexOf(lbl) !== -1 && x[1] === p); return r ? (r[2] !== '' ? r[2] : r[3]) : null; };
+    c.a.State.laporanTab = 'anggaran'; const lap = String(c.sb.renderLaporan() || '');
+    const okEx = ex('A. Total Anggaran Disetujui', 'Oktober 2026') === S.anggaranDisetujui && ex('B. Realisasi', 'Oktober 2026') === S.realisasiDisetujui && ex('C. Total Pengeluaran Aktual', 'Oktober 2026') === S.pengeluaranAktual && ex('C-B.', 'Oktober 2026') === S.belumKeRabDisetujui
+      && ex('C. Total Pengeluaran Aktual', 'September 2026') === c.sb.totalPengeluaran('September 2026');
+    const okLap = [S.anggaranDisetujui, S.realisasiDisetujui, S.pengeluaranAktual, S.belumKeRabDisetujui].every(n => lap.indexOf(rp(n)) !== -1) && /C\. Total Pengeluaran Aktual/.test(lap);
+    rec('RAB-31', 'Keputusan 2 Beranda = laporan = ekspor', !!cap && okEx && okLap, 'ekspor ringkasan: ' + J((cap || []).filter(x => /RINGKASAN/.test(x[0]))));
+  }
+  { // transaksi dengan beberapa alokasi dalam periode sama: C bertambah tepat sekali, B bertambah sebesar alokasinya
+    const srv = fixture(makeServer());
+    const before = srv.sb.rabRingkasanPeriode_(srv.sb.rabMatchAll_(D_of(srv)), 'Oktober 2026');
+    const TH = srv.sheets['05_TRANSAKSI'][0];
+    srv.sheets['05_TRANSAKSI'].push(objRow(TH, { id: 't7', jenis: 'PENGELUARAN', tanggal: '2026-10-11', unit: 'MI', nominal: 400000, akunId: 'akun_kas1', metode: 'Tunai', status: 'TERCATAT', createdAt: '2026-10-11T01:00:00.000Z', kategori: 'ATK', penerima: 'Toko t7' }));
+    const r = safe(() => srv.sb.opRecordBatch('alokasiPengeluaran', [{ op: 'upsert', id: 'alg_t7a', row: { transaksiId: 't7', anggaranId: 'ang_A1', nominal: 300000, tingkatPemetaan: 'ITEM' } }, { op: 'upsert', id: 'alg_t7b', row: { transaksiId: 't7', anggaranId: 'ang_E', nominal: 100000, tingkatPemetaan: 'ITEM' } }]));
+    const after = srv.sb.rabRingkasanPeriode_(srv.sb.rabMatchAll_(D_of(srv)), 'Oktober 2026');
+    rec('RAB-32', 'beberapa alokasi tanpa hitung ganda', r.ok && r.data.results.every(x => x.code === 'CREATED') && after.pengeluaranAktual - before.pengeluaranAktual === 400000 && after.jumlahTransaksi - before.jumlahTransaksi === 1
+      && after.realisasiDisetujui - before.realisasiDisetujui === 400000 && invRS(after), 'C ' + before.pengeluaranAktual + ' -> ' + after.pengeluaranAktual + ', B ' + before.realisasiDisetujui + ' -> ' + after.realisasiDisetujui + ' (2 alokasi 300.000 + 100.000)');
+  }
+  // ================= Lintas periode: KARAKTERISASI perilaku sekarang (Keputusan 1 ditangguhkan, P1_12 §0; NEEDS_POLICY_DECISION) =================
+  { const srv = fixture(makeServer());
+    const AH = srv.sheets['08_ANGGARAN'][0];
+    srv.sheets['08_ANGGARAN'].push(objRow(AH, { id: 'ang_S', periode: 'September 2026', program: 'Honor Sep', kategori: 'Honor', unit: 'MI', nominal: 100000, status: 'DISETUJUI', subkategori: '' }));
+    const TH = srv.sheets['05_TRANSAKSI'][0];
+    srv.sheets['05_TRANSAKSI'].push(objRow(TH, { id: 't8', jenis: 'PENGELUARAN', tanggal: '2026-10-12', unit: 'MI', nominal: 60000, akunId: 'akun_kas1', metode: 'Tunai', status: 'TERCATAT', createdAt: '2026-10-12T01:00:00.000Z', kategori: 'Kertas', penerima: 'Toko t8' }));
+    const same = safe(() => srv.sb.opRecordBatch('alokasiPengeluaran', [{ op: 'upsert', id: 'alg_t8x', row: { transaksiId: 't8', anggaranId: 'ang_S', nominal: 60000, tingkatPemetaan: 'ITEM' } }]));
+    const M = srv.sb.rabMatchAll_(D_of(srv)), O = srv.sb.rabRingkasanPeriode_(M, 'Oktober 2026'), Sp = srv.sb.rabRingkasanPeriode_(M, 'September 2026');
+    const lineS = M.lines.find(L => L.rabIds.indexOf('ang_S') !== -1);
+    rec('RAB-33', 'lintas periode (karakterisasi, NEEDS_POLICY_DECISION)', same.ok && same.data.results[0].code === 'CREATED' && O.terpetakanPeriodeLain === 60000 && O.realisasiDisetujui === 1100000 && Sp.realisasiDisetujui === 0 && lineS.realisasi === 60000 && invRS(O),
+      'alokasi transaksi Okt -> RAB Sep DITERIMA server (belum ada aturan periode); Beranda Okt: garis periode lain ' + O.terpetakanPeriodeLain + ', bukan B; realisasi garis Sep (I04) ' + lineS.realisasi + ' (temuan T5)');
+    // RAB Sep, transaksi Okt tanpa alokasi: aturan kategori tidak mencocokkan lintas bulan
+    const t9 = safe(() => srv.sb.opCreateExpense({ tanggal: '2026-10-13', unit: 'MI', nominal: 5000, akunId: 'akun_kas1', metode: 'Tunai', kategori: 'Honor', penerima: 'Guru A', clientRequestId: 'lb_t9' }));
+    srv.sheets['08_ANGGARAN'] = srv.sheets['08_ANGGARAN'].filter(r => r[0] !== 'ang_D'); // hanya garis Honor September yang tersisa
+    const M2 = srv.sb.rabMatchAll_(D_of(srv)), p9 = t9.ok && M2.perTrx[t9.data.id];
+    rec('RAB-34', 'RAB Sep + transaksi Okt (karakterisasi)', !!p9 && p9.sumber === 'TANPA_RAB' && !p9.disetujui, 'transaksi Okt kategori Honor, hanya RAB Honor Sep -> ' + (p9 && p9.sumber) + ' (tidak otomatis diterima maupun ditolak sebagai data)');
+    // tanggal transaksi: kosong/format salah ditolak; tanggal tidak mungkin DITERIMA (temuan T4, usulan U-4)
+    const dt = d => { const r = safe(() => srv.sb.opCreateExpense({ tanggal: d, unit: 'MI', nominal: 1000, akunId: 'akun_kas1', metode: 'Tunai', kategori: 'ATK', penerima: 'Toko', clientRequestId: 'dt_' + d })); return r.ok ? 'OK:' + srv.sb.fccPeriodeOfDate_(d) : r.code; };
+    const res = { kosong: dt(''), format: dt('12/10/2026'), bulan13: dt('2026-13-40'), feb30: dt('2026-02-30') };
+    rec('RAB-35', 'tanggal tidak valid (karakterisasi T4)', res.kosong === 'VALIDATION_ERROR' && res.format === 'VALIDATION_ERROR' && res.bulan13 === 'OK:' && res.feb30 === 'OK:Februari 2026',
+      J(res) + ' -> 2026-13-40 tersimpan tanpa periode (tidak masuk C periode mana pun); perbaikan menunggu keputusan U-4');
+  }
+  // ================= LPJ bulan berikutnya (P1_12 kasus 1/2/10) =================
+  { const srv = makeServer();
+    const D0 = J(srv.sb.rabRingkasanPeriode_(srv.sb.rabMatchAll_(D_of(srv)), 'September 2026')), fc0 = srv.sb.opFinancialControl('September 2026').data;
+    const lp = (id, nominal) => { const r = safe(() => srv.sb.opRecordBatch('lpj', [{ op: 'upsert', id, row: { tanggal: '2026-10-03', unit: 'MI', kategori: 'ATK', item: 'Kertas', nominal, status: 'REALIZATION', transaksiId: 'imp_trx_2' } }])); return r.ok ? r.data.results[0].code : r.code; };
+    const a = lp('lpj_okt1', 30000), b = lp('lpj_okt2', 30000);
+    const fc1 = srv.sb.opFinancialControl('September 2026').data;
+    rec('RAB-36', 'LPJ bulan berikutnya', a === 'CREATED' && b === 'LPJ_EXCEEDS_TRANSACTION' && J(srv.sb.rabRingkasanPeriode_(srv.sb.rabMatchAll_(D_of(srv)), 'September 2026')) === D0
+      && fc1.actual.expensePeriode === fc0.actual.expensePeriode && fc1.actual.cashPosition === fc0.actual.cashPosition,
+      'transaksi Sep 50.000 + LPJ Okt 30.000 diterima; LPJ tambahan 30.000 ditolak (' + b + '); pengeluaran/saldo/ringkasan Sep tidak berubah (LPJ bukan pengeluaran kedua)');
+  }
+  // ================= Regresi: Keputusan 2 tidak mengubah KPI mana pun (baseline = HEAD sebelum Keputusan 2) =================
+  { let preJs = '';
+    try { preJs = cp.execFileSync('git', ['show', (process.env.RAB2_BASELINE_REF || 'b26de58') + ':Bendahara_V2.html'], { cwd: OUT, maxBuffer: 64 << 20, stdio: ['ignore', 'pipe', 'ignore'] }).toString().replace(/\r/g, '').match(/\n<script>\n([\s\S]*?)\n<\/script>/)[1]; } catch (e) { }
+    if (!preJs) rec('RAB-37', 'regresi KPI Keputusan 2', false, 'baseline b26de58 tidak terbaca');
+    else {
+      const k = async (code, fx, p) => { const srv = fx ? fixture(makeServer()) : makeServer(); const c = await bootClient(srv, code); return J(kpiPack(c.sb.kpiIndukSummary(p))); };
+      const r = [await k(preJs, true, 'Oktober 2026') === await k(js, true, 'Oktober 2026'), await k(preJs, false, 'September 2026') === await k(js, false, 'September 2026')];
+      const fn = (code, n) => { const m = new RegExp('^function ' + n + '\\(', 'm').exec(code); return m ? code.slice(m.index, code.indexOf('\n}', m.index)) : null; };
+      const same = ['financialAktivitasFeed', 'rabMendekatiPagu', 'pengeluaranDiLuarRabBulanIni', 'totalPengeluaran'].filter(n => fn(preJs, n) !== fn(js, n));
+      rec('RAB-37', 'regresi KPI Keputusan 2', r.every(Boolean) && same.length === 0, 'seluruh KPI (termasuk BDS03) identik vs b26de58 pada fixture RAB & default: ' + J(r) + (same.length ? ' berubah: ' + same.join(',') : '; financialAktivitasFeed/rabMendekatiPagu/pengeluaranDiLuarRabBulanIni/totalPengeluaran identik'));
+    }
+  }
   const pass = R.filter(r => r.st === 'PASS').length, fail = R.filter(r => r.st === 'FAIL').length, info = R.filter(r => r.st === 'INFO').length;
   R.forEach(r => console.log(r.st + ' ' + r.id + ' [' + r.tc + '] ' + r.d));
   console.log('\nPASS=' + pass + ' FAIL=' + fail + ' INFO=' + info);

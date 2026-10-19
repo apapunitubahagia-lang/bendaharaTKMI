@@ -1768,6 +1768,25 @@ function pengeluaranPunyaPersetujuan(t){ return Store.loadObligasi().some(o=>o.t
    (aturan lama program === kategori) dipertahankan sebagai fungsi tetapi TIDAK lagi dipakai KPI maupun tampilan anggaran. */
 function rabDataClient_(){ const st = OperationalCache.states.alokasiPengeluaran; return {transaksi:allTransaksi(), anggaran:Store.loadAnggaran(), alokasiPengeluaran:(st && st.loaded && !st.error) ? st.rows : [], kategoriPengeluaran:MasterAPI.expenseCategories()}; }
 function rabMatchClient_(){ return rabMatchAll_(rabDataClient_()); }
+/* [P1-RAB Keputusan 2] ringkasan A/B/C per periode bulan (urut) dari satu hasil pencocokan; dipakai Beranda, laporan, ekspor */
+function rabRingkasanClient_(periodes){ const M = rabMatchClient_(); return Array.from(new Set(periodes)).filter(p=>fccIsMonthLabel_(p)).sort((x,y)=>{ const k=p=>{ const m=String(p).split(' '); return Number(m[1])*12+FCC_BULAN_.indexOf(m[0]); }; return k(x)-k(y); }).map(p=>rabRingkasanPeriode_(M, p)); }
+function rabRingkasanHtml_(list){
+  if(!list.length) return '';
+  return '<div class="tablewrap"><table><thead><tr><th>Periode</th><th>A. Anggaran Disetujui</th><th>B. Realisasi thd Anggaran Disetujui</th><th>Sisa (A-B)</th><th>C. Total Pengeluaran Aktual</th><th>Belum terpetakan ke RAB disetujui (C-B)</th></tr></thead><tbody>'+
+    list.map(r=>'<tr><td>'+esc(r.periode)+'</td><td>'+fmtRp(r.anggaranDisetujui)+'</td><td>'+fmtRp(r.realisasiDisetujui)+'</td><td>'+fmtRp(r.sisaAnggaranDisetujui)+'</td><td>'+fmtRp(r.pengeluaranAktual)+'</td><td>'+fmtRp(r.belumKeRabDisetujui)+
+      ' <span class="small-muted">(RAB belum disetujui '+fmtRp(r.terpetakanBelumDisetujui)+'; garis periode lain '+fmtRp(r.terpetakanPeriodeLain)+'; sisa tidak terpetakan '+fmtRp(r.sisaTidakTerpetakan)+'; tanpa RAB '+fmtRp(r.tanpaRab)+')</span></td></tr>').join('')+
+    '</tbody></table></div>';
+}
+function rabRingkasanEksporBaris_(list){
+  const out = [];
+  list.forEach(r=>{
+    out.push(['[RINGKASAN] A. Total Anggaran Disetujui', r.periode, r.anggaranDisetujui, '']);
+    out.push(['[RINGKASAN] B. Realisasi terhadap Anggaran Disetujui', r.periode, '', r.realisasiDisetujui]);
+    out.push(['[RINGKASAN] C. Total Pengeluaran Aktual', r.periode, '', r.pengeluaranAktual]);
+    out.push(['[RINGKASAN] C-B. Belum terpetakan ke RAB disetujui', r.periode, '', r.belumKeRabDisetujui]);
+  });
+  return out;
+}
 function rabCatatanGaris_(M, id){ const k = M.rowLine[String(id)], g = k && M.lineByKey[k]; return (g && g.rabIds.length > 1) ? ' <span class="small-muted">(realisasi garis '+fmtRp(g.realisasi)+', '+g.rabIds.length+' baris)</span>' : ''; }
 
 function financialAktivitasFeed(){
@@ -2267,12 +2286,13 @@ function renderBeranda(){
   const belumTeridentifikasi = sum(penerimaanBelumTeridentifikasi().filter(t=>periodeOfDate(t.tanggal)===periode).map(t=>Number(t.nominal||0)));
   const pct = (n,d)=> d>0 ? Math.round(n/d*100) : 0;
   const anggaranPeriode = Store.loadAnggaran().filter(a=>a.periode===periode);
-  // [P1-RAB] dijumlah per GARIS unik (tanpa hitung ganda); anggaran = pagu DISETUJUI, belum disetujui ditampilkan terpisah
-  const RMb_ = rabMatchClient_(), garisPeriode_ = RMb_.lines.filter(g=>g.periode===periode);
-  const totalAnggaran = sum(garisPeriode_.map(g=>g.paguDisetujui));
-  const totalRealisasi = sum(RMb_.transaksi.filter(r=>r.periode===periode).map(r=>sum(r.bagian.filter(b=>RMb_.lineByKey[b.lineKey].periode===periode).map(b=>b.nominal))));
-  const anggaranBelumDisetujui_ = sum(garisPeriode_.map(g=>g.paguDiajukan+g.paguTanpaStatus+g.paguStatusLain));
-  const sisaAnggaran = totalAnggaran-totalRealisasi;
+  // [P1-RAB Keputusan 2, P1_10] tiga ukuran terpisah dari satu definisi (rabRingkasanPeriode_), tanpa hitung ganda:
+  // A anggaran disetujui, B realisasi thd anggaran disetujui, C seluruh pengeluaran aktual (termasuk yang belum terpetakan)
+  const RS_ = rabRingkasanPeriode_(rabMatchClient_(), periode);
+  const totalAnggaran = RS_.anggaranDisetujui;
+  const totalRealisasi = RS_.realisasiDisetujui;
+  const anggaranBelumDisetujui_ = RS_.anggaranBelumDisetujui;
+  const sisaAnggaran = RS_.sisaAnggaranDisetujui;
 
   html += '<div class="grid cols-2">'+
     '<div class="card"><h3>Penerimaan Siswa <a class="link small-muted" style="float:right" onclick="setPage(\'laporan\');State.laporanTab=\'tagihan\';renderShell()">Lihat Detail &rarr;</a></h3>'+
@@ -2283,8 +2303,11 @@ function renderBeranda(){
     '</div>'+
     '<div class="card"><h3>Realisasi RAB Bulanan (' + esc(periode) + ') <a class="link small-muted" style="float:right" onclick="setPage(\'anggaran\');State.anggaranTab=\'realisasi\';renderShell()">Lihat Anggaran &rarr;</a></h3>'+
       progressStat('Total Anggaran Disetujui', totalAnggaran, totalAnggaran, 'var(--primary)')+
-      progressStat('Realisasi', totalRealisasi, totalAnggaran, 'var(--green)')+
-      progressStat('Sisa Anggaran', sisaAnggaran, totalAnggaran, 'var(--amber)')+
+      progressStat('Realisasi terhadap Anggaran Disetujui', totalRealisasi, totalAnggaran, 'var(--green)')+
+      progressStat('Sisa Anggaran Disetujui', sisaAnggaran, totalAnggaran, 'var(--amber)')+
+      '<div class="kv" style="margin-top:6px"><div>Total Pengeluaran Aktual</div><div>'+fmtRp(RS_.pengeluaranAktual)+'</div>'+
+      '<div>Belum terpetakan ke RAB disetujui</div><div>'+fmtRp(RS_.belumKeRabDisetujui)+'</div></div>'+
+      '<div class="small-muted">RAB belum disetujui '+fmtRp(RS_.terpetakanBelumDisetujui)+' &middot; garis periode lain '+fmtRp(RS_.terpetakanPeriodeLain)+' &middot; sisa tidak terpetakan '+fmtRp(RS_.sisaTidakTerpetakan)+' &middot; tanpa RAB '+fmtRp(RS_.tanpaRab)+'</div>'+
       '<div class="kv" style="margin-top:6px"><div>Anggaran belum disetujui (diajukan/tanpa status)</div><div>'+fmtRp(anggaranBelumDisetujui_)+'</div></div>'+
     '</div>'+
     '</div>';
@@ -5350,6 +5373,7 @@ function renderLaporan(){
         periodeExact:'periode', periodeOptions:Array.from(new Set(all.map(a=>a.periode)))};
       const rows = tblApply(all, 'lapAnggaran', cfg);
       let h = tblFilterBar('lapAnggaran', cfg, all.length, rows.length)+exportBarHtml('exportAnggaranReport');
+      h += rabRingkasanHtml_(rabRingkasanClient_(rows.map(a=>a.periode))); // [P1-RAB Keputusan 2] definisi sama dengan Beranda & ekspor
       h += '<div class="tablewrap"><table><thead><tr>'+sortableTh('lapAnggaran','program','Program')+'<th>Periode</th>'+sortableTh('lapAnggaran','nominal','Anggaran')+'<th>Realisasi</th><th>Sisa</th></tr></thead><tbody>'+
         (rows.length?(function(){ const RM_ = rabMatchClient_(); return rows.map(a=>{ const real=rabRealisasiBaris_(RM_, a.id); return '<tr><td>'+esc(a.program)+'</td><td>'+esc(a.periode)+'</td><td>'+fmtRp(a.nominal)+'</td><td>'+fmtRp(real)+rabCatatanGaris_(RM_, a.id)+'</td><td>'+fmtRp(a.nominal-real)+'</td></tr>'; }).join(''); })():'<tr><td colspan="5" class="empty">Tidak ada data sesuai filter.</td></tr>')+
         '</tbody></table></div>';
@@ -5433,7 +5457,7 @@ function exportBank(format){ exportReport(format,'Bank','Laporan Bank',['Akun','
 function exportTagihan(format){ const rows=filteredOrAll('lapTagihan', allObligationsAllSiswa); exportReport(format,'Kewajiban','Laporan Kewajiban Siswa',['Siswa','Periode','Komponen','Netto','Terbayar','Sisa','Status'],rows.map(o=>[siswaName(o.siswaId),o.periode,o.komponenNama,o.netto,alokasiTerbayar(o),sisaObligation(o),statusObligation(o)]),{currencyCols:[3,4,5]}); }
 function exportTunggakan(format){ const rows=filteredOrAll('lapTunggakan', ()=>allObligationsAllSiswa().filter(o=>sisaObligation(o)>0)); exportReport(format,'Tunggakan','Laporan Tunggakan',['Siswa','Periode','Komponen','Sisa','JatuhTempo'],rows.map(o=>[siswaName(o.siswaId),o.periode,o.komponenNama,sisaObligation(o),o.jatuhTempo?fmtDate(o.jatuhTempo):'-']),{currencyCols:[3]}); }
 function exportSiswaReport(format){ const rows=filteredOrAll('lapSiswa', MasterAPI.students); exportReport(format,'Siswa','Laporan Posisi Siswa',['Nama','Kelas','Kewajiban','Dibayar','Sisa','Status'],rows.map(s=>[s.nama,s.kelas,totalKewajibanSiswa(s.id),totalDibayarSiswa(s.id),totalSisaSiswa(s.id),classifyStudentArrears(s.id)]),{currencyCols:[2,3,4]}); }
-function exportAnggaranReport(format){ const rows=filteredOrAll('lapAnggaran', Store.loadAnggaran.bind(Store)); exportReport(format,'Anggaran','Laporan Anggaran & Realisasi',['Program','Periode','Anggaran','Realisasi'],(function(){ const RM_ = rabMatchClient_(); return rows.map(a=>[a.program,a.periode,a.nominal,rabRealisasiBaris_(RM_, a.id)]); })(),{currencyCols:[2,3]}); } // [P1-RAB]
+function exportAnggaranReport(format){ const rows=filteredOrAll('lapAnggaran', Store.loadAnggaran.bind(Store)); exportReport(format,'Anggaran','Laporan Anggaran & Realisasi',['Program','Periode','Anggaran','Realisasi'],(function(){ const RM_ = rabMatchClient_(); return rows.map(a=>[a.program,a.periode,a.nominal,rabRealisasiBaris_(RM_, a.id)]).concat(rabRingkasanEksporBaris_(rabRingkasanClient_(rows.map(a=>a.periode)))); })(),{currencyCols:[2,3]}); } // [P1-RAB] + ringkasan A/B/C (Keputusan 2)
 function exportArusKas(format){ const periodes=Array.from(new Set(allTransaksi().map(t=>periodeOfDate(t.tanggal)))).filter(Boolean); exportReport(format,'ArusKas','Laporan Arus Kas',['Periode','Pemasukan','Pengeluaran'],periodes.map(p=>[p,totalPemasukan(p),totalPengeluaran(p)]),{currencyCols:[1,2]}); }
 
 /* ---- Data Quality Checks ---- */
@@ -7573,7 +7597,7 @@ function fccBudgetVsActual_(periode, D) {
     var sisa = fccNum_(t.nominal) - (allocBy[t.id] || 0);
     if (sisa > 0.5) { unalloc.jumlahTransaksi++; unalloc.total += sisa; }
   });
-  return { periode: periode, tahunAjaran: ta, rows: rows, transaksiTanpaAnggaran: Object.keys(noBudget).sort().map(function (k) { return noBudget[k]; }), sisaTidakTerpetakan: sisa, pencocokanBermasalah: M.issues, pemasukanBelumDialokasi: unalloc, anggaranTidakValid: invalid };
+  return { periode: periode, tahunAjaran: ta, rows: rows, transaksiTanpaAnggaran: Object.keys(noBudget).sort().map(function (k) { return noBudget[k]; }), sisaTidakTerpetakan: sisa, pencocokanBermasalah: M.issues, ringkasanPeriode: rabRingkasanPeriode_(M, periode), pemasukanBelumDialokasi: unalloc, anggaranTidakValid: invalid };
 }
 /* RAB MATCH CORE - [P1-RAB] kode IDENTIK dipakai klien (Bendahara_V2.html) dan server (FinanceEngine.gs).
    Satu-satunya aturan pencocokan PENGELUARAN -> garis anggaran (08_ANGGARAN) untuk KPI BDS03-I03/I04/I05 dan
@@ -7673,6 +7697,31 @@ function rabRealisasiBaris_(M, anggaranId) {
   if (!key) return 0;
   var L = M.lineByKey[key];
   return (M.rowEksplisit[String(anggaranId)] || 0) + (L.rabIds.length === 1 ? L.realisasiKategori : 0);
+}
+/* [P1-RAB Keputusan 2, P1_10] Ringkasan satu periode untuk Kartu Beranda, laporan, ekspor, dan Financial Control.
+   A anggaranDisetujui  = Σ pagu DISETUJUI garis periode P;
+   B realisasiDisetujui = Σ bagian transaksi periode P ke garis periode P dengan statusRab DISETUJUI;
+   C pengeluaranAktual  = Σ nominal SELURUH transaksi PENGELUARAN aktif periode P (tiap transaksi sekali, berapa pun alokasinya).
+   C - B dirinci: terpetakanBelumDisetujui + terpetakanPeriodeLain + sisaTidakTerpetakan + tanpaRab (invarian). */
+function rabRingkasanPeriode_(M, periode) {
+  var r = { periode: periode, anggaranDisetujui: 0, anggaranBelumDisetujui: 0, realisasiDisetujui: 0, pengeluaranAktual: 0, jumlahTransaksi: 0,
+    terpetakanBelumDisetujui: 0, terpetakanPeriodeLain: 0, sisaTidakTerpetakan: 0, tanpaRab: 0, belumKeRabDisetujui: 0, sisaAnggaranDisetujui: 0 };
+  M.lines.forEach(function (L) {
+    if (L.periode !== periode) return;
+    r.anggaranDisetujui += L.paguDisetujui; r.anggaranBelumDisetujui += L.paguDiajukan + L.paguTanpaStatus + L.paguStatusLain;
+  });
+  M.transaksi.forEach(function (t) {
+    if (t.periode !== periode) return;
+    r.pengeluaranAktual += t.nominal; r.jumlahTransaksi++; r.sisaTidakTerpetakan += t.sisaTidakTerpetakan; r.tanpaRab += t.tanpaRab;
+    t.bagian.forEach(function (b) {
+      if (M.lineByKey[b.lineKey].periode !== periode) r.terpetakanPeriodeLain += b.nominal;
+      else if (b.statusRab === 'DISETUJUI') r.realisasiDisetujui += b.nominal;
+      else r.terpetakanBelumDisetujui += b.nominal;
+    });
+  });
+  r.belumKeRabDisetujui = r.pengeluaranAktual - r.realisasiDisetujui;
+  r.sisaAnggaranDisetujui = r.anggaranDisetujui - r.realisasiDisetujui;
+  return r;
 }
 
 /* RENCANA TARIF 2026/2027 - kode IDENTIK dipakai di klien (Bendahara_V2.html) dan server (TarifPlan.gs).

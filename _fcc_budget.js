@@ -90,5 +90,5 @@ function fccBudgetVsActual_(periode, D) {
     var sisa = fccNum_(t.nominal) - (allocBy[t.id] || 0);
     if (sisa > 0.5) { unalloc.jumlahTransaksi++; unalloc.total += sisa; }
   });
-  return { periode: periode, tahunAjaran: ta, rows: rows, transaksiTanpaAnggaran: Object.keys(noBudget).sort().map(function (k) { return noBudget[k]; }), sisaTidakTerpetakan: sisa, pencocokanBermasalah: M.issues, pemasukanBelumDialokasi: unalloc, anggaranTidakValid: invalid };
+  return { periode: periode, tahunAjaran: ta, rows: rows, transaksiTanpaAnggaran: Object.keys(noBudget).sort().map(function (k) { return noBudget[k]; }), sisaTidakTerpetakan: sisa, pencocokanBermasalah: M.issues, ringkasanPeriode: rabRingkasanPeriode_(M, periode), pemasukanBelumDialokasi: unalloc, anggaranTidakValid: invalid };
 }

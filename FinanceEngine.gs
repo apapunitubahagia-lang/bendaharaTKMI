@@ -174,7 +174,7 @@ function fccBudgetVsActual_(periode, D) {
     var sisa = fccNum_(t.nominal) - (allocBy[t.id] || 0);
     if (sisa > 0.5) { unalloc.jumlahTransaksi++; unalloc.total += sisa; }
   });
-  return { periode: periode, tahunAjaran: ta, rows: rows, transaksiTanpaAnggaran: Object.keys(noBudget).sort().map(function (k) { return noBudget[k]; }), sisaTidakTerpetakan: sisa, pencocokanBermasalah: M.issues, pemasukanBelumDialokasi: unalloc, anggaranTidakValid: invalid };
+  return { periode: periode, tahunAjaran: ta, rows: rows, transaksiTanpaAnggaran: Object.keys(noBudget).sort().map(function (k) { return noBudget[k]; }), sisaTidakTerpetakan: sisa, pencocokanBermasalah: M.issues, ringkasanPeriode: rabRingkasanPeriode_(M, periode), pemasukanBelumDialokasi: unalloc, anggaranTidakValid: invalid };
 }
 /* RAB MATCH CORE - [P1-RAB] kode IDENTIK dipakai klien (Bendahara_V2.html) dan server (FinanceEngine.gs).
    Satu-satunya aturan pencocokan PENGELUARAN -> garis anggaran (08_ANGGARAN) untuk KPI BDS03-I03/I04/I05 dan
@@ -274,6 +274,31 @@ function rabRealisasiBaris_(M, anggaranId) {
   if (!key) return 0;
   var L = M.lineByKey[key];
   return (M.rowEksplisit[String(anggaranId)] || 0) + (L.rabIds.length === 1 ? L.realisasiKategori : 0);
+}
+/* [P1-RAB Keputusan 2, P1_10] Ringkasan satu periode untuk Kartu Beranda, laporan, ekspor, dan Financial Control.
+   A anggaranDisetujui  = Σ pagu DISETUJUI garis periode P;
+   B realisasiDisetujui = Σ bagian transaksi periode P ke garis periode P dengan statusRab DISETUJUI;
+   C pengeluaranAktual  = Σ nominal SELURUH transaksi PENGELUARAN aktif periode P (tiap transaksi sekali, berapa pun alokasinya).
+   C - B dirinci: terpetakanBelumDisetujui + terpetakanPeriodeLain + sisaTidakTerpetakan + tanpaRab (invarian). */
+function rabRingkasanPeriode_(M, periode) {
+  var r = { periode: periode, anggaranDisetujui: 0, anggaranBelumDisetujui: 0, realisasiDisetujui: 0, pengeluaranAktual: 0, jumlahTransaksi: 0,
+    terpetakanBelumDisetujui: 0, terpetakanPeriodeLain: 0, sisaTidakTerpetakan: 0, tanpaRab: 0, belumKeRabDisetujui: 0, sisaAnggaranDisetujui: 0 };
+  M.lines.forEach(function (L) {
+    if (L.periode !== periode) return;
+    r.anggaranDisetujui += L.paguDisetujui; r.anggaranBelumDisetujui += L.paguDiajukan + L.paguTanpaStatus + L.paguStatusLain;
+  });
+  M.transaksi.forEach(function (t) {
+    if (t.periode !== periode) return;
+    r.pengeluaranAktual += t.nominal; r.jumlahTransaksi++; r.sisaTidakTerpetakan += t.sisaTidakTerpetakan; r.tanpaRab += t.tanpaRab;
+    t.bagian.forEach(function (b) {
+      if (M.lineByKey[b.lineKey].periode !== periode) r.terpetakanPeriodeLain += b.nominal;
+      else if (b.statusRab === 'DISETUJUI') r.realisasiDisetujui += b.nominal;
+      else r.terpetakanBelumDisetujui += b.nominal;
+    });
+  });
+  r.belumKeRabDisetujui = r.pengeluaranAktual - r.realisasiDisetujui;
+  r.sisaAnggaranDisetujui = r.anggaranDisetujui - r.realisasiDisetujui;
+  return r;
 }
 
 /* tagihan (04) per periode anggaran PEMASUKAN yang masuk lingkup - memakai ObligationEngine (fungsi kewajiban yang sama dengan klien) */
