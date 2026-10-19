@@ -18,6 +18,8 @@
 
 > **Pembaruan 19-10-2026 (audit `P1_13`):** temuan T1 (pengeluaran ganda via LPJ → GAP-020/018), T4 (tanggal kalender di 8/8 jalur tulis bertanggal → GAP-014), T7 (BENDAHARA mengelola peran penyetuju → **usulan GAP-048**), dan T8 (`opReadSheet` tanpa pemeriksaan kolom wajib; KPI klien dihitung dari data parsial → GAP-002, P0). Test case baru: TC-LB-11..13, TC-CRUD-08, TC-HDR-07, TC-AUTH-09, TC-REL-07. Pemetaan lengkap: `P1_13` §8.
 
+> **Pembaruan 19-10-2026 (P0 hardening, `P1_14`):** T8/GAP-002 (`2bda4b4`), T4/GAP-014 (`c76db65`), T7/GAP-048 usulan (`be84d9c`), dan pengaman T1/GAP-020 (`ea2e9bc`) diimplementasikan; TC-HDR-07, TC-CRUD-08, dan TC-AUTH-09 **sandbox PASS**. Identitas live (GAP-005) dan model uang muka (D-T1) belum. Status tetap `READY_FOR_INTEGRATION_TEST`.
+
 **Status P1: tetap BELUM SELESAI.** Uji live (Apps Script + salinan Sheets) masih BLOCKED.
 
 Hambatan H7 di `P1_00` (dokumen tidak tersedia) **teratasi**. ID TC sementara `TC-P1-*` diganti dengan ID dokumen di `p1_tests.js`.

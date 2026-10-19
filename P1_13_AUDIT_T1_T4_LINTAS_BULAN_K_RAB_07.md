@@ -217,6 +217,8 @@ Sheet tidak pernah dibuat saat startup (RAB-16). Membuat sheet dengan tangan **t
 
 ## 6. Keputusan yang benar-benar masih dibutuhkan
 
+> **Pembaruan 19-10-2026:** D-T4, D-T8, D-T1s, dan sebagian D-T7 (pemblokiran BENDAHARA atas peran penyetuju) diimplementasikan; lihat `P1_14`. Yang tersisa ada di `P1_14` §8.
+
 | ID | Keputusan | Menghambat |
 |---|---|---|
 | **D-T1** | Model uang muka/pencairan: D1, D2 (butuh GAP-028), atau D3; cara mencatat pengembalian sisa | Perbaikan T1; TC-LB-06/10/13 |
