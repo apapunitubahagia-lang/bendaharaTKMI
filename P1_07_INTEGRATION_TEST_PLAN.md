@@ -1,5 +1,12 @@
 # P1_07 — Rencana Uji Integrasi (Apps Script + Salinan Google Sheets)
 
+> **Pembaruan 19-10-2026 (`P1_15` §3):** prasyarat tambahan P1–P7 wajib dipenuhi sebelum uji, yaitu:
+> - akun uji terpisah tanpa akses ke Drive/spreadsheet produksi (folder bukti dicari **berdasarkan nama**);
+> - skrip terikat pada salinan, diganti seluruhnya via `clasp`;
+> - Script Property `LIVE_TEST_SPREADSHEET_ID`.
+>
+> Harness `_live_tests/LiveReadiness.gs` (`ltPreflight` → `ltReadOnlyChecks` → `ltRejectionChecks` → `ltPostflight`) dipakai **hanya** di salinan. Uji manual LV-T8/T4/T7/T1/ID/REG ada di `P1_15` §3.3. Belum ada yang dijalankan.
+
 **Tanggal:** 19 Oktober 2026
 **Status: RENCANA. Belum ada pengujian live yang dilakukan.**
 

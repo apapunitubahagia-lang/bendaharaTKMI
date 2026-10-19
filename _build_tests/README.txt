@@ -33,4 +33,5 @@ Tambahan P1-RAB (2026-10-19; keputusan K-RAB-01..06, 08; paket terpisah dari P1-
   node rab_tests.js              # pencocokan, FCC, RecordGuard, setup/uji kering/impor, diferensial BDS03, 35 tes + 2 INFO (RAB-29..37: Keputusan 2, karakterisasi lintas periode, LPJ bulan berikutnya)
   node audit_p1_tests.js        # simulasi audit P1_13 (T1, T4, lintas bulan, K-RAB-07, sheet 30); PASS = kontrol berlaku, INFO = temuan
   node p0_hardening_tests.js    # P0 hardening T8/T4/T7/T1 + regresi (P1_14)
+  node readiness_tests.js       # kesiapan live: harness _live_tests/LiveReadiness.gs di sandbox, GAP-005, aturan 62 hari, tanggal (P1_15)
   node run_all_tests.js <prefix> # seluruh suite -> ../_test_logs/<prefix>_*.log (jangan pakai prefix 'final')
