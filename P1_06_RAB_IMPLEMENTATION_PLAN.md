@@ -19,7 +19,9 @@
 | K-RAB-07 | **Belum disetujui.** Bagian persetujuan BDS03-I05 tidak diubah |
 | K-RAB-08 | Skema aditif `30_ALOKASI_PENGELUARAN` disetujui untuk lingkungan uji. Dibuat hanya lewat fungsi admin eksplisit berkonfirmasi; uji kering + validasi mendahului impor; impor hanya di salinan uji setelah hasil diperiksa dan disetujui |
 
-**Paket:** perubahan terpisah dari revisi kebijakan periode (`79e2b66`). Akan menjadi commit tersendiri `P1-RAB` di atas dokumen-dokumen ini.
+**Paket:** perubahan terpisah dari revisi kebijakan periode (`79e2b66`).
+
+**Status implementasi (19-10-2026): DIIMPLEMENTASIKAN DI SANDBOX** dalam satu commit `44e14f0` (`P1-RAB`), dapat di-revert utuh (diuji: revert + build ulang = tree `6ef9926`, 7 suite lama PASS). Penyimpangan dari rencana ini dan hasil uji: §11 dan `P1_09_RAB_IMPLEMENTATION_REPORT.md`. Belum diuji di Apps Script maupun pada data FINAL; status tetap `READY_FOR_INTEGRATION_TEST`.
 
 ---
 
@@ -302,3 +304,21 @@ Semua suite yang ada (`run_all_tests.js`) tetap dijalankan. Uji pada salinan FIN
 - Perubahan BDS03 dilaporkan dengan nilai sebelum/sesudah.
 
 **Status maksimum tetap `READY_FOR_INTEGRATION_TEST`.**
+
+---
+
+## 11. Status implementasi dan penyimpangan dari rencana (19-10-2026)
+
+| Rencana | Implementasi | Alasan |
+|---|---|---|
+| `rabMatchCompute_(periode, D)` | `rabMatchAll_(D)` atas **semua** periode; penyaringan periode dilakukan pemakai (FCC, KPI, `opRabRealization`) | I04 menilai garis setiap periode dan tampilan anggaran memuat beberapa periode; satu perhitungan menghindari dua hasil yang berbeda |
+| `rabMapCompute_` dihapus | Dipertahankan sebagai pembungkus tipis di atas `rabMatchAll_` (tanpa aturan sendiri) | Bentuk keluaran `opRabRealization` dipertahankan (P1D-05); tidak ada aturan kedua |
+| `DB_SCHEMA` + definisi `30_ALOKASI_PENGELUARAN` | **Tidak** ditambahkan ke `DB_SCHEMA`; header didefinisikan di `RabAllocation.gs` (`RAB_ALOKASI_HEADERS_`) dan `SG_REQUIRED_` | `setupDatabaseStructure_` membuat sheet dari `DB_SCHEMA`; menambahkannya ke sana akan membuka jalur pembuatan otomatis yang dilarang K-RAB-08 |
+| Status `STATUS_LAIN` digabung ke `TANPA_STATUS` (§4.1) | Dipisah: `DISETUJUI` / `DIAJUKAN` / `TANPA_STATUS` (kosong) / `STATUS_LAIN` (nilai lain, mis. "Ditolak") | Nilai tak dikenal tidak disamakan dengan kosong; keduanya tetap **bukan** disetujui (K-RAB-02) |
+| Validasi `alokasiPengeluaran` | Sesuai §4.2 + Σ dihitung juga di dalam satu batch | Batch berisi dua alokasi yang masing-masing sah tetapi bersama melebihi nominal ditolak pada baris kedua (RAB-15) |
+| FCC `missing` | Per **garis** berpagu DISETUJUI pada periode; `id` = id baris disetujui pertama (urut), `rabIds` semua baris garis | Aturan lama (`t.kategori === a.program`) praktis selalu gagal sehingga setiap baris RAB tercatat "missing" (lihat diferensial di `P1_09`) |
+| Ekspor "Laporan Anggaran & Realisasi" | Ikut memakai aturan bersama (sama dengan tabel di layar) | Tanpa itu ekspor dan tampilan memberi angka berbeda |
+| Tes RAB-01..11 (§8) | `rab_tests.js` RAB-01..28 (26 PASS + 2 INFO nilai diferensial); pemetaan ID ke kasus wajib ada di `P1_09` §4 | Penomoran ulang mengikuti urutan suite |
+
+Fungsi lama `anggaranRabFor` / `realisasiForProgram` tetap ada sebagai fungsi tetapi tidak lagi dipanggil KPI, tampilan, maupun ekspor.
+

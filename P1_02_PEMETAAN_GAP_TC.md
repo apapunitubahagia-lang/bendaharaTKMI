@@ -7,6 +7,8 @@
 
 > **Pembaruan 17-10-2026 (keputusan kebijakan):** status periode CLOSED/TERKUNCI kini **penanda administratif, bukan hard lock** (commit `79e2b66`). Ekspektasi `PERIOD_LOCKED` untuk GAP-015 / TC-CRUD-05 / P1L-13 / P1L-14 di dokumen ini **ditimpa**: penulisan diterima dan ditandai di audit. Lihat `P1_03_POLICY_CHANGE_AUDIT.md` dan `P1_03_IMPLEMENTATION_REPORT.md`. Status saat ini: `READY_FOR_INTEGRATION_TEST`.
 
+> **Pembaruan 19-10-2026 (paket P1-RAB, commit `44e14f0`):** keputusan K-RAB-01..06 dan 08 diimplementasikan di sandbox (pencocokan pengeluaran → RAB disetujui, sheet aditif `30_ALOKASI_PENGELUARAN` dengan setup/uji kering/impor eksplisit, BDS03-I03/I04/I05 dan Financial Control memakai satu aturan). K-RAB-07 **tidak** diimplementasikan. Rincian: `P1_09_RAB_IMPLEMENTATION_REPORT.md`. Status tetap `READY_FOR_INTEGRATION_TEST`.
+
 **Status P1: tetap BELUM SELESAI.** Uji live (Apps Script + salinan Sheets) masih BLOCKED.
 
 Hambatan H7 di `P1_00` (dokumen tidak tersedia) **teratasi**. ID TC sementara `TC-P1-*` diganti dengan ID dokumen di `p1_tests.js`.
@@ -58,8 +60,8 @@ Suite lama tetap PASS (server_pass2 58, e2e_central2 82, tarif_server 52, tarif_
 | TC-FAIL-05 | Unggahan bukti sinkron; gagal → pengguna diberi tahu | P1E-06 | **SEBAGIAN** | Sinkron untuk "Lampirkan Bukti" dan halaman Dokumen. Bukti yang dilampirkan **di form input** penerimaan/pengeluaran masih antre sampai transaksinya dikonfirmasi server (§4 no. 3) |
 | TC-FAIL-06 | 2 klien paralel × 50 entri audit → 100 baris unik | — | **BLOCKED** | Butuh eksekusi Apps Script paralel nyata (H4). Sandbox hanya membuktikan lock dan idempotensi (P0B-11/12) |
 | TC-FAIL-07 | 2 klien mengubah anggaran yang sama → klien kedua `CONFLICT` | P1C-06 (+ P1C-01..05) | PASS | — |
-| TC-DSH-05 | Pengeluaran ter-map RAB (ITEM) lulus BDS03-I03 | P1D-05 | **BELUM** | `opRabRealization` menjelaskan aturan pencocokan yang **berlaku sekarang**. Kriteria dokumen butuh tabel pemetaan eksplisit (30_REF_ALOKASI_PENGELUARAN → anggaranId) **dan** perubahan input KPI BDS03 = perubahan rumus (GAP-025, butuh persetujuan) |
-| TC-DSH-06 | Komitmen COMMITTED 1 jt pada RAB X → FCC COMMITTED = 1 jt | P1D-04; schema_archive K3 | **SEBAGIAN** | `rabId` divalidasi. FINAL 09_KOMITMEN belum punya kolom `rabId` (perlu `opSchemaApply`, aditif, butuh persetujuan) |
+| TC-DSH-05 | Pengeluaran ter-map RAB (ITEM) lulus BDS03-I03 | P1D-05; RAB-01..13, RAB-18..24 | **SANDBOX PASS** (19-10-2026) | Pemetaan eksplisit ITEM (`30_ALOKASI_PENGELUARAN`) atau aturan kategori ke RAB **DISETUJUI** → I03 lulus; DIAJUKAN/tanpa status, pemetaan sebagian, dan Σ alokasi > nominal → tidak lulus. Belum diuji pada salinan FINAL (data `30_REF` belum diperiksa) → uji live `P1_07` |
+| TC-DSH-06 | Komitmen COMMITTED 1 jt pada RAB X → FCC COMMITTED = 1 jt | P1D-04; schema_archive K3; RAB-13 | **SEBAGIAN** | `rabId` divalidasi; perhitungan komitmen per garis tidak diubah P1-RAB (tetap atas semua baris garis), RAB-13 memastikan klien = server. FINAL 09_KOMITMEN belum punya kolom `rabId` (perlu `opSchemaApply`, aditif, butuh persetujuan). Relasi komitmen ↔ transaksi = K-RAB-07, belum disetujui |
 | TC-AUTH-02 | AUDITOR memanggil API tulis → `ROLE_NOT_ALLOWED` | P1S-01 (API P1) | PASS | — |
 | TC-AUTH-08 | `driveFileUrl` bukti diakses akun lain → ditolak | — | **BLOCKED** | Izin Drive nyata. Folder per tahun ajaran belum diterapkan |
 | TC-DUP-01 | Impor ulang mutasi → 0 baris baru | — | **BELUM** | GAP-041 (lihat TC-REK-01) |
@@ -82,15 +84,15 @@ Butir yang langsung menjadi enam prioritas P1 ditebalkan.
 | **GAP-014** | Validasi server | **Sebagian** | FK/integritas: rekonsiliasi.akunId, mutasi, LPJ, komitmen.rabId, bukti, periode. **Belum:** enum status per sheet, nominal ≥ 0 di semua record, 14_KPI hanya oleh server (bergantung GAP-007 KPI server) |
 | **GAP-015** | Penutupan periode | Sandbox | Ditegakkan di semua write-door, termasuk kewajiban; reopen hanya dengan alasan + audit. **Menyimpang dari rekomendasi:** tidak membuat sheet `30_PERIODE` (larangan migrasi). Status dibaca dari `periodeStatus.*` FINAL + blob closing. Alokasi dikunci berdasarkan tanggal transaksi induk, bukan periode kewajiban (agar tunggakan lama tetap dapat dibayar) |
 | GAP-016 | Skema aditif | Belum (di luar prioritas) | `opSchemaApply` kini gagal tertutup bila audit gagal. Penerapan kolom aditif butuh persetujuan |
-| **GAP-017** | Komitmen-RAB | **Sebagian** | `rabId` wajib valid. Header, `transaksiId`, dan enum CANCELLED = perubahan skema → keputusan |
-| **GAP-018** | RAB & pengendalian biaya | **Sebagian** | `opRabRealization` (read-only) memetakan per transaksi + daftar tanpa RAB; angkanya = FCC. **Belum:** satu aturan berbasis `anggaranId` dan pemakaian 30_REF_ALOKASI_PENGELUARAN. Butuh sheet operasional + perubahan input KPI BDS03 (GAP-025) → persetujuan |
+| **GAP-017** | Komitmen-RAB | **Sebagian** | `rabId` wajib valid. Header dan enum CANCELLED = perubahan skema → keputusan. Relasi persetujuan ↔ transaksi dianalisis di `P1_08` (rekomendasi B); **belum disetujui, tidak diimplementasikan** |
+| **GAP-018** | RAB & pengendalian biaya | **Sandbox selesai (P1-RAB)** | Satu aturan `rabMatchAll_` (klien = server) berbasis `anggaranId` eksplisit lalu aturan kategori; FCC/`opRabRealization`/KPI memakai hasil yang sama; sheet `30_ALOKASI_PENGELUARAN` + uji kering/impor dari `30_REF_ALOKASI_PENGELUARAN`. Sisa: uji kering + impor pada salinan FINAL (`P1_07`) |
 | **GAP-019** | Mutasi & rekonsiliasi | **Sebagian** (KEPUTUSAN_DIPERLUKAN) | Saldo sistem dari server per akhir periode; SELESAI hanya bila selisih 0; pencocokan tervalidasi dan memahami status FINAL. **Belum:** penyeragaman enum (keputusan), mutasi debit + saldo rekening, write-door `createBankMutation` |
 | **GAP-020** | LPJ | **Sebagian** | `transaksiId` wajib PENGELUARAN aktif; total LPJ ≤ nominal. **Belum:** perbaikan isi `satuan`/`hargaSatuan` 200 baris = perubahan data (dilarang tanpa persetujuan); enum LPJ |
 | GAP-021 | Kewajiban beku | Sebagian | Hanya kunci periode. Selebihnya di luar prioritas |
 | GAP-022 | Master komponen & tarif | Belum | Di luar prioritas P1 ini |
 | GAP-023 | Unit | Belum | KEPUTUSAN_DIPERLUKAN |
 | **GAP-024** | Bukti | **Sebagian** | Wajib berfile, tak dapat diubah, referensi valid; unggah sinkron untuk Lampirkan Bukti dan Dokumen. **Belum:** bukti di form input transaksi baru (§4 no. 3); folder Drive per tahun ajaran dengan izin pemilik + auditor |
-| GAP-025 | KPI (logika) | Belum | Perubahan rumus butuh persetujuan. P1 tidak mengubah KPI |
+| GAP-025 | KPI (logika) | **Sebagian (P1-RAB)** | Input BDS03-I03/I04/I05 diubah sesuai K-RAB-01..06 (disetujui 19-10-2026); bobot/target/ambang tetap; indikator lain identik (P0D-04/05, RAB-23). Bagian persetujuan I05 (K-RAB-07) dan butir GAP-025 lain belum |
 | **GAP-026** | Sinkronisasi & konflik | Sandbox | CONFLICT terdeteksi untuk transaksi, koleksi, dan master (server). **Menyimpang dari rekomendasi:** ekspektasi nilai field, bukan kolom `version`/`updatedAt` (larangan migrasi). **Belum:** klien master belum mengirim ekspektasi; antrean masih di localStorage |
 | GAP-027 | Migrasi saat boot | Belum | Di luar prioritas |
 | **GAP-028** | Transfer antar-akun | **Tetap diblokir** | Sesuai instruksi; tidak ada jalur server (P1T-01) |
@@ -124,5 +126,5 @@ Butir yang langsung menjadi enam prioritas P1 ditebalkan.
 | K-P1-05 (SELESAI wajib bukti untuk kedua jenis) | Sejalan GAP-045; mohon konfirmasi |
 | K-P1-06 (bukti historis tanpa file tetap dihitung KPI) | Masih terbuka (GAP-024/025) |
 | **GAP-019** | Enum mutasi/rekonsiliasi: DIPROSES vs TERIDENTIFIKASI vs TEREKONSILIASI. Menentukan TC-REK-02 dan BDS02-I02 |
-| **GAP-018/025** | Pemakaian tabel pemetaan pengeluaran → RAB (`anggaranId`) dan perubahan input KPI BDS03 |
+| ~~GAP-018/025~~ | **Diputuskan 19-10-2026** (K-RAB-01..06, 08) dan diimplementasikan di sandbox. Tersisa **K-RAB-07** (persetujuan pengeluaran di luar RAB, `P1_08`) |
 | GAP-017/020/041/045 | Persetujuan perubahan skema aditif (kolom baru) dan/atau koreksi data |
