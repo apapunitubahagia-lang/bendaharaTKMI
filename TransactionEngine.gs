@@ -638,6 +638,8 @@ function createAllocation_(payload) {
       if (!transaksiExists_(payload.transaksiId)) return errResult_('INVALID_TRANSACTION', 'transaksiId tidak ditemukan (re-check)', 'transaksiId');
       var trx = getTransactionRaw_(payload.transaksiId);
       if (trx && trx.archivedAt) return errResult_('TRANSACTION_ARCHIVED', 'Transaksi sudah diarsipkan; alokasi baru tidak diterima: ' + payload.transaksiId, 'transaksiId');
+      if (!trx || trx.jenis !== 'PENERIMAAN') return errResult_('INVALID_ALLOCATION', 'Alokasi kewajiban hanya untuk transaksi PENERIMAAN (transaksi ' + payload.transaksiId + ' berjenis ' + (trx && trx.jenis) + ')', 'transaksiId'); // [P1_20 C]
+      if (trx.siswaId && String(payload.siswaId) !== String(trx.siswaId)) return errResult_('INVALID_ALLOCATION', 'allocation.siswaId (' + payload.siswaId + ') berbeda dengan transaksi.siswaId (' + trx.siswaId + '): penerimaan siswa lain tidak dapat melunasi kewajiban siswa ini', 'siswaId'); // [P1_20 C]
       var plFlagsA = plFlags_([trx && trx.tanggal]); // [P1-POLICY] penanda periode transaksi induk (tidak menolak)
       var currentSum = sumAllocationsForTransaksi_(payload.transaksiId);
       var newSum = currentSum + Number(payload.nominal);
