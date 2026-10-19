@@ -300,6 +300,37 @@ function akunExists_(akunId) { return !akunId || idExistsInSheet_(SHT_AKUN, akun
 function komponenExists_(komponenId) { return !komponenId || idExistsInSheet_(SHT_KOMPONEN, komponenId); }
 function transaksiExists_(transaksiId) { return idExistsInSheet_(SHT_TRANSAKSI, transaksiId); }
 
+/* [P1_20 D] Kategori pengeluaran wajib eksplisit & valid terhadap master AKTIF (status kosong/'Aktif'). Cocok nama atau id
+   tanpa beda huruf/spasi; trx.kategori/subkategori diganti nama kanonik master. ctx (opsional) = master yang sudah dimuat. */
+var SHT_KATEGORI_PENGELUARAN_ = '21_KATEGORI_PENGELUARAN', SHT_SUBKATEGORI_ = '22_SUBKATEGORI';
+function katNorm_(v) { return String(v === null || v === undefined ? '' : v).replace(/\s+/g, ' ').trim().toLowerCase(); }
+function katAktif_(m, r) { if (m.idx.status === undefined) return true; var s = String(r[m.idx.status] === null || r[m.idx.status] === undefined ? '' : r[m.idx.status]).trim(); return s === '' || s === 'Aktif'; }
+function katCtx_() {
+  var k = null, s = null;
+  try { k = sgModel_(SHT_KATEGORI_PENGELUARAN_, ['id', 'kategori']); } catch (e) { k = null; }
+  try { s = sgModel_(SHT_SUBKATEGORI_, ['id', 'kategoriId', 'nama']); } catch (e) { s = null; }
+  return { kat: k, sub: s };
+}
+function expenseKategoriCheck_(trx, ctx) {
+  var kat = katNorm_(trx.kategori);
+  if (!kat) return errResult_('VALIDATION_ERROR', 'kategori pengeluaran wajib dipilih eksplisit (tidak ada kategori bawaan)', 'kategori');
+  ctx = ctx || katCtx_();
+  var m = ctx.kat, aktif = m ? m.values.filter(function (r) { return katAktif_(m, r); }) : [];
+  if (!aktif.length) return errResult_('KATEGORI_MASTER_TIDAK_TERSEDIA', 'Master kategori pengeluaran (' + SHT_KATEGORI_PENGELUARAN_ + ') tidak tersedia atau tidak memiliki kategori aktif - transaksi pengeluaran tidak disimpan', 'kategori');
+  var hit = aktif.filter(function (r) { return katNorm_(r[m.idx.kategori]) === kat || katNorm_(r[m.idx.id]) === kat; });
+  if (hit.length !== 1) return errResult_('INVALID_CATEGORY', hit.length ? 'kategori "' + trx.kategori + '" ambigu di master kategori pengeluaran' : 'kategori "' + trx.kategori + '" tidak ada di master kategori pengeluaran aktif', 'kategori');
+  var katId = String(hit[0][m.idx.id]).trim();
+  trx.kategori = String(hit[0][m.idx.kategori]).trim();
+  var sub = katNorm_(trx.subkategori);
+  if (!sub) { trx.subkategori = ''; return null; }
+  var s = ctx.sub;
+  if (!s) return errResult_('KATEGORI_MASTER_TIDAK_TERSEDIA', 'Master subkategori (' + SHT_SUBKATEGORI_ + ') tidak tersedia - subkategori tidak dapat divalidasi', 'subkategori');
+  var sh = s.values.filter(function (r) { return String(r[s.idx.kategoriId]).trim() === katId && katAktif_(s, r) && (katNorm_(r[s.idx.nama]) === sub || katNorm_(r[s.idx.id]) === sub); });
+  if (sh.length !== 1) return errResult_('INVALID_SUBCATEGORY', 'subkategori "' + trx.subkategori + '" bukan subkategori aktif milik kategori ' + trx.kategori, 'subkategori');
+  trx.subkategori = String(sh[0][s.idx.nama]).trim();
+  return null;
+}
+
 function validateTransactionPayload_(payload) {
   var e;
   if (!payload || typeof payload !== 'object') return errResult_('VALIDATION_ERROR', 'payload wajib berupa object', null);
@@ -481,6 +512,7 @@ function createTransactionWithAllocations_(payload, opts) {
     // --- 1. validasi awal (SEBELUM lock) ---
     var vErr = validateTransactionPayload_(payload);
     if (vErr) return vErr;
+    if (payload.jenis === 'PENGELUARAN') { payload = Object.assign({}, payload); var kErr = expenseKategoriCheck_(payload); if (kErr) return kErr; } // [P1_20 D]
 
     var allocations = (payload.jenis === 'PENERIMAAN') ? (payload.allocations || []) : [];
     var allocErr = validateAllocationsForIncome_(allocations, payload.siswaId, payload.nominal);
@@ -831,7 +863,8 @@ function updateTransaction_(payload) {
       var allocSum = sumAllocationsForTransaksi_(payload.id);
       ch.forEach(function (k) {
         if (e1) return;
-        if (k === 'jenis') { e1 = validateJenis_(next.jenis); if (!e1 && allocSum > 0) e1 = 'jenis tidak dapat diubah: transaksi memiliki alokasi aktif'; }
+        if (k === 'jenis') { e1 = validateJenis_(next.jenis); if (!e1 && allocSum > 0) e1 = 'jenis tidak dapat diubah: transaksi memiliki alokasi aktif'; if (!e1 && next.jenis === 'PENGELUARAN') { var kJ = expenseKategoriCheck_(next); if (kJ) { e1 = kJ.message; code = kJ.code; } } } // [P1_20 D]
+        else if ((k === 'kategori' || k === 'subkategori') && next.jenis === 'PENGELUARAN') { var kK = expenseKategoriCheck_(next); if (kK) { e1 = kK.message; code = kK.code; } } // [P1_20 D]
         else if (k === 'tanggal') e1 = validateTanggal_(next.tanggal);
         else if (k === 'unit') e1 = validateUnit_(next.unit);
         else if (k === 'nominal') { e1 = validateNominal_(next.nominal); if (!e1 && Number(next.nominal) + 0.5 < allocSum) { e1 = 'nominal (' + next.nominal + ') lebih kecil dari total alokasi aktif (' + allocSum + ')'; code = 'ALLOCATION_EXCEEDS_TRANSACTION'; } }

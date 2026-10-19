@@ -198,6 +198,7 @@ const sync = async c => { await c.sb.centralRunSync(true); await tick(10); await
     rec('P1D-04', 'TC-DSH-06 / GAP-017', rr.code === 'INVALID_RAB' && cnt(srv, '09_KOMITMEN') === 0, J(rr.code)); }
   { const srv = makeServer();
     srv.sheets['08_ANGGARAN'].push(['ang_2', 'Oktober 2026', 'ATK', 'ATK', 'MI', 500000, '', '', '', '']);
+    srv.sheets['21_KATEGORI_PENGELUARAN'].push(['KAT_KONS', '2', 'Konsumsi', 'Aktif']); // [P1_20 D] kategori tanpa RAB harus ada di master (validasi server)
     const e1 = safe(() => srv.sb.opCreateExpense(exp({ tanggal: '2026-10-03', nominal: 40000, kategori: 'ATK', clientRequestId: 'rab1' })));
     const e2 = safe(() => srv.sb.opCreateExpense(exp({ tanggal: '2026-10-04', nominal: 7000, kategori: 'Konsumsi', clientRequestId: 'rab2' })));
     const r = safe(() => srv.sb.opRabRealization('Oktober 2026'));

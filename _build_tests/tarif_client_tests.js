@@ -141,6 +141,7 @@ const annualSum = rs => sum(rs.filter(r => r.komponenId.indexOf('kmp_thn_') === 
     // transaksi aktual
     c.sb.postTransaksi({ jenis: 'PENGELUARAN', tanggal: '2026-09-14', unit: 'MI', nominal: 300000, akunId: 'akun_kas1', metode: 'Tunai', status: 'TERCATAT', kategori: 'ATK', subkategori: 'Kertas', penerima: 'Toko' });
     c.sb.postTransaksi({ jenis: 'PENGELUARAN', tanggal: '2026-09-15', unit: 'MI', nominal: 120000, akunId: 'akun_kas1', metode: 'Tunai', status: 'TERCATAT', kategori: 'ATK', penerima: 'Toko B' });
+    srv.sheets['21_KATEGORI_PENGELUARAN'].push(['KAT_LAIN', '99', 'Lainnya', 'Aktif']); // [P1_20 D] kategori wajib ada di master (validasi server); tetap tanpa anggaran
     c.sb.postTransaksi({ jenis: 'PENGELUARAN', tanggal: '2026-09-16', unit: 'MI', nominal: 77000, akunId: 'akun_kas1', metode: 'Tunai', status: 'TERCATAT', kategori: 'Lainnya', penerima: 'X' });
     c.sb.postTransaksi({ jenis: 'PENGELUARAN', tanggal: '2026-09-17', unit: 'TK', nominal: 50000, akunId: 'akun_kas1', metode: 'Tunai', status: 'TERCATAT', kategori: 'ATK', penerima: 'Y' });
     const t2 = c.sb.postTransaksi({ jenis: 'PENERIMAAN', tanggal: '2026-09-18', unit: 'MI', nominal: 500000, akunId: 'akun_kas1', metode: 'Tunai', status: 'TERCATAT', sumber: 'Pembayaran Siswa' });

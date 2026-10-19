@@ -291,6 +291,7 @@ const kpiPack = s => ({ overall: s.overall, st: s.overallStatus, rows: s.rows.ma
     rec('RAB-33', 'lintas periode (karakterisasi, NEEDS_POLICY_DECISION)', same.ok && same.data.results[0].code === 'CREATED' && O.terpetakanPeriodeLain === 60000 && O.realisasiDisetujui === 1100000 && Sp.realisasiDisetujui === 0 && lineS.realisasi === 60000 && invRS(O),
       'alokasi transaksi Okt -> RAB Sep DITERIMA server (belum ada aturan periode); Beranda Okt: garis periode lain ' + O.terpetakanPeriodeLain + ', bukan B; realisasi garis Sep (I04) ' + lineS.realisasi + ' (temuan T5)');
     // RAB Sep, transaksi Okt tanpa alokasi: aturan kategori tidak mencocokkan lintas bulan
+    if (!srv.sheets['21_KATEGORI_PENGELUARAN'].some(r => r[2] === 'Honor')) srv.sheets['21_KATEGORI_PENGELUARAN'].push(['KAT_HONOR', '9', 'Honor', 'Aktif']); // [P1_20 D] kategori wajib ada di master (validasi server)
     const t9 = safe(() => srv.sb.opCreateExpense({ tanggal: '2026-10-13', unit: 'MI', nominal: 5000, akunId: 'akun_kas1', metode: 'Tunai', kategori: 'Honor', penerima: 'Guru A', clientRequestId: 'lb_t9' }));
     srv.sheets['08_ANGGARAN'] = srv.sheets['08_ANGGARAN'].filter(r => r[0] !== 'ang_D'); // hanya garis Honor September yang tersisa
     const M2 = srv.sb.rabMatchAll_(D_of(srv)), p9 = t9.ok && M2.perTrx[t9.data.id];

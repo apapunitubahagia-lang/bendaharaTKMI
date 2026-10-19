@@ -1,0 +1,13 @@
+# Bukti SEBELUM perbaikan P1_20 D, commit cbca39f (sandbox Node)
+FAIL KP-01 [kategori tidak ada di master / kosong -> ditolak server (INVALID_CATEGORY / VALIDATION_ERROR), tidak ada baris] SUCCESS | SUCCESS | Transaksi berhasil dibuat
+FAIL KP-02 [beda huruf/spasi -> diterima dan disimpan sebagai nama kanonik master ("ATK")] SUCCESS ["  atk ",""]
+FAIL KP-03 [kategori Nonaktif -> ditolak INVALID_CATEGORY] SUCCESS
+FAIL KP-04 [master kategori tidak tersedia / tanpa kategori aktif -> gagal tertutup KATEGORI_MASTER_TIDAK_TERSEDIA, tidak ada baris] SUCCESS / SUCCESS
+FAIL KP-05 [subkategori bukan milik kategori -> INVALID_SUBCATEGORY; subkategori valid -> nama kanonik] SUCCESS / SUCCESS ["ATK","kertas"]
+FAIL KP-06 [batch (opCreateTxBatch): kategori tidak valid ditolak per item, yang valid tersimpan] ["SUCCESS","SUCCESS"]
+FAIL KP-07 [koreksi: kategori tidak valid / dikosongkan / subkategori asing ditolak; subkategori valid tersimpan kanonik] SUCCESS | SUCCESS | SUCCESS | SUCCESS | ["","KERTAS"]
+PASS KP-08 [transaksi historis berkategori di luar master ("Lainnya"): koreksi field lain tetap boleh, kategori TIDAK diubah otomatis] SUCCESS ["Lainnya",""]
+FAIL KP-09 [penerimaan tanpa kategori tidak terpengaruh; ganti jenis ke PENGELUARAN tanpa kategori valid ditolak, dengan kategori valid boleh] SUCCESS | SUCCESS
+FAIL KP-10 [audit baca-saja kategori historis: daftar transaksi perlu tinjauan (kategori di luar master aktif), tanpa menulis; AUDITOR boleh, pengguna asing ditolak] {"a":"TIDAK_ADA","b":"TIDAK_ADA"}
+
+PASS=1 FAIL=9 INFO=0

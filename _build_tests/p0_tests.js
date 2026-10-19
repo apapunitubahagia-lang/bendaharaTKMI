@@ -48,13 +48,13 @@ async function bootClient(srv, opts) {
   { // TC-HDR-02c: header wajib hilang -> SCHEMA_MISMATCH, bukan data bergeser
     const srv = makeServer(); srv.sheets['05_TRANSAKSI'][0][col(srv, '05_TRANSAKSI', 'nominal')] = 'nominalX';
     const r = safe(() => srv.sb.opGetTransactions({}));
-    const w = safe(() => srv.sb.opCreateExpense({ tanggal: '2026-09-11', unit: 'MI', nominal: 1000, akunId: 'akun_kas1', metode: 'Tunai', clientRequestId: 'hdr02c' }));
+    const w = safe(() => srv.sb.opCreateExpense({ tanggal: '2026-09-11', unit: 'MI', nominal: 1000, akunId: 'akun_kas1', metode: 'Tunai', kategori: 'ATK', clientRequestId: 'hdr02c' }));
     rec('P0A-03', 'TC-HDR-02', r.ok === false && r.code === 'SCHEMA_MISMATCH' && w.ok === false && w.code === 'SCHEMA_MISMATCH' && cnt(srv, '05_TRANSAKSI') === 2, J({ r: [r.ok, r.code], w: [w.ok, w.code] }));
   }
   { // TC-HDR-03: urutan kolom 26_USER_ACCESS ditukar -> role tetap benar
     const srv = makeServer(); swapCols(srv, '26_USER_ACCESS', 'email', 'nama'); swapCols(srv, '26_USER_ACCESS', 'role', 'unit');
     const id = safe(() => srv.sb.getCurrentUserIdentity());
-    const w = safe(() => srv.sb.opCreateExpense({ tanggal: '2026-09-11', unit: 'MI', nominal: 1000, akunId: 'akun_kas1', metode: 'Tunai', clientRequestId: 'hdr03' }));
+    const w = safe(() => srv.sb.opCreateExpense({ tanggal: '2026-09-11', unit: 'MI', nominal: 1000, akunId: 'akun_kas1', metode: 'Tunai', kategori: 'ATK', clientRequestId: 'hdr03' }));
     rec('P0A-04', 'TC-HDR-03', id.authorized === true && id.role === 'BENDAHARA' && w.ok === true, J({ role: id.role, auth: id.authorized, w: w.code }));
   }
   { // TC-HDR-03b: kolom role hilang -> gagal tertutup
@@ -142,7 +142,7 @@ async function bootClient(srv, opts) {
   }
   { // TC-TRX-06 (server): lock tidak didapat -> LOCK_TIMEOUT, tidak ada baris
     const srv = makeServer(); srv.state.lockFail = true;
-    const r = srv.sb.opCreateExpense({ tanggal: '2026-09-11', unit: 'MI', nominal: 1000, akunId: 'akun_kas1', metode: 'Tunai', clientRequestId: 'lock1' });
+    const r = srv.sb.opCreateExpense({ tanggal: '2026-09-11', unit: 'MI', nominal: 1000, akunId: 'akun_kas1', metode: 'Tunai', kategori: 'ATK', clientRequestId: 'lock1' });
     rec('P0B-09', 'TC-TRX-06', r.ok === false && r.code === 'LOCK_TIMEOUT' && cnt(srv, '05_TRANSAKSI') === 2, r.code);
   }
   { // TC-FAIL-02: respons hilang setelah server menulis -> retry tidak menggandakan transaksi maupun audit
@@ -167,7 +167,7 @@ async function bootClient(srv, opts) {
   }
   { // GAP-013: baris audit engine memuat aktor terverifikasi
     const srv = makeServer();
-    const r = srv.sb.opCreateExpense({ tanggal: '2026-09-11', unit: 'MI', nominal: 4321, akunId: 'akun_kas1', metode: 'Tunai', clientRequestId: 'act1' });
+    const r = srv.sb.opCreateExpense({ tanggal: '2026-09-11', unit: 'MI', nominal: 4321, akunId: 'akun_kas1', metode: 'Tunai', kategori: 'ATK', clientRequestId: 'act1' });
     const a = audits(srv).find(x => x[2] === 'CREATE_TRANSACTION' && x[6] === (r.data && r.data.id));
     rec('P0B-13', 'GAP-013', !!a && a[5] === 'google:bendahara@x.id', 'sumber audit=' + (a && a[5]));
   }

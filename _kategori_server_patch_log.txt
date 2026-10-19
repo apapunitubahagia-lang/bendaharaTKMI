@@ -1,0 +1,3 @@
+expenseKategoriCheck_
+createTransactionWithAllocations_ kategori
+updateTransaction_ kategori
