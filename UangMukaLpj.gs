@@ -306,7 +306,15 @@ function opLinkLpj(p) {
     });
   } catch (e) { return sgErr_(e, 'WRITE_FAILED', 'Gagal menautkan LPJ'); }
 }
-/* Satu LPJ = paling banyak satu transaksi: clientRequestId transaksi deterministik 'lpj:<lpjId>' (bukan dari klien). */
+/* Satu LPJ = paling banyak satu transaksi AKTIF: clientRequestId transaksi deterministik (bukan dari klien) 'lpj:<lpjId>', dan
+   [P1_24] 'lpj:<lpjId>:<n>' setelah n kali tautan dibatalkan (opUnlinkLpj). Generasi baru hanya boleh membuat transaksi bila semua
+   transaksi generasi sebelumnya sudah diarsip; transaksi lama yang masih aktif -> TRANSAKSI_LPJ_SEBELUMNYA_AKTIF (tautkan ulang lewat
+   opLinkLpj atau arsipkan dulu). Sebelumnya: replay 'lpj:<lpjId>' menautkan ulang LPJ ke transaksi lama walaupun sudah diarsip. */
+function umLpjCrid_(lpjId) {
+  var n = umRows_('34_LPJ_TAUTAN').filter(function (x) { return umS_(x.lpjId) === umS_(lpjId) && umS_(x.status) === 'DIBATALKAN'; }).length;
+  var prev = []; for (var i = 0; i < n; i++) prev.push(i ? 'lpj:' + lpjId + ':' + i : 'lpj:' + lpjId);
+  return { crid: n ? 'lpj:' + lpjId + ':' + n : 'lpj:' + lpjId, sebelumnya: prev };
+}
 function opCreateExpenseFromLpj(p) {
   var g = opGate_(OP_WRITE_ROLES_); if (!g.ok) return g;
   var r0 = umReady_(); if (r0) return r0;
@@ -314,13 +322,17 @@ function opCreateExpenseFromLpj(p) {
   try {
     return withLock_(function () {
       var h = umLpjAktif_(p.lpjId); if (!h) return umErr_('NOT_FOUND', 'LPJ tidak ditemukan / diarsipkan: ' + p.lpjId, 'lpjId');
-      var crid = 'lpj:' + umS_(h.o.id), cur = umS_(h.o.transaksiId);
+      var gen = umLpjCrid_(umS_(h.o.id)), crid = gen.crid, cur = umS_(h.o.transaksiId);
       if (cur) {
         var idem = checkIdempotency_(crid);
         if (idem.status === 'found' && idem.record.resultRefId === cur) return okResult_('Request sudah pernah diproses (idempotent replay)', { lpjId: umS_(h.o.id), transaksiId: cur, replay: true });
         return umErr_('LPJ_SUDAH_BERTAUT', 'LPJ sudah bertaut transaksi ' + cur, 'lpjId');
       }
       var e0 = umLinkCheck_(h, null); if (e0) return e0;
+      for (var gi = 0; gi < gen.sebelumnya.length; gi++) {
+        var ip = checkIdempotency_(gen.sebelumnya[gi]), tp = ip.status === 'found' ? getTransactionRaw_(ip.record.resultRefId) : null;
+        if (tp && !tp.archivedAt) return umErr_('TRANSAKSI_LPJ_SEBELUMNYA_AKTIF', 'Transaksi ' + tp.id + ' yang dahulu dibuat dari LPJ ini masih aktif; tautkan ulang (Tautkan) atau arsipkan dulu sebelum membuat transaksi baru', 'lpjId');
+      }
       var tgl = umS_(h.o.tanggalNota) || umDate_(h.o.tanggal); if (!tgl) return umErr_('VALIDATION_ERROR', 'tanggal nota LPJ tidak valid', 'tanggalNota');
       var t = opCreateExpense({ tanggal: tgl, unit: umS_(p.unit), nominal: umN_(h.o.nominal), akunId: umS_(p.akunId), metode: umS_(p.metode) || 'Tunai', kategori: umS_(p.kategori), subkategori: umS_(p.subkategori),
         penerima: umS_(h.o.item) || 'LPJ ' + umS_(h.o.id), catatan: 'Dari LPJ ' + umS_(h.o.id), sumber: 'lpj', clientRequestId: crid });

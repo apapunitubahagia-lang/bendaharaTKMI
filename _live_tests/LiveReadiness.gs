@@ -119,3 +119,103 @@ function ltPostflight() {
   res.lulus = diff.length === 0 && res.mutasiIdentik;
   return ltLog_('ltPostflight', res);
 }
+
+/* ======================= [P1_24] tambahan harness (HANYA salinan uji; semua lewat ltGuard_) =======================
+ * Urutan yang disarankan (lihat P1_24 §3-§5):
+ *   ltIdentitasProbe()                         - baca-saja: apa yang terbaca Session untuk akun ini (bahan keputusan GAP-005)
+ *   ltKewajibanBekuAudit()                     - baca-saja: opKewajibanBekuAudit + bukti isi sheet tidak berubah (D-1)
+ *   ltLpjSetupPreview()                        - baca-saja: pratinjau skema LPJ + snapshot isi sheet (Script Property)
+ *   ltLpjSetupApply(konfirmasi, idSalinan)     - SATU-SATUNYA fungsi yang menulis: opUangMukaLpjSetup pada salinan, lalu
+ *                                                verifikasi data lama identik + idempoten. Butuh pratinjau & konfirmasi ganda.
+ *   ltLpjRollbackCek()                         - baca-saja: apakah sheet/kolom LPJ baru sudah berisi data (penentu cara rollback)
+ * Tidak ada fungsi yang menghapus sheet/kolom; rollback skema = buang salinan sekali pakai (P1_15 P2). */
+var LT_PROP_LPJ_SNAP_ = 'LIVE_TEST_LPJ_SNAPSHOT';
+var LT_ISI_SHEETS_ = LT_SHEETS_.concat(['01_SISWA', '02_KOMPONEN', '03_TARIF', '07_AKUN', '21_KATEGORI_PENGELUARAN']);
+/* isi tiap sheet: jumlah kolom & baris + hash nilai (deteksi perubahan, bukan pengaman kriptografis). cols dibatasi untuk
+   membandingkan hanya kolom yang sudah ada sebelum setup (kolom aditif boleh bertambah di kanan). */
+function ltIsi_(ss, colsMap) {
+  var out = {};
+  LT_ISI_SHEETS_.forEach(function (n) {
+    var sh = ss.getSheetByName(n); if (!sh) { out[n] = null; return; }
+    var lr = sh.getLastRow(), lc = sh.getLastColumn(), c = colsMap && colsMap[n] ? Math.min(colsMap[n], lc) : lc;
+    var vals = lr > 0 && c > 0 ? sh.getRange(1, 1, lr, c).getValues() : [];
+    out[n] = { cols: lc, rows: Math.max(0, lr - 1), hash: oblHash_(JSON.stringify(vals)) };
+  });
+  return out;
+}
+function ltIsiBanding_(a, b) {
+  var beda = [];
+  Object.keys(a).forEach(function (n) {
+    var x = a[n], y = b[n];
+    if (!x && !y) return;
+    if (!x || !y || x.rows !== y.rows || x.hash !== y.hash) beda.push(n + ': ' + JSON.stringify(x && { rows: x.rows, hash: x.hash }) + ' -> ' + JSON.stringify(y && { rows: y.rows, hash: y.hash }));
+  });
+  return beda;
+}
+function ltColsDari_(isi) { var m = {}; Object.keys(isi).forEach(function (n) { if (isi[n]) m[n] = isi[n].cols; }); return m; }
+
+/* GAP-005: identitas yang terlihat server untuk akun yang menjalankan fungsi ini. Jalankan dari editor (akun pemilik salinan) DAN
+   lewat web app uji dengan tiap akun uji; catat hasil + konfigurasi executeAs/access. Email TIDAK dicatat utuh (hanya domain). */
+function ltIdentitasProbe() {
+  var ss = ltGuard_();
+  var act = '', eff = '', errAct = '';
+  try { act = String(Session.getActiveUser().getEmail() || ''); } catch (e) { errAct = String(e && e.message || e); }
+  try { eff = String(Session.getEffectiveUser().getEmail() || ''); } catch (e2) { eff = ''; }
+  var dom = function (e) { var i = e.indexOf('@'); return i === -1 ? '' : e.slice(i + 1).toLowerCase(); };
+  var id = getCurrentUserIdentity();
+  var diag = !act ? 'EMAIL_AKTIF_KOSONG: server gagal tertutup (AUTH_REQUIRED). Umum terjadi pada Gmail konsumen/luar domain dengan executeAs=USER_DEPLOYING; jangan dianggap bug - lihat P1_24 §2.2'
+    : (act.toLowerCase() === eff.toLowerCase() ? 'EMAIL_AKTIF = EMAIL_EFEKTIF: dijalankan pemilik atau executeAs=USER_ACCESSING (pengguna butuh akses edit spreadsheet -> kontrol server dapat dilewati)'
+      : 'EMAIL_AKTIF != EMAIL_EFEKTIF: executeAs=USER_DEPLOYING dengan identitas pengunjung terbaca (konfigurasi yang dituju)');
+  return ltLog_('ltIdentitasProbe', { spreadsheetId: ss.getId(), emailAktifTerbaca: !!act, domainAktif: dom(act), emailEfektifTerbaca: !!eff, domainEfektif: dom(eff),
+    aktifSamaDenganEfektif: !!act && act.toLowerCase() === eff.toLowerCase(), galatGetActiveUser: errAct, identitasServer: { authorized: id.authorized, code: id.code, role: id.role || null }, diagnosis: diag });
+}
+
+/* D-1: audit kewajiban beku pada salinan, dengan bukti baca-saja (isi seluruh sheet terpantau identik sebelum/sesudah). */
+function ltKewajibanBekuAudit() {
+  var ss = ltGuard_(), a = ltIsi_(ss), r = opKewajibanBekuAudit(), b = ltIsi_(ss, ltColsDari_(a)), beda = ltIsiBanding_(a, b);
+  return ltLog_('ltKewajibanBekuAudit', { ok: !!(r && r.ok), code: r && r.code, ringkasan: r && r.data && r.data.ringkasan, jumlahPerJenis: r && r.data && r.data.jumlahPerJenis,
+    konsistensiData: r && r.data && r.data.konsistensiData, pengecualian: r && r.data && r.data.pengecualian, sheetBerubah: beda, bacaSaja: beda.length === 0 });
+}
+
+/* D-LPJ langkah 1 (baca-saja): pratinjau + snapshot isi. */
+function ltLpjSetupPreview() {
+  var ss = ltGuard_(), plan = opUangMukaLpjPlan();
+  if (!plan || !plan.ok) return ltLog_('ltLpjSetupPreview', { ok: false, code: plan && plan.code, message: plan && plan.message });
+  var snap = { at: new Date().toISOString(), spreadsheetId: ss.getId(), isi: ltIsi_(ss), mutasi: ltMutasiStatus_(ss), plan: plan.data.plan };
+  PropertiesService.getScriptProperties().setProperty(LT_PROP_LPJ_SNAP_, JSON.stringify(snap));
+  return ltLog_('ltLpjSetupPreview', { ok: true, plan: plan.data.plan, konfirmasi: plan.data.konfirmasi, terekonsiliasi: snap.mutasi.terekonsiliasi,
+    langkahBerikut: 'Periksa plan. Buat salinan cadangan (File > Make a copy). Lalu ltLpjSetupApply("' + plan.data.konfirmasi + '", "' + ss.getId() + '")' });
+}
+
+/* D-LPJ langkah 2 (MENULIS SKEMA, hanya salinan): konfirmasi ganda + isi tidak berubah sejak pratinjau; setelah setup:
+   data lama identik (kolom lama), TEREKONSILIASI identik, panggilan kedua UNCHANGED. */
+function ltLpjSetupApply(konfirmasi, idSalinan) {
+  var ss = ltGuard_();
+  if (String(idSalinan || '') !== ss.getId()) throw new Error('SETUP DIBATALKAN: argumen kedua harus ID salinan aktif (' + ss.getId() + ')');
+  var snap = JSON.parse(PropertiesService.getScriptProperties().getProperty(LT_PROP_LPJ_SNAP_) || 'null');
+  if (!snap || snap.spreadsheetId !== ss.getId()) throw new Error('SETUP DIBATALKAN: jalankan ltLpjSetupPreview() lebih dulu pada salinan ini');
+  var cols = ltColsDari_(snap.isi), sebelum = ltIsiBanding_(snap.isi, ltIsi_(ss, cols));
+  if (sebelum.length) throw new Error('SETUP DIBATALKAN: data berubah sejak pratinjau (' + sebelum.join('; ') + ') - ulangi ltLpjSetupPreview()');
+  var r1 = opUangMukaLpjSetup(konfirmasi);
+  var r2 = r1 && r1.ok ? opUangMukaLpjSetup(konfirmasi) : null;
+  var sesudah = ltIsiBanding_(snap.isi, ltIsi_(ss, cols)), mut = ltMutasiStatus_(ss);
+  /* 13_AUDIT_LOG diharapkan bertambah (audit SCHEMA_*); baris data lain tidak boleh berubah */
+  var bedaData = sesudah.filter(function (x) { return x.indexOf('13_AUDIT_LOG') !== 0; });
+  var res = { setup: r1 && { ok: r1.ok, code: r1.code, data: r1.data }, ulang: r2 && { ok: r2.ok, unchanged: !!(r2.data && r2.data.unchanged) },
+    dataLamaBerubah: bedaData, auditLogBertambah: sesudah.some(function (x) { return x.indexOf('13_AUDIT_LOG') === 0; }),
+    terekonsiliasi: [snap.mutasi.terekonsiliasi, mut.terekonsiliasi], mutasiIdentik: mut.hash === snap.mutasi.hash,
+    rollback: 'Tidak ada hapus otomatis. Salinan uji: buang salinan. Bila perlu pada salinan yang dipertahankan: jalankan ltLpjRollbackCek(); sheet 32/33/34 & kolom 19_LPJ baru hanya boleh dihapus MANUAL bila kosong (kode lama tidak membacanya).' };
+  res.lulus = !!(r1 && r1.ok) && !!(r2 && r2.ok && r2.data && r2.data.unchanged) && bedaData.length === 0 && res.mutasiIdentik;
+  return ltLog_('ltLpjSetupApply', res);
+}
+
+/* D-LPJ rollback (baca-saja): isi sheet & kolom LPJ baru. */
+function ltLpjRollbackCek() {
+  var ss = ltGuard_(), out = { sheet: {}, kolom19: {} };
+  Object.keys(UM_SHEETS_).forEach(function (s) { var sh = ss.getSheetByName(s); out.sheet[s] = sh ? Math.max(0, sh.getLastRow() - 1) : null; });
+  var m = sgModel_('19_LPJ', ['id']);
+  if (m) UM_LPJ_COLS_.forEach(function (c) { var i = m.live.indexOf(c); out.kolom19[c] = i === -1 ? null : m.values.filter(function (r) { return String(r[i]) !== ''; }).length; });
+  out.kosong = Object.keys(out.sheet).every(function (s) { return !out.sheet[s]; }) && Object.keys(out.kolom19).every(function (c) { return !out.kolom19[c]; });
+  out.catatan = out.kosong ? 'Skema LPJ belum dipakai: aman dihapus MANUAL (atau buang salinan).' : 'Skema LPJ SUDAH berisi data: jangan dihapus; rollback = buang salinan / revert kode (kolom tambahan tidak dibaca kode lama).';
+  return ltLog_('ltLpjRollbackCek', out);
+}
