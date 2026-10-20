@@ -33,7 +33,8 @@ var UM_LPJ_COLS_ = ['statusLpj', 'tanggalNota', 'tanggalDiterima', 'tanggalVerif
 var UM_CONFIRM_ = 'BUAT_SKEMA_UANG_MUKA_LPJ';
 var UM_VERIFIKASI_AKTIF_ = false; // [GAP-005/D-T7] verifikasi operasional NONAKTIF; uji sandbox menyalakannya secara eksplisit
 var UM_VERIFIKATOR_ROLES_ = ['KEPALA_SEKOLAH', 'YAYASAN'];
-var UM_STATUS_AKHIR_ = { SELESAI: true };
+var UM_STATUS_AKHIR_ = { SELESAI: true }; // tidak menerima pengembalian lagi
+var UM_STATUS_TUTUP_LPJ_ = { SELESAI: true, DIBATALKAN: true }; // [P1_23] tidak menerima LPJ baru
 
 /* ---------- utilitas ---------- */
 function umS_(v) { return opStr_(v); }
@@ -78,13 +79,15 @@ function umPosisi_(u) {
 /* status uang muka diturunkan dari posisi (aturan tunggal) */
 function umStatusDari_(u, p) {
   if (p.adaDitolak) return 'PERLU_PERBAIKAN';
-  if (p.semuaTerverifikasi && Math.abs(p.saldo) <= 0.5) return 'SELESAI';
+  var tanpaLpjTerbuka = p.lpj.every(function (l) { return umS_(l.statusLpj) === 'DIVERIFIKASI'; }); // [P1_23] termasuk: tanpa LPJ sama sekali (dikembalikan penuh)
+  if (tanpaLpjTerbuka && Math.abs(p.saldo) <= 0.5) return 'SELESAI';
   if (p.semuaTerverifikasi) return 'DIVERIFIKASI';
   if (p.adaDiterima) return 'LPJ_DITERIMA';
   return 'DICAIRKAN';
 }
 function umSegarkanStatus_(g, umId, sebab) {
   var h = umFind_('32_UANG_MUKA', umId); if (!h) return null;
+  if (umS_(h.o.status) === 'DIBATALKAN') return null; // [P1_23] DIBATALKAN tetap (saldo tetap dilaporkan sampai dikembalikan)
   var p = umPosisi_(h.o), st = umStatusDari_(h.o, p);
   if (st === umS_(h.o.status)) return null;
   var before = { status: umS_(h.o.status) };
@@ -204,7 +207,7 @@ function opLpjAjukan(p) {
       if (umId) {
         if (umS_(h.o.transaksiId)) return umErr_('LPJ_SUDAH_BERTAUT', 'LPJ sudah bertaut transaksi ' + h.o.transaksiId + '; tidak dapat sekaligus mempertanggungjawabkan uang muka (hitung ganda)', 'uangMukaId');
         var u = umFind_('32_UANG_MUKA', umId); if (!u) return umErr_('NOT_FOUND', 'uang muka tidak ditemukan: ' + umId, 'uangMukaId');
-        if (UM_STATUS_AKHIR_[umS_(u.o.status)]) return umErr_('STATUS_TIDAK_VALID', 'uang muka sudah ' + u.o.status, 'uangMukaId');
+        if (UM_STATUS_TUTUP_LPJ_[umS_(u.o.status)]) return umErr_('STATUS_TIDAK_VALID', 'uang muka sudah ' + u.o.status, 'uangMukaId');
         if (tn < umS_(u.o.tanggalCair)) return umErr_('VALIDATION_ERROR', 'tanggalNota sebelum tanggal pencairan uang muka', 'tanggalNota');
         var pos = umPosisi_(u.o), lain = pos.lpj.filter(function (l) { return umS_(l.id) !== umS_(h.o.id); }).reduce(function (s, l) { return s + umN_(l.nominal); }, 0);
         if (lain + umN_(h.o.nominal) + pos.pengembalian > umN_(u.o.nominalCair) + 0.5) return umErr_('MELEBIHI_UANG_MUKA', 'Σ LPJ + pengembalian melebihi nominal uang muka', 'nominal');
@@ -366,10 +369,13 @@ function opUangMukaLaporan(opts) {
   try {
     var per = umS_(opts.periode), list = umRows_('32_UANG_MUKA').map(function (u) {
       var p = umPosisi_(u);
-      return { id: umS_(u.id), kegiatan: umS_(u.kegiatan), status: umS_(u.status), statusTurunan: umStatusDari_(u, p), periodeCair: plPeriodeOfDate_(umS_(u.tanggalCair)), kasKeluar: umN_(u.nominalCair),
+      var dilaporkan = p.lpj.filter(function (l) { return ['DIAJUKAN', 'DITERIMA', 'DIVERIFIKASI'].indexOf(umS_(l.statusLpj)) !== -1; }).reduce(function (s, l) { return s + umN_(l.nominal); }, 0);
+      return { id: umS_(u.id), kegiatan: umS_(u.kegiatan), status: umS_(u.status), statusTurunan: umS_(u.status) === 'DIBATALKAN' ? 'DIBATALKAN' : umStatusDari_(u, p), periodeCair: plPeriodeOfDate_(umS_(u.tanggalCair)), kasKeluar: umN_(u.nominalCair),
+        /* [P1_23] pemisahan: (1) arus kas keluar, (2) pengeluaran aktual dilaporkan (nota LPJ diajukan/diterima/diverifikasi), (3) pengeluaran terverifikasi, (4) saldo belum dipertanggungjawabkan */
+        arusKasKeluar: umN_(u.nominalCair), pengeluaranAktualDilaporkan: dilaporkan, pengeluaranTerverifikasi: p.notaTerverifikasi,
         notaTerverifikasi: p.notaTerverifikasi, notaBelumTerverifikasi: p.notaBelumTerverifikasi, pengembalian: p.pengembalian, saldoBelumDipertanggungjawabkan: p.saldo };
     }).filter(function (x) { return !per || x.periodeCair === per; });
-    var tot = list.reduce(function (s, x) { ['kasKeluar', 'notaTerverifikasi', 'notaBelumTerverifikasi', 'pengembalian', 'saldoBelumDipertanggungjawabkan'].forEach(function (k) { s[k] = (s[k] || 0) + x[k]; }); return s; }, {});
+    var tot = list.reduce(function (s, x) { ['kasKeluar', 'arusKasKeluar', 'pengeluaranAktualDilaporkan', 'pengeluaranTerverifikasi', 'notaTerverifikasi', 'notaBelumTerverifikasi', 'pengembalian', 'saldoBelumDipertanggungjawabkan'].forEach(function (k) { s[k] = (s[k] || 0) + x[k]; }); return s; }, {});
     return okResult_('Laporan uang muka (read-only)', { periode: per || '*', uangMuka: list, total: tot,
       dampakFccBds03: { pencairanTercatatSebagaiPengeluaranAktual: tot.kasKeluar || 0, bebanTerverifikasiMenurutOpsiC: tot.notaTerverifikasi || 0, pengembalianTercatatSebagaiPenerimaan: tot.pengembalian || 0,
         selisihPengeluaranBilaBasisBeban: (tot.kasKeluar || 0) - (tot.notaTerverifikasi || 0),
@@ -391,4 +397,56 @@ function umLpjPublikTolak_(live, cur, next, op) {
   var ti = live.indexOf('transaksiId');
   if (ti !== -1 && next && opStr_(next[ti]) !== c('transaksiId')) return { code: 'LPJ_TERKUNCI', message: 'Tautan transaksi LPJ uang muka / terverifikasi hanya lewat opLinkLpj/opUnlinkLpj' };
   return null;
+}
+
+/* ---------- [P1_23] pembatalan uang muka ---------- */
+/* DIBATALKAN = uang muka tidak akan dipertanggungjawabkan lewat LPJ (mis. kegiatan batal). Jejak pencairan TIDAK dihapus: transaksi
+   kas pencairan tetap, saldo tetap dilaporkan dan diselesaikan lewat opUangMukaKembali (pengembalian tetap diterima). Ditolak bila
+   sudah ada LPJ diajukan/diterima/diverifikasi untuk uang muka ini (harus diselesaikan/ditolak dulu). */
+function opUangMukaBatal(p) {
+  var g = opGate_(OP_WRITE_ROLES_); if (!g.ok) return g;
+  var r0 = umReady_(); if (r0) return r0;
+  p = p && typeof p === 'object' ? p : {};
+  var alasan = umS_(p.alasan); if (alasan.length < 10) return umErr_('ALASAN_WAJIB', 'alasan pembatalan wajib (min. 10 karakter)', 'alasan');
+  try {
+    return withLock_(function () {
+      var h = umFind_('32_UANG_MUKA', p.uangMukaId); if (!h) return umErr_('NOT_FOUND', 'uang muka tidak ditemukan: ' + p.uangMukaId, 'uangMukaId');
+      var st = umS_(h.o.status);
+      if (st === 'DIBATALKAN') return okResult_('Tidak berubah (sudah DIBATALKAN)', { id: umS_(h.o.id), status: st, unchanged: true });
+      if (p.expect && Object.prototype.hasOwnProperty.call(p.expect, 'status') && umS_(p.expect.status) !== st) return umErr_('CONFLICT', 'Status uang muka berubah (sekarang: ' + st + ')', 'status');
+      if (st === 'SELESAI') return umErr_('STATUS_TIDAK_VALID', 'uang muka SELESAI tidak dapat dibatalkan', 'uangMukaId');
+      var pos = umPosisi_(h.o), aktif = pos.lpj.filter(function (l) { return ['DIAJUKAN', 'DITERIMA', 'DIVERIFIKASI'].indexOf(umS_(l.statusLpj)) !== -1; });
+      if (aktif.length) return umErr_('LPJ_MASIH_AKTIF', 'Ada LPJ ' + aktif.map(function (l) { return umS_(l.id) + ' (' + umS_(l.statusLpj) + ')'; }).join(', ') + ' untuk uang muka ini; selesaikan/tolak dulu', 'uangMukaId');
+      var before = { status: st, alasanStatus: umS_(h.o.alasanStatus) }, now = new Date().toISOString();
+      umUpdate_(h, { status: 'DIBATALKAN', alasanStatus: alasan.slice(0, 300), updatedAt: now, updatedBy: g.identity.email });
+      try { umAudit_(g, [['UANG_MUKA_BATAL', before, { status: 'DIBATALKAN', alasan: alasan, saldoBelumDipertanggungjawabkan: pos.saldo, transaksiCairId: umS_(h.o.transaksiCairId) }, umS_(h.o.id)]]); }
+      catch (e) { umUpdate_(h, before); return umErr_('AUDIT_FAILED', 'Audit gagal; status dipulihkan', null); }
+      return okResult_('Uang muka dibatalkan (pencairan & saldo tetap tercatat)', { id: umS_(h.o.id), status: 'DIBATALKAN', saldoBelumDipertanggungjawabkan: pos.saldo });
+    });
+  } catch (e) { return sgErr_(e, 'WRITE_FAILED', 'Gagal membatalkan uang muka'); }
+}
+
+/* ---------- [P1_23] dampak FCC / BDS03: before/after (AUDIT SAJA, formula tidak diubah) ---------- */
+/* sekarang = opFinancialControl (pencairan = PENGELUARAN aktual penuh; pengembalian = PENERIMAAN).
+   simulasi basis beban opsi C (tidak diterapkan): pengeluaran = sekarang - pencairan periode + nota LPJ DIVERIFIKASI ber-tanggalNota
+   di periode; penerimaan = sekarang - pengembalian periode. BDS03: jumlah transaksi pencairan yang ikut populasi PENGELUARAN. */
+function opUangMukaDampakFcc(opts) {
+  var g = opGate_(OP_READ_ROLES_); if (!g.ok) return g;
+  var r0 = umReady_(); if (r0) return r0;
+  opts = opts && typeof opts === 'object' ? opts : {};
+  var per = umS_(opts.periode); if (!plIsPeriodLabel_(per)) return umErr_('VALIDATION_ERROR', 'periode wajib "<Bulan> <Tahun>"', 'periode');
+  try {
+    var f = opFinancialControl(per); if (!f || !f.ok) return f;
+    var trxArsip = {}; readTrxRows_().forEach(function (t) { if (t.archivedAt) trxArsip[String(t.id)] = true; });
+    var cair = umRows_('32_UANG_MUKA').filter(function (u) { return umS_(u.transaksiCairId) && !trxArsip[umS_(u.transaksiCairId)] && plPeriodeOfDate_(umS_(u.tanggalCair)) === per; });
+    var kembali = umRows_('33_UANG_MUKA_KEMBALI').filter(function (k) { return !trxArsip[umS_(k.transaksiId)] && plPeriodeOfDate_(umS_(k.tanggal)) === per; });
+    var nota = umRows_('19_LPJ').filter(function (l) { return !umS_(l.archivedAt) && umS_(l.uangMukaId) && umS_(l.statusLpj) === 'DIVERIFIKASI' && plPeriodeOfDate_(umS_(l.tanggalNota)) === per; });
+    var sum = function (a, k) { return a.reduce(function (s, x) { return s + umN_(x[k]); }, 0); };
+    var cP = sum(cair, 'nominalCair'), kP = sum(kembali, 'nominal'), nP = sum(nota, 'nominal'), A = f.data.actual;
+    return okResult_('Dampak FCC/BDS03 (audit, read-only)', { periode: per,
+      sekarang: { pengeluaranAktual: A.expensePeriode, penerimaan: A.incomePeriode, posisiKas: A.cashPosition },
+      simulasiBasisBeban: { pengeluaranAktual: A.expensePeriode - cP + nP, penerimaan: A.incomePeriode - kP, posisiKas: A.cashPosition },
+      komponen: { pencairanPeriode: cP, pengembalianPeriode: kP, notaTerverifikasiPeriode: nP, transaksiPencairanDalamPopulasiBds03: cair.length },
+      catatan: 'Audit saja. FCC/BDS03 & 31 KPI tidak diubah; posisi kas tidak berubah pada kedua basis (arus kas tetap sama).', computedAt: new Date().toISOString() });
+  } catch (e) { return sgErr_(e, 'COMPUTE_FAILED', 'Gagal menghitung dampak FCC'); }
 }
