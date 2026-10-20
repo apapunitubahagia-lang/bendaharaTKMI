@@ -93,6 +93,11 @@
     opImportCommit: function (payload) { return callServer('opImportCommit', [payload]); },
     opImportStatus: function (batchId) { return callServer('opImportStatus', [batchId]); },
     opImportReviewList: function (opts) { return callServer('opImportReviewList', [opts || {}]); },
-    opImportReviewResolve: function (payload) { return callServer('opImportReviewResolve', [payload]); }
+    opImportReviewResolve: function (payload) { return callServer('opImportReviewResolve', [payload]); },
+    opUangMukaLpjPlan: function () { return callServer('opUangMukaLpjPlan', []); },
+    opUangMukaLpjSetup: function (confirm) { return callServer('opUangMukaLpjSetup', [confirm]); },
+    opLinkLpj: function (payload) { return callServer('opLinkLpj', [payload]); },
+    opCreateExpenseFromLpj: function (payload) { return callServer('opCreateExpenseFromLpj', [payload]); },
+    opUnlinkLpj: function (payload) { return callServer('opUnlinkLpj', [payload]); }
   };
 })(typeof window !== 'undefined' ? window : globalThis);

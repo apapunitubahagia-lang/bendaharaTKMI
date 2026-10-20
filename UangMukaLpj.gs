@@ -398,6 +398,15 @@ function umLpjPublikTolak_(live, cur, next, op) {
   if (ti !== -1 && next && opStr_(next[ti]) !== c('transaksiId')) return { code: 'LPJ_TERKUNCI', message: 'Tautan transaksi LPJ uang muka / terverifikasi hanya lewat opLinkLpj/opUnlinkLpj' };
   return null;
 }
+/* [P1_23 D-LPJ] Satu jalur efektif: setelah skema tautan disiapkan (34_LPJ_TAUTAN ada), tautan LPJ -> transaksi TIDAK lagi dapat diubah
+   lewat opRecordBatch('lpj') publik (jalur P0-T1 lama + heuristik 62 hari); hanya opLinkLpj / opCreateExpenseFromLpj / opUnlinkLpj.
+   Sebelum skema disiapkan, jalur lama tetap satu-satunya yang berfungsi (operasi baru menjawab SCHEMA_ADDITIVE_REQUIRED). */
+function umLpjTautanLewatOperasi_(live, cur, next) {
+  if (!ss_().getSheetByName('34_LPJ_TAUTAN')) return null;
+  var ti = live.indexOf('transaksiId'); if (ti === -1 || !next) return null;
+  var lama = cur ? opStr_(cur[ti]) : '';
+  return opStr_(next[ti]) !== lama ? { code: 'GUNAKAN_OPERASI_TAUTAN', message: 'Tautan LPJ ke transaksi hanya lewat opLinkLpj / opCreateExpenseFromLpj / opUnlinkLpj (skema tautan aktif)' } : null;
+}
 
 /* ---------- [P1_23] pembatalan uang muka ---------- */
 /* DIBATALKAN = uang muka tidak akan dipertanggungjawabkan lewat LPJ (mis. kegiatan batal). Jejak pencairan TIDAK dihapus: transaksi

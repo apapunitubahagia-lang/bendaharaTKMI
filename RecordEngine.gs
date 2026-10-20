@@ -142,6 +142,7 @@ function opRecordBatchLocked_(g, cfg, key, ops, extraAudits, opts) {
           next[c] = nv;
         });
         if (key === 'lpj' && opts && opts.jalurPublik && typeof umLpjPublikTolak_ === 'function') { var lk = umLpjPublikTolak_(live, cur, next, 'upsert'); if (lk) { res.code = lk.code; res.message = lk.message; cnt.failed++; return; } } // [P1_22 D-LPJ]
+        if (key === 'lpj' && opts && opts.jalurPublik && typeof umLpjTautanLewatOperasi_ === 'function') { var lt = umLpjTautanLewatOperasi_(live, cur, next); if (lt) { res.code = lt.code; res.message = lt.message; cnt.failed++; return; } } // [P1_23 D-LPJ]
         var apv = key === 'anggaran' ? rabApprovalStamp_(live, cur, next, g.identity.email, new Date().toISOString()) : null; // [P1_21 U-5]
         if (!changed) { res.ok = true; res.code = 'UNCHANGED'; cnt.unchanged++; return; }
         if (aIdx[0] !== -1 && opStr_(cur[aIdx[0]]) !== '') { res.code = 'ARCHIVED'; res.message = 'Data sudah diarsipkan dan tidak dapat diubah'; cnt.failed++; return; } // [P1-F]
@@ -167,6 +168,7 @@ function opRecordBatchLocked_(g, cfg, key, ops, extraAudits, opts) {
         nr[idCol] = id;
         keys.forEach(function (k) { nr[live.indexOf(k)] = opCoerce_(cfg, k, row[k]); });
         var apv2 = key === 'anggaran' ? rabApprovalStamp_(live, null, nr, g.identity.email, new Date().toISOString()) : null; // [P1_21 U-5]
+        if (key === 'lpj' && opts && opts.jalurPublik && typeof umLpjTautanLewatOperasi_ === 'function') { var lt2 = umLpjTautanLewatOperasi_(live, null, nr); if (lt2) { res.code = lt2.code; res.message = lt2.message; cnt.failed++; return; } } // [P1_23 D-LPJ]
         if (guard(res, 'upsert', null, opRowObj_(live, nr))) return;
         rows.push(nr); byId[id] = rows.length - 1;
         audits.push(['RECORD_CREATE:' + key, null, opRowObj_(live, nr), id]);

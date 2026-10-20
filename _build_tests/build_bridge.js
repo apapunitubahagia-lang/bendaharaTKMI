@@ -15,7 +15,8 @@ const M = [
   ['opAlokasiPengeluaranSetup', 'confirm'], ['opAlokasiPengeluaranPlan', ''], ['opAlokasiPengeluaranImport', 'payload'], // [P1-RAB]
   ['opPeriodeAktifPlan', ''], ['opPeriodeAktifApply', 'payload'], // [P1-IMP F8]
   ['opSiswaMasterAudit', ''], // [P1-IMP F7/D-IMP-8]
-  ['opImportSetup', 'confirm'], ['opImportPlan', 'payload'], ['opImportCommit', 'payload'], ['opImportStatus', 'batchId'], ['opImportReviewList', 'opts', 'opts || {}'], ['opImportReviewResolve', 'payload'] // [P1-IMP]
+  ['opImportSetup', 'confirm'], ['opImportPlan', 'payload'], ['opImportCommit', 'payload'], ['opImportStatus', 'batchId'], ['opImportReviewList', 'opts', 'opts || {}'], ['opImportReviewResolve', 'payload'], // [P1-IMP]
+  ['opUangMukaLpjPlan', ''], ['opUangMukaLpjSetup', 'confirm'], ['opLinkLpj', 'payload'], ['opCreateExpenseFromLpj', 'payload'], ['opUnlinkLpj', 'payload'] // [P1_23 D-LPJ] verifikasi TIDAK diekspos (GAP-005)
 ];
 const lines = M.map(m => '    ' + m[0] + ': function (' + m[1] + ') { return callServer(\'' + m[0] + '\', [' + (m[2] !== undefined ? m[2] : m[1]) + ']); }');
 sb = sb.replace(anchor, anchor + ',\n    // --- OperationalAPI / RecordEngine / AdminAPI / BuktiDrive / ObligationEngine / FinanceEngine (semua authorized di server) ---\n' + lines.join(',\n'));
