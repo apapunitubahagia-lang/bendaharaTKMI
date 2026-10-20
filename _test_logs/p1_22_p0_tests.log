@@ -1,0 +1,48 @@
+PASS P0A-01 [TC-HDR-02] {"id":"imp_trx_1","jenis":"PENERIMAAN","tanggal":"2026-09-05","unit":"MI","nominal":200000,"akunId":"akun_kas1","metode":"Tunai","status":"TERCATAT","createdAt":"2026-09-05T01:00:00.000Z","catatan":""
+PASS P0A-02 [TC-HDR-02] {"ok":true,"code":"SUCCESS","message":"Transaksi berhasil dibuat","data":{"id":"gas_trx_f02fae0e-bc98-4090-bb8d-307882172784","transaction":{"id":"gas_trx_f02fa
+PASS P0A-03 [TC-HDR-02] {"r":[false,"SCHEMA_MISMATCH"],"w":[false,"SCHEMA_MISMATCH"]}
+PASS P0A-04 [TC-HDR-03] {"role":"BENDAHARA","auth":true,"w":"SUCCESS"}
+PASS P0A-05 [TC-HDR-03] {"id":[false,"SCHEMA_MISMATCH"],"w":[false,"SCHEMA_MISMATCH"]}
+PASS P0A-06 [TC-HDR-04] {"ok":false,"code":"SCHEMA_MISMATCH","message":"SCHEMA_MISMATCH pada 01_SISWA: kolom wajib tidak ditemukan: id, nis, kelas, tahunAjaran, jenisKelamin, waliId, namaWali, kontakWali, tanggalMasuk, tangg
+PASS P0A-07 [kompatibilitas FINAL] {"id":[true,"BENDAHARA","SUCCESS"],"s":true}
+INFO P0A-08 [TC-HDR-01] opSchemaReport atas header FINAL: {"MATCH":21,"EXTRA_COLUMNS":3,"MISMATCH_MISSING_COLUMNS":2,"MISSING_SHEET":4,"SCHEMA_NOT_VERIFIED":1}
+PASS P0A-09 [GAP-002] ["SCHEMA_MISMATCH","SCHEMA_MISMATCH"]
+PASS P0B-01 [TC-CRUD-01] ["nominal","tanggal","unit"]
+PASS P0B-02 [TC-CRUD-02] {"ok":true,"code":"SUCCESS","msg":"Transaksi berhasil diupdate"}
+PASS P0B-03 [GAP-003] [false,"UNKNOWN_FIELD"]
+PASS P0B-04 [TC-CRUD-03] [false,"ALLOCATION_EXCEEDS_TRANSACTION"]
+PASS P0B-05 [GAP-012] status tersimpan=SEBAGIAN_TERALOKASI 
+PASS P0B-06 [GAP-012] setelah alokasi sisa: TERALOKASI SUCCESS
+PASS P0B-07 [TC-TRX-02] [true,true,"Request sudah pernah diproses (idempotent replay)"]
+PASS P0B-08 [TC-TRX-03] ALLOCATION_EXCEEDS_OBLIGATION
+PASS P0B-09 [TC-TRX-06] LOCK_TIMEOUT
+PASS P0B-10 [TC-FAIL-02] transaksi=1 audit=1
+PASS P0B-11 [TC-FAIL-02] baris UI_UJI=1
+PASS P0B-12 [GAP-013] [false,"LOCK_TIMEOUT"]
+PASS P0B-13 [GAP-013] sumber audit=google:bendahara@x.id
+PASS P0B-14 [TC-FAIL-03] [false,"AUDIT_FAILED",null]
+PASS P0B-15 [TC-FAIL-03] [false,"AUDIT_FAILED",null]
+PASS P0B-16 [TC-FAIL-01] toast="Gagal menyimpan: Server tidak terhubung (aplikasi tidak dibuka dari Apps Script) - data TIDAK disimpan." lokal=0
+PASS P0B-17 [TC-FAIL-01] toast1="Pengeluaran dikirim — menunggu konfirmasi server…" toast2="GAGAL menyimpan 1 perubahan ke server: down [SERVER_ERROR]. Perubahan itu TIDAK dihitung sebagai transaksi resmi; periksa lalu coba lagi lewat tautan "tertunda"." resmi=false
+PASS P0B-18 [TC-TRX-06] toast="GAGAL menyimpan 1 perubahan ke server: Gagal mendapatkan lock dalam 10 detik - sistem sedang sibuk, coba lagi [LOCK_TIMEOUT]. Perubahan itu TIDAK dihitung sebagai transaksi resmi; periksa lalu coba lagi lewat tautan "tertunda"."
+PASS P0B-19 [GAP-004] t1="Pengeluaran dikirim — menunggu konfirmasi server…" t2="Tersimpan di server (1 perubahan dikonfirmasi)."
+PASS P0B-20 [GAP-003] tampil=200000 server=200000
+PASS P0C-01 [TC-AUTH-01] server=USER_NOT_FOUND lokal=0 toast="Gagal menyimpan: Akun belum terotorisasi (USER_NOT_FOUND) - data TIDAK disimpan."
+PASS P0C-02 [TC-AUTH-02] {"createIncome":"TIDAK_PUBLIK","createExpense":"TIDAK_PUBLIK","createTransaction":"TIDAK_PUBLIK","createAllocation":"TIDAK_PUBLIK","updateTransaction":"TIDAK_PUBLIK","createBankMutation":"TIDAK_PUBLIK","testConcurrentWriteDoor":"TIDAK_PUBLIK"}
+PASS P0C-03 [GAP-006] ["TIDAK_PUBLIK","TIDAK_PUBLIK","TIDAK_PUBLIK","TIDAK_PUBLIK"]
+PASS P0C-04 [TC-AUTH-03] USER_INACTIVE
+PASS P0C-05 [TC-AUTH-04] {"ok":false,"code":"LEGACY_BRIDGE_DISABLED","message":"Jalur HTTP lama dinonaktifkan. Gunakan aplikasi Bendahara (akun Google terotorisasi).","field":null,"refI
+PASS P0C-06 [TC-AUTH-05] mode=DEFAULT
+PASS P0C-07 [GAP-006] setupDatabaseStructure=TIDAK_PUBLIK
+PASS P0D-01 [TC-KPI-02] {"overall":null,"st":"DATA TIDAK TERSEDIA (05_TRANSAKSI gagal dimuat; 06_ALOKASI gagal dimuat; 04_KEWAJIBAN gagal dimuat; 08_ANGGARAN gagal dimuat; 09_KOMITMEN gagal dimuat; 10_BUKTI gagal dimuat; 11_MUTASI_BANK gagal dimuat; 16_REKONSILIASI gagal dimuat; 17_LAPORAN gagal dimuat; 30_ALOKASI_PENGELUARAN gagal dimuat)","r0":[null,"DATA TIDAK TERSEDIA"]}
+PASS P0D-02 [TC-KPI-02] snapshot=0 err=KPI DATA TIDAK TERSEDIA (05_TRANSAKSI gagal dimuat; 06_ALOKASI gagal dimuat; 04_KEWAJIBAN gagal dimuat; 08_ANGGARAN gagal dimuat; 09_KOMITMEN gagal dimuat; 10_BUKTI gagal dimuat; 11_MUTASI_BANK gagal dimuat; 16_REKONSILIASI gagal dimuat; 17_LAPORAN gagal dimuat; 30_ALOKASI_PENGELUARAN gagal dimuat) - snapshot TIDAK disimpan.
+PASS P0D-03 [TC-KPI-02] [null,"DATA TIDAK TERSEDIA (server tidak terhubung)"]
+PASS P0D-04 [regresi KPI] identik di luar BDS03-I03/I04/I05 (+turunan): {"overall":"DIKECUALIKAN","st":"DIKECUALIKAN","rows":[["BDS01",85.3,"Baik",0,[["BDS01-I01",85.29,"Baik","MEASURED",100],
+PASS P0D-04b [K-RAB BDS03] BDS03 baru [["BDS03-I03",50,"Perlu Perbaikan","MEASURED",0],["BDS03-I04","","BELUM ADA AKTIVITAS","NOT_STARTED",""],["BDS03-I05",50,"Perlu Perbaikan","MEASURED",0]] (base [["BDS03-I03",100,"Sangat Baik","MEASURED",100],["BDS03-I04",100,"Sangat Baik","MEASURED",100],["BDS03-I05",100,"Sangat Baik","MEASURED",100]])
+PASS P0D-05 [regresi KPI] definisi & rumus KPI identik (13 simbol; berubah hanya di bagian K-RAB yang disetujui: INDICATOR_MASTER,financialAktivitasFeed)
+PASS P0D-06 [regresi KPI] isi kpiIndukSummary asli dipertahankan utuh sebagai kpiIndukSummaryCompute_
+PASS P0U-02 [regresi UI] markup & CSS di luar <script> identik dengan main
+PASS P0U-03 [regresi UI] 754 fungsi baseline tetap ada; NAV_TREE identik
+PASS P0U-01 [regresi UI] 8 halaman render
+
+PASS=45 FAIL=0 INFO=1

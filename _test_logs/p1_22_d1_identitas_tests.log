@@ -1,0 +1,11 @@
+PASS ID-01 [data bersih (snapshot server saja): KONSISTEN; id kanonis kw_<hash>; beku berpembayaran = 1 (s1 September); audit baca-saja (seluruh sheet identik)] {"barisBeku":2,"bekuBerpembayaran":1,"kunciBeku":2}
+PASS ID-02 [baris beku kedua (id klien) untuk kunci yang sama -> DUPLIKAT_BEKU (netto berbeda, terbayar 200.000) + ID_TIDAK_KANONIS; TIDAK_KONSISTEN; tidak ada yang dihapus] {"jenis":"DUPLIKAT_BEKU","kunci":"s1|kmp_spp|September 2026","ids":["kw_959b68a017f9d2ec","tagihan_klien_1"],"netto":[200000,175000],"nettoBerbeda":true,"terbayar":200000}
+INFO ID-03 [TEMUAN: klien dengan data 04 basi membekukan lagi kewajiban yang sudah dibekukan server -> baris beku kedua (uid klien) untuk kunci yang sama; server menerimanya (tidak ada pengaman keunikan kunci)] {"dibekukanKlien":2,"barisBekuS2Sep":["kw_d12aacd2e6e","tagihan_mvgrf4"],"duplikat":2}
+PASS ID-04 [dua komponen aktif bernama sama -> KOMPONEN_NAMA_GANDA (risiko: klien mencocokkan kewajiban beku lewat nama komponen)] [{"jenis":"KOMPONEN_NAMA_GANDA","nama":"spp","komponenIds":["kmp_spp","kmp_spp_b"]}]
+PASS ID-05 [baris beku berpembayaran diarsip -> ARSIP_BERPEMBAYARAN (kewajiban kembali dihitung dari tarif saat ini); baris arsip tetap ada] {"temuan":[{"jenis":"ARSIP_BERPEMBAYARAN","kunci":"s1|kmp_spp|September 2026","idsArsip":["kw_959b68a017f9d2ec"],"terbayar":200000}],"tagihanIdTerbaca":null}
+PASS ID-06 [hubungan alokasi: alokasi ber-tagihanId tanpa baris 04 -> ALOKASI_TAGIHAN_TIDAK_DIKENAL; alokasi s1 September cocok >1 baris beku -> ALOKASI_MULTI_BEKU] {"tidakDikenal":1,"multi":["imp_alk_1"]}
+INFO ID-07 [TEMUAN: dengan duplikat beku, kewajibanForSiswa memakai baris PERTAMA yang ditemukan (urutan sheet) dan menyembunyikan baris lain - nilai yang tampil bergantung urutan, bukan aturan] [{"tagihanId":"kw_959b68a017f9d2ec","netto":200000,"status":"LUNAS"}]
+PASS ID-08 [regresi: tarif naik setelah snapshot -> kewajiban beku berpembayaran tetap 200.000 LUNAS, alokasi & transaksi tidak berubah, audit tetap KONSISTEN] {"netto":200000,"status":"LUNAS"}
+PASS ID-09 [AUDITOR dapat menjalankan audit baca-saja] SUCCESS
+
+PASS=7 FAIL=0 INFO=2

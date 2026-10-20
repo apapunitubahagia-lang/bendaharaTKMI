@@ -1,0 +1,8 @@
+PASS SW-01 [kesetaraan M0/M1: Impor V2 siswa menambah 60 siswa (nama, NIS, NISN, kelas, unit, TA, wali, kontak, alamat) dalam <= 2 panggilan commit] {"added":60,"calls":1}
+PASS SW-02 [kesetaraan T4B-15: Impor V2 menyimpan tanggalMasuk & jenisKelamin (plus validasi tanggal server)] {"id":"imp_sis_1db0752b9fbf511fa0db640dd4cf_1","nama":"Siswa F7","nis":"","nisn":"","kelas":"1","unit":"MI","tahunAjaran":"2026/2027","jenisKelamin":"P","waliId":"","namaWali":"","kontakWali":"","tanggalMasuk":"2026-09-05","tanggalKeluar":"","status":"Aktif","alamat":""}
+PASS SW-03 [kesetaraan updateSiswaRow: mode "Tambah + Perbarui" memperbarui hanya field terisi, id siswa tetap, field kosong tidak menimpa] {"kontak":"0899","wali":"Wali B","status":["TERSIMPAN"]}
+INFO SW-04 [DEPENDENSI BELUM TERGANTIKAN: Impor V2 siswa tidak memiliki kolom "status" - perubahan status massal (mis. Nonaktif/Lulus) lewat berkas hanya tersedia di wizard lama (commitSiswaRow/updateSiswaRow membaca kolom status)] {"statusSetelahImporV2":"Aktif"}
+PASS SW-05 [KEPUTUSAN: wizard lama siswa TETAP AKTIF (impLamaNonaktif_("siswa") = false) karena SW-04; e2e_central2 M0/M1 dan t4b_tests T4B-15 tidak diubah] impLamaNonaktif_(siswa)=false
+INFO SW-06 [perbedaan perilaku (bukan penghalang): wizard lama mengisi tahun ajaran aktif diam-diam; Impor V2 meminta keputusan eksplisit (PERLU_KEPUTUSAN TAHUN_AJARAN_KOSONG); namaAyah/namaIbu dipetakan manual ke namaWali di Impor V2] ["PERLU_KEPUTUSAN:TAHUN_AJARAN_KOSONG"]
+
+PASS=4 FAIL=0 INFO=2
