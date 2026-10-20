@@ -99,7 +99,9 @@
     opUangMukaLpjSetup: function (confirm) { return callServer('opUangMukaLpjSetup', [confirm]); },
     opLinkLpj: function (payload) { return callServer('opLinkLpj', [payload]); },
     opCreateExpenseFromLpj: function (payload) { return callServer('opCreateExpenseFromLpj', [payload]); },
-    opUnlinkLpj: function (payload) { return callServer('opUnlinkLpj', [payload]); }
+    opUnlinkLpj: function (payload) { return callServer('opUnlinkLpj', [payload]); },
+    opUangMukaLaporan: function (opts) { return callServer('opUangMukaLaporan', [opts || {}]); },
+    opUangMukaDampakFcc: function (opts) { return callServer('opUangMukaDampakFcc', [opts || {}]); }
   };
 })(typeof window !== 'undefined' ? window : globalThis);
 

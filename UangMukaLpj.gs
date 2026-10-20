@@ -71,8 +71,15 @@ function umPosisi_(u) {
   var lpj = umRows_('19_LPJ').filter(function (l) { return !umS_(l.archivedAt) && umS_(l.uangMukaId) === umS_(u.id); });
   var ver = lpj.filter(function (l) { return umS_(l.statusLpj) === 'DIVERIFIKASI'; }).reduce(function (s, l) { return s + umN_(l.nominal); }, 0);
   var belum = lpj.filter(function (l) { return umS_(l.statusLpj) !== 'DIVERIFIKASI'; }).reduce(function (s, l) { return s + umN_(l.nominal); }, 0);
-  var kembali = umRows_('33_UANG_MUKA_KEMBALI').filter(function (k) { return umS_(k.uangMukaId) === umS_(u.id); }).reduce(function (s, k) { return s + umN_(k.nominal); }, 0);
+  /* [P1_24] pengembalian yang transaksi kasnya sudah diarsip (reversal) tidak dihitung; dilaporkan sebagai peringatan */
+  var kRows = umRows_('33_UANG_MUKA_KEMBALI').filter(function (k) { return umS_(k.uangMukaId) === umS_(u.id); }), kArsip = [];
+  var kembali = kRows.reduce(function (s, k) { var t = getTransactionRaw_(umS_(k.transaksiId)); if (!t || t.archivedAt) { kArsip.push(umS_(k.id)); return s; } return s + umN_(k.nominal); }, 0);
+  var tc = umS_(u.transaksiCairId) ? getTransactionRaw_(umS_(u.transaksiCairId)) : null, peringatan = [];
+  if (!tc || tc.archivedAt) peringatan.push('PENCAIRAN_DIARSIP_ATAU_HILANG');
+  else if (Math.abs(umN_(tc.nominal) - umN_(u.nominalCair)) > 0.5) peringatan.push('NOMINAL_PENCAIRAN_BERBEDA');
+  if (kArsip.length) peringatan.push('PENGEMBALIAN_DIARSIP');
   return { lpj: lpj, notaTerverifikasi: ver, notaBelumTerverifikasi: belum, pengembalian: kembali, saldo: umN_(u.nominalCair) - ver - kembali,
+    arusKasKeluar: tc && !tc.archivedAt ? umN_(tc.nominal) : 0, pengembalianDiarsip: kArsip, peringatan: peringatan,
     adaDitolak: lpj.some(function (l) { return umS_(l.statusLpj) === 'DITOLAK'; }), semuaTerverifikasi: lpj.length > 0 && lpj.every(function (l) { return umS_(l.statusLpj) === 'DIVERIFIKASI'; }),
     adaDiterima: lpj.some(function (l) { return ['DITERIMA', 'DIVERIFIKASI'].indexOf(umS_(l.statusLpj)) !== -1; }) };
 }
@@ -384,8 +391,10 @@ function opUangMukaLaporan(opts) {
       var dilaporkan = p.lpj.filter(function (l) { return ['DIAJUKAN', 'DITERIMA', 'DIVERIFIKASI'].indexOf(umS_(l.statusLpj)) !== -1; }).reduce(function (s, l) { return s + umN_(l.nominal); }, 0);
       return { id: umS_(u.id), kegiatan: umS_(u.kegiatan), status: umS_(u.status), statusTurunan: umS_(u.status) === 'DIBATALKAN' ? 'DIBATALKAN' : umStatusDari_(u, p), periodeCair: plPeriodeOfDate_(umS_(u.tanggalCair)), kasKeluar: umN_(u.nominalCair),
         /* [P1_23] pemisahan: (1) arus kas keluar, (2) pengeluaran aktual dilaporkan (nota LPJ diajukan/diterima/diverifikasi), (3) pengeluaran terverifikasi, (4) saldo belum dipertanggungjawabkan */
-        arusKasKeluar: umN_(u.nominalCair), pengeluaranAktualDilaporkan: dilaporkan, pengeluaranTerverifikasi: p.notaTerverifikasi,
-        notaTerverifikasi: p.notaTerverifikasi, notaBelumTerverifikasi: p.notaBelumTerverifikasi, pengembalian: p.pengembalian, saldoBelumDipertanggungjawabkan: p.saldo };
+        /* [P1_24] arus kas keluar = nominal transaksi pencairan AKTIF (0 bila diarsip; sama dengan basis FCC); peringatan bila tidak konsisten */
+        arusKasKeluar: p.arusKasKeluar, pengeluaranAktualDilaporkan: dilaporkan, pengeluaranTerverifikasi: p.notaTerverifikasi,
+        notaTerverifikasi: p.notaTerverifikasi, notaBelumTerverifikasi: p.notaBelumTerverifikasi, pengembalian: p.pengembalian, saldoBelumDipertanggungjawabkan: p.saldo,
+        transaksiCairId: umS_(u.transaksiCairId), pengembalianDiarsip: p.pengembalianDiarsip, peringatan: p.peringatan };
     }).filter(function (x) { return !per || x.periodeCair === per; });
     var tot = list.reduce(function (s, x) { ['kasKeluar', 'arusKasKeluar', 'pengeluaranAktualDilaporkan', 'pengeluaranTerverifikasi', 'notaTerverifikasi', 'notaBelumTerverifikasi', 'pengembalian', 'saldoBelumDipertanggungjawabkan'].forEach(function (k) { s[k] = (s[k] || 0) + x[k]; }); return s; }, {});
     return okResult_('Laporan uang muka (read-only)', { periode: per || '*', uangMuka: list, total: tot,

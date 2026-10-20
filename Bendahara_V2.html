@@ -7309,6 +7309,35 @@ function openUnlinkLpj(lpjId){
     '<div class="modal-actions"><button class="btn" onclick="closeModal()">Batal</button><button class="btn danger" onclick="unlinkLpj(\''+lpjId+'\')">Lepas Tautan</button></div>', false);
 }
 function unlinkLpj(lpjId){ const l = Store.loadLpj().find(x=>x.id===lpjId); if(!lpjOpsTersedia_()){ toast('Server belum siap'); return Promise.resolve({ok:false}); } return ServerBridge.opUnlinkLpj({lpjId:lpjId, alasan:val('lpu_alasan'), expect:{transaksiId:l ? (l.transaksiId || '') : ''}}).then(r=>lpjSesudahOp_(r, 'Tautan LPJ dilepas (transaksi tetap ada)')); }
+/* [P1_24 D-T1] prototipe UI uang muka BACA-SAJA (empat angka terpisah; tanpa aksi tulis) */
+function umLaporanHtml_(d){
+  const list = (d && d.uangMuka) || [], t = (d && d.total) || {};
+  const sel = n => '<td style="text-align:right">' + fmtRp(n) + '</td>';
+  const head = '<tr><th>Kegiatan</th><th>Status</th><th>(1) Arus kas keluar</th><th>(2) Pengeluaran dilaporkan</th><th>(3) Pengeluaran terverifikasi</th><th>(4) Saldo belum dipertanggungjawabkan</th><th>Pengembalian</th><th>Catatan</th></tr>';
+  const body = list.map(x => '<tr data-um="' + esc(x.id) + '"><td>' + esc(x.kegiatan) + '<div class="small-muted">' + esc(x.id) + ' &middot; pencairan ' + esc(x.transaksiCairId || '-') + '</div></td><td>' + esc(x.status) +
+    (x.status === 'DIBATALKAN' ? '<div class="small-muted">pencairan tetap tercatat; saldo diselesaikan lewat pengembalian</div>' : '') + '</td>' +
+    sel(x.arusKasKeluar) + sel(x.pengeluaranAktualDilaporkan) + sel(x.pengeluaranTerverifikasi) + sel(x.saldoBelumDipertanggungjawabkan) + sel(x.pengembalian) +
+    '<td>' + ((x.peringatan || []).length ? '<b>Periksa:</b> ' + esc(x.peringatan.join(', ')) : '') + '</td></tr>').join('');
+  const foot = '<tr><th colspan="2">Total</th>' + sel(t.arusKasKeluar) + sel(t.pengeluaranAktualDilaporkan) + sel(t.pengeluaranTerverifikasi) + sel(t.saldoBelumDipertanggungjawabkan) + sel(t.pengembalian) + '<td></td></tr>';
+  return '<h3>Uang Muka (baca-saja)</h3><p class="small-muted">Empat angka dipisah: arus kas keluar &ne; pengeluaran. Nota LPJ tidak menjadi transaksi kas kedua; pengembalian adalah penerimaan bertanda uang muka asal (bukan penerimaan operasional). Verifikasi LPJ belum aktif.</p>' +
+    (list.length ? '<table class="table">' + head + body + foot + '</table>' : '<p>Belum ada uang muka.</p>');
+}
+function umDampakHtml_(d){
+  const s = d.sekarang || {}, m = d.simulasiBasisBeban || {}, k = d.komponen || {};
+  const r = (lbl, a, b) => '<tr><td>' + lbl + '</td><td style="text-align:right">' + fmtRp(a) + '</td><td style="text-align:right">' + fmtRp(b) + '</td></tr>';
+  return '<h4>Dampak FCC/BDS03 ' + esc(d.periode) + ' (audit)</h4><table class="table"><tr><th></th><th>Sekarang (formula aktif)</th><th>Simulasi basis beban (TIDAK diterapkan)</th></tr>' +
+    r('Pengeluaran aktual', s.pengeluaranAktual, m.pengeluaranAktual) + r('Penerimaan', s.penerimaan, m.penerimaan) + r('Posisi kas', s.posisiKas, m.posisiKas) + '</table>' +
+    '<p class="small-muted">Pencairan periode ' + fmtRp(k.pencairanPeriode) + ' &middot; pengembalian ' + fmtRp(k.pengembalianPeriode) + ' &middot; nota terverifikasi ' + fmtRp(k.notaTerverifikasiPeriode) + ' &middot; transaksi pencairan dalam populasi BDS03: ' + esc(k.transaksiPencairanDalamPopulasiBds03) + '. FCC, BDS03, dan 31 KPI tidak diubah.</p>';
+}
+function umOpsTersedia_(){ return typeof ServerBridge !== 'undefined' && ServerBridge && !!ServerBridge.opUangMukaLaporan && centralReady_(); }
+function umGagal_(res){ toast(res && res.code === 'SCHEMA_ADDITIVE_REQUIRED' ? 'Skema uang muka belum disiapkan (Pusat Data > Skema uang muka & LPJ)' : centralErrText(res)); return res; }
+function pdUangMuka(){ if(!umOpsTersedia_()){ toast('Server belum siap'); return Promise.resolve(null); }
+  return ServerBridge.opUangMukaLaporan({}).then(function(res){ if(!res || !res.ok) return umGagal_(res);
+    openModal(umLaporanHtml_(res.data) + '<div id="umDampakOut"></div>' + fieldText('pdum_per','Periode untuk audit dampak FCC (mis. September 2026)','') +
+      '<div class="modal-actions"><button class="btn" onclick="closeModal()">Tutup</button><button class="btn" onclick="pdUangMukaDampak()">Audit dampak FCC/BDS03</button></div>', true); return res; }); }
+function pdUangMukaDampak(){ if(!umOpsTersedia_()){ toast('Server belum siap'); return Promise.resolve(null); }
+  return ServerBridge.opUangMukaDampakFcc({periode: val('pdum_per')}).then(function(res){ if(!res || !res.ok) return umGagal_(res);
+    const el = document.getElementById('umDampakOut'); if(el) el.innerHTML = umDampakHtml_(res.data); return res; }); }
 function pdLpjSchema(){ if(!lpjOpsTersedia_()){ toast('Server belum siap'); return Promise.resolve(null); } return ServerBridge.opUangMukaLpjPlan().then(function(res){ if(!res || !res.ok){ toast(centralErrText(res)); return res; }
   openModal('<h3>Skema Uang Muka & LPJ</h3><pre class="small-muted">' + esc(JSON.stringify(res.data.plan.map(x=>({sheet:x.sheet, status:x.status, tambah:x.tambah})), null, 1)) + '</pre>' + fieldText('pdum_konf','Ketik ' + res.data.konfirmasi,'') +
     '<div class="modal-actions"><button class="btn" onclick="closeModal()">Batal</button><button class="btn primary" onclick="pdLpjSchemaConfirmed()">Buat skema</button></div>', false); return res; }); }
@@ -10180,7 +10209,7 @@ function renderPengaturanPusatData(){
   html += '<div class="card"><h3>Skema Sheet (aditif)</h3><p class="small-muted">Hanya MENAMBAH kolom di ujung header (status tarif/akun, kolom arsip/reversal, kolom field aplikasi yang belum punya kolom). Data dan kolom lama tidak diubah.</p>' +
     '<div class="modal-actions" style="justify-content:flex-start"><button class="btn" onclick="pdSchemaPlan()">Lihat rencana</button><button class="btn danger" onclick="pdSchemaApply()">Terapkan migrasi aditif…</button></div><div id="pdSchemaOut"></div></div>';
   html += '<div class="card"><h3>Data Lokal Lama (localStorage)</h3><p class="small-muted">Pindahkan data bisnis yang masih tersimpan di browser ini ke Google Sheets (aman &amp; idempoten; kandidat duplikat transaksi dilewati). Bersihkan salinan lokal hanya setelah backup dan verifikasi.</p>' +
-    '<div class="modal-actions" style="justify-content:flex-start"><button class="btn" onclick="pdLegacyScan()">Pindai</button><button class="btn primary" onclick="pdLegacyMigrate()">Migrasikan ke server…</button><button class="btn" onclick="pdMasterSync()">Sinkronisasi master…</button><button class="btn" onclick="openV1MigrasiPusat()">Migrasi data V1…</button><button class="btn" onclick="pdLpjSchema()">Skema uang muka &amp; LPJ…</button><button class="btn danger" onclick="pdLegacyClean()">Bersihkan salinan lokal yang sudah ada di server…</button></div><div id="pdLegacyOut"></div></div>';
+    '<div class="modal-actions" style="justify-content:flex-start"><button class="btn" onclick="pdLegacyScan()">Pindai</button><button class="btn primary" onclick="pdLegacyMigrate()">Migrasikan ke server…</button><button class="btn" onclick="pdMasterSync()">Sinkronisasi master…</button><button class="btn" onclick="openV1MigrasiPusat()">Migrasi data V1…</button><button class="btn" onclick="pdLpjSchema()">Skema uang muka &amp; LPJ…</button><button class="btn" onclick="pdUangMuka()">Uang muka (baca-saja)…</button><button class="btn danger" onclick="pdLegacyClean()">Bersihkan salinan lokal yang sudah ada di server…</button></div><div id="pdLegacyOut"></div></div>';
   html += '<div class="card"><h3>Kewajiban, KPI, Audit</h3><div class="modal-actions" style="justify-content:flex-start"><button class="btn" onclick="pdVerifyObl()">Verifikasi kewajiban (klien vs server)</button><button class="btn" onclick="pdSnapObl()">Simpan snapshot kewajiban ke 04_KEWAJIBAN</button><button class="btn" onclick="pdSnapKpi()">Simpan snapshot KPI ke 14_KPI</button><button class="btn" onclick="pdAuditView()">Lihat audit server</button></div><div id="pdOblOut"></div></div>';
   html += '<div class="card"><h3>Akses Pengguna (26_USER_ACCESS)</h3><div class="modal-actions" style="justify-content:flex-start"><button class="btn" onclick="pdUsersLoad()">Muat daftar</button><button class="btn primary" onclick="pdUserForm()">+ Tambah pengguna</button></div><div id="pdUsersOut"></div></div>';
   html += '<div class="card"><h3>Cutover (Store → pusat)</h3><p class="small-muted">Setelah cutover, baris lokal lama tidak lagi ditampilkan; Google Sheets menjadi satu-satunya sumber. Dapat dibatalkan (rollback).</p>' +
