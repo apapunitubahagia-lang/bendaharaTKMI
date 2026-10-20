@@ -1,0 +1,11 @@
+PASS SW-01 [kesetaraan M0/M1: Impor V2 siswa menambah 60 siswa (nama, NIS, NISN, kelas, unit, TA, wali, kontak, alamat) dalam <= 2 panggilan commit] {"added":60,"calls":1}
+PASS SW-02 [kesetaraan T4B-15: Impor V2 menyimpan tanggalMasuk & jenisKelamin (plus validasi tanggal server)] {"id":"imp_sis_1db0752b9fbf511fa0db640dd4cf_1","nama":"Siswa F7","nis":"","nisn":"","kelas":"1","unit":"MI","tahunAjaran":"2026/2027","jenisKelamin":"P","waliId":"","namaWali":"","kontakWali":"","tanggalMasuk":"2026-09-05","tanggalKeluar":"","status":"Aktif","alamat":""}
+PASS SW-03 [kesetaraan updateSiswaRow: mode "Tambah + Perbarui" memperbarui hanya field terisi, id siswa tetap, field kosong tidak menimpa] {"kontak":"0899","wali":"Wali B","status":["TERSIMPAN"]}
+PASS SW-04 [status di Impor V2: "nonaktif" dinormalkan ke enum master "Nonaktif" (normalisasi tercatat); perubahan status = UBAH_KEWAJIBAN (butuh persetujuan); setelah disetujui status tersimpan dan kewajiban s2 keluar dari daftar kewajiban aktif] {"rencana":"PERLU_KEPUTUSAN","status":"Nonaktif","kewajibanS2":[3,0],"hasil":["TERSIMPAN"]}
+PASS SW-07 [status di luar enum (Lulus, Pindah) -> TOLAK STATUS_TIDAK_VALID dengan alasan, tidak dipetakan diam-diam; master tidak berubah] ["TOLAK:STATUS_TIDAK_VALID,SISWA_SAMA","TOLAK:STATUS_TIDAK_VALID"]
+PASS SW-08 [kolom status kosong: status siswa lama TIDAK berubah (tetap Aktif) dan field lain tetap diperbarui; siswa baru dengan status Nonaktif tersimpan Nonaktif] {"z":["Aktif","0811"],"baru":"Nonaktif"}
+PASS SW-09 [dampak perubahan kelas terhadap kewajiban (disetujui eksplisit): kewajiban beku September tetap 200.000; kewajiban belum beku (Agustus) mengikuti tarif kelas 1 = 350.000] {"sep":200000,"ags":350000,"hasil":["TERSIMPAN"]}
+PASS SW-05 [KEPUTUSAN [P1_23]: Impor V2 siswa lengkap (SW-01..04, 07..09) -> wizard lama siswa DINONAKTIFKAN: importWizardConfirmSiswa & updateSiswaRow menolak, 0 antrean master] {"konfirmasi":"JALUR_IMPOR_LAMA_DINONAKTIFKAN","update":"Wizard impor lama untuk modul ini dinona"}
+INFO SW-06 [perbedaan perilaku (bukan penghalang): wizard lama mengisi tahun ajaran aktif diam-diam; Impor V2 meminta keputusan eksplisit (PERLU_KEPUTUSAN TAHUN_AJARAN_KOSONG); namaAyah/namaIbu dipetakan manual ke namaWali di Impor V2] ["PERLU_KEPUTUSAN:TAHUN_AJARAN_KOSONG"]
+
+PASS=8 FAIL=0 INFO=1

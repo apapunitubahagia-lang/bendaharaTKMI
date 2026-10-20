@@ -1,0 +1,12 @@
+PASS KP-01 [kategori tidak ada di master / kosong -> ditolak server (INVALID_CATEGORY / VALIDATION_ERROR), tidak ada baris] INVALID_CATEGORY | VALIDATION_ERROR | kategori pengeluaran wajib dipilih eksplisit (tidak ada kate
+PASS KP-02 [beda huruf/spasi -> diterima dan disimpan sebagai nama kanonik master ("ATK")] SUCCESS ["ATK",""]
+PASS KP-03 [kategori Nonaktif -> ditolak INVALID_CATEGORY] INVALID_CATEGORY
+PASS KP-04 [master kategori tidak tersedia / tanpa kategori aktif -> gagal tertutup KATEGORI_MASTER_TIDAK_TERSEDIA, tidak ada baris] KATEGORI_MASTER_TIDAK_TERSEDIA / KATEGORI_MASTER_TIDAK_TERSEDIA
+PASS KP-05 [subkategori bukan milik kategori -> INVALID_SUBCATEGORY; subkategori valid -> nama kanonik] INVALID_SUBCATEGORY / SUCCESS ["ATK","Kertas"]
+PASS KP-06 [batch (opCreateTxBatch): kategori tidak valid ditolak per item, yang valid tersimpan] ["INVALID_CATEGORY","SUCCESS"]
+PASS KP-07 [koreksi: kategori tidak valid / dikosongkan / subkategori asing ditolak; subkategori valid tersimpan kanonik] INVALID_CATEGORY | VALIDATION_ERROR | INVALID_SUBCATEGORY | SUCCESS | ["ATK","Kertas"]
+PASS KP-08 [transaksi historis berkategori di luar master ("Lainnya"): koreksi field lain tetap boleh, kategori TIDAK diubah otomatis] SUCCESS ["Lainnya",""]
+PASS KP-09 [penerimaan tanpa kategori tidak terpengaruh; ganti jenis ke PENGELUARAN tanpa kategori valid ditolak, dengan kategori valid boleh] VALIDATION_ERROR | SUCCESS
+PASS KP-10 [audit baca-saja kategori historis: daftar transaksi perlu tinjauan (kategori di luar master aktif), tanpa menulis; AUDITOR boleh, pengguna asing ditolak] {"a":"SUCCESS","ringkas":{"diperiksa":1,"perluTinjauan":1,"perAlasan":{"KATEGORI_TIDAK_ADA_DI_MASTER":1}},"b":"USER_NOT_FOUND"}
+
+PASS=10 FAIL=0 INFO=0
