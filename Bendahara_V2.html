@@ -835,7 +835,9 @@ function kewajibanSatuBaris(siswa, komponen, periode){
   const {potongan, perluReview} = keringananPotonganFor(siswa.id, komponen.id, bruto);
   const totalPotongan = potongan.reduce((s,p)=>s+p.nominal,0);
   const nettoComputed = Math.max(0, bruto-totalPotongan);
-  const snap = Store.loadTagihan().find(t=>t.siswaId===siswa.id && t.komponen===komponen.nama && t.periode===periode);
+  // [P1_23 D-1] cocok lewat komponenId (nama hanya untuk baris lama tanpa komponenId); duplikat historis -> pilihan deterministik
+  const snaps = Store.loadTagihan().filter(t=>t.siswaId===siswa.id && (t.komponenId ? t.komponenId===komponen.id : t.komponen===komponen.nama) && t.periode===periode);
+  const snap = snaps.length > 1 ? snaps.slice().sort((a,b)=>((String(a.id||'').indexOf('kw_')===0 ? 0 : 1) - (String(b.id||'').indexOf('kw_')===0 ? 0 : 1)) || (String(a.id) < String(b.id) ? -1 : String(a.id) > String(b.id) ? 1 : 0))[0] : snaps[0];
   return {
     key: siswa.id+'|'+komponen.id+'|'+periode, siswaId:siswa.id, komponenId:komponen.id, komponenNama:komponen.nama, periode,
     bruto: snap? Number(snap.tagihanBruto!=null?snap.tagihanBruto:bruto) : bruto,
@@ -874,7 +876,7 @@ function kewajibanForSiswa(siswaId, periodeFilter){
      tetap ditampilkan apa adanya, supaya pembayaran historis tidak menjadi yatim. */
   const komps = MasterAPI.components();
   Store.loadTagihan().filter(t=>t.siswaId===siswaId).forEach(t=>{
-    const k = komps.find(c=>c.nama===t.komponen);
+    const k = t.komponenId ? komps.find(c=>c.id===t.komponenId) : komps.find(c=>c.nama===t.komponen); // [P1_23 D-1]
     if(!k || seen.has(siswaId+'|'+k.id+'|'+t.periode)) return;
     push(kewajibanSatuBaris(siswa, k, t.periode));
   });
@@ -6069,7 +6071,7 @@ function submitKomponen(id){
   Store.saveSettings(s); closeModal(); toast('Komponen tersimpan'); renderContent();
 }
 function komponenUsedInHistory(k){
-  return OperationalAPI.alokasi().some(a=>a.komponenId===k.id) || Store.loadTagihan().some(t=>t.komponen===k.nama) || Store.loadTarif().some(t=>t.komponenId===k.id);
+  return OperationalAPI.alokasi().some(a=>a.komponenId===k.id) || Store.loadTagihan().some(t=>t.komponenId===k.id || (!t.komponenId && t.komponen===k.nama)) || Store.loadTarif().some(t=>t.komponenId===k.id);
 }
 function hapusAtauNonaktifkanKomponen(id){
   if(!centralMasterWriteActive()){ toast('GAGAL: ' + centralNotReadyText_()); return; } // [P0-B] tanpa simpan lokal
@@ -9411,7 +9413,7 @@ function ccFromRow_(name, r){
     let pot = []; const ps = ccStr_(r.potongan);
     if(ps.charAt(0) === '['){ try{ pot = JSON.parse(ps); }catch(e){} }
     const k = komponenById(ccStr_(r.komponenId));
-    return {id:ccStr_(r.id), siswaId:ccStr_(r.siswaId), komponen:k ? k.nama : ccStr_(r.komponenId), periode:ccStr_(r.periode), tagihanBruto:Number(r.bruto)||0, potongan:pot,
+    return {id:ccStr_(r.id), siswaId:ccStr_(r.siswaId), komponenId:ccStr_(r.komponenId), komponen:k ? k.nama : ccStr_(r.komponenId), periode:ccStr_(r.periode), tagihanBruto:Number(r.bruto)||0, potongan:pot,
       tagihanNetto:Number(r.netto)||0, jatuhTempo:ccStr_(r.jatuhTempo), tahunAjaran:ccStr_(r.tahunAjaran), _computedAt:ccStr_(r.computedAt),
       kelas:ccStr_(r.kelas), unit:ccStr_(r.unit), tarifId:ccStr_(r.tarifId), tarifSatuan:(r.tarifSatuan === '' || r.tarifSatuan === undefined || r.tarifSatuan === null) ? null : Number(r.tarifSatuan), jumlahHari:(r.jumlahHari === '' || r.jumlahHari === undefined || r.jumlahHari === null) ? null : Number(r.jumlahHari)};
   }
@@ -9430,7 +9432,7 @@ function ccToRow_(name, o, live){
   const c = CC_[name], dropped = [];
   live = live || [];
   if(c.custom === 'tagihan'){
-    const k = komponenByNama(o.komponen);
+    const k = o.komponenId ? komponenById(o.komponenId) : komponenByNama(o.komponen); // [P1_23 D-1]
     const row = {id:o.id, siswaId:o.siswaId, komponenId:k ? k.id : ccStr_(o.komponenId), periode:o.periode, bruto:Number(o.tagihanBruto)||0, potongan:JSON.stringify(o.potongan || []),
       netto:Number(o.tagihanNetto)||0, tagihanId:o.id, computedAt:o._computedAt || new Date().toISOString(), jatuhTempo:ccStr_(o.jatuhTempo), tahunAjaran:ccStr_(o.tahunAjaran)};
     // field tarif/hari yang dipakai: ikut ditulis bila kolomnya ada; bila ada nilai tapi kolom belum ada -> dropped (operasi diblokir sampai migrasi aditif, tidak hilang diam-diam)
@@ -10415,8 +10417,11 @@ function tpLocalPlan_(){
   const c = tpCtx_(), spec = tpSpec_(), plan = tpCompute_(c.komponen, c.tarif, spec);
   return {plan:plan, impact:tpImpact_(c, plan, spec), schema:{ok:true, missing:[]}, bentrok:[], sumber:'klien'};
 }
+/* [P1_23 D-1] id kanonis kewajiban beku: 'kw_' + hash(siswaId|komponenId|periode); algoritme identik dengan oblHash_ (ObligationEngine.gs). */
+function kwHash_(s){ let h = 2166136261, h2 = 5381; for(let i = 0; i < s.length; i++){ h ^= s.charCodeAt(i); h = (h * 16777619) >>> 0; h2 = ((h2 << 5) + h2 + s.charCodeAt(i)) >>> 0; } return h.toString(16) + h2.toString(16); }
+function kwIdKanon_(siswaId, komponenId, periode){ return 'kw_' + kwHash_([siswaId, komponenId, periode].join('|')); }
 function tagihanSnapshotRow_(ob, siswa){
-  return {id:uid('tagihan'), siswaId:ob.siswaId, komponen:ob.komponenNama, periode:ob.periode, tagihanBruto:ob.bruto, potongan:ob.potongan || [], tagihanNetto:ob.netto, jatuhTempo:ob.jatuhTempo || '',
+  return {id:kwIdKanon_(ob.siswaId, ob.komponenId, ob.periode), siswaId:ob.siswaId, komponenId:ob.komponenId, komponen:ob.komponenNama, periode:ob.periode, tagihanBruto:ob.bruto, potongan:ob.potongan || [], tagihanNetto:ob.netto, jatuhTempo:ob.jatuhTempo || '',
     tahunAjaran:siswa.tahunAjaran || '', kelas:siswa.kelas || '', unit:siswa.unit || '', tarifId:ob.tarifId || '', tarifSatuan:ob.tarifSatuan, jumlahHari:ob.jumlahHari};
 }
 /* Membekukan kewajiban (snapshot ke Tagihan -> 04_KEWAJIBAN). Tidak pernah menimpa snapshot yang sudah ada. */
@@ -10694,7 +10699,7 @@ function submitGenerateTagihan(){
   const existing = Store.loadTagihan();
   let dibuat=0, sudahAda=0, tanpaTarif=0, hariKosong=0, digantikan=0;
   siswaAktif.forEach(s=>{
-    if(existing.some(t=>t.siswaId===s.id && t.periode===periode && t.komponen===komponenNama)){ sudahAda++; return; }
+    if(existing.some(t=>t.siswaId===s.id && t.periode===periode && (t.komponenId ? t.komponenId===komponen.id : t.komponen===komponenNama))){ sudahAda++; return; } // [P1_23 D-1]
     if(komponenDigantikan(s, komponen, periode)){ digantikan++; return; }
     const ob = kewajibanSatuBaris(s, komponen, periode); // snapshot dari nilai computed saat ini
     if(ob.hariBelumDiisi){ hariKosong++; return; }

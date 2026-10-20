@@ -80,7 +80,7 @@ function oblLoadContext_() {
   var byKomp = {}; komponen.forEach(function (k) { byKomp[k.id] = k; });
   var tagihan = mk('04_KEWAJIBAN').filter(function (r) { return oblS_(r.tagihanId) !== ''; }).map(function (r) {
     var pot = oblS_(r.potongan); var potArr = pot.charAt(0) === '[' ? oblJson_(pot, []) : [];
-    return { id: oblS_(r.id), siswaId: oblS_(r.siswaId), komponen: (byKomp[oblS_(r.komponenId)] || {}).nama || oblS_(r.komponenId), periode: oblS_(r.periode), tagihanBruto: oblN_(r.bruto), potongan: potArr, tagihanNetto: oblN_(r.netto), jatuhTempo: oblS_(r.jatuhTempo), tahunAjaran: oblS_(r.tahunAjaran), kelas: oblS_(r.kelas), unit: oblS_(r.unit), tarifId: oblS_(r.tarifId), tarifSatuan: oblS_(r.tarifSatuan) === '' ? null : oblN_(r.tarifSatuan), jumlahHari: oblS_(r.jumlahHari) === '' ? null : oblN_(r.jumlahHari) };
+    return { id: oblS_(r.id), siswaId: oblS_(r.siswaId), komponenId: oblS_(r.komponenId), komponen: (byKomp[oblS_(r.komponenId)] || {}).nama || oblS_(r.komponenId), periode: oblS_(r.periode), tagihanBruto: oblN_(r.bruto), potongan: potArr, tagihanNetto: oblN_(r.netto), jatuhTempo: oblS_(r.jatuhTempo), tahunAjaran: oblS_(r.tahunAjaran), kelas: oblS_(r.kelas), unit: oblS_(r.unit), tarifId: oblS_(r.tarifId), tarifSatuan: oblS_(r.tarifSatuan) === '' ? null : oblN_(r.tarifSatuan), jumlahHari: oblS_(r.jumlahHari) === '' ? null : oblN_(r.jumlahHari) };
   });
   return {
     settings: settings,

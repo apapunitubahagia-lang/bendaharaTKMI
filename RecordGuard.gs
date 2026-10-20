@@ -92,8 +92,43 @@ function rgDateFieldError_(key, cur, next) {
   }
   return null;
 }
+/* [P1_23 D-1] Identitas kanonis & perlindungan kewajiban beku (04_KEWAJIBAN). Kunci = siswaId|komponenId|periode;
+   BEKU = tagihanId terisi & tidak diarsip; id kanonis = 'kw_' + oblHash_(kunci) (sama dengan oblSnapshotCore_ & kwIdKanon_ klien).
+   - baris beku BARU / pembekuan baris lama: id wajib kanonis, tagihanId = id, dan tidak boleh ada baris beku aktif lain untuk kunci
+     yang sama (baris historis ber-id acak tidak diubah; dilaporkan opKewajibanBekuAudit);
+   - baris yang SUDAH beku: identitas & nilai (siswa, komponen, periode, bruto, potongan, netto, tagihanId, tarif, hari) tidak dapat
+     diubah lewat batch biasa; arsip baris beku yang sudah dibayar (alokasi aktif cocok tagihanId/kunci) ditolak.
+   Jalur koreksi beralasan BELUM ada (sengaja); field lain (mis. jatuhTempo) tetap dapat diubah. */
+var RG_KW_TERKUNCI_ = ['siswaId', 'komponenId', 'periode', 'bruto', 'potongan', 'netto', 'tagihanId', 'tarifId', 'tarifSatuan', 'jumlahHari'];
+function rgKwKunci_(o) { return [opStr_(o.siswaId), opStr_(o.komponenId), opStr_(o.periode)].join('|'); }
+function rgKwBeku_(o) { return !!o && opStr_(o.tagihanId) !== '' && opStr_(o.archivedAt) === ''; }
+function rgKwTerbayar_(o) {
+  var k = rgKwKunci_(o), id = opStr_(o.id), arsipTrx = {};
+  sgRowsChecked_('05_TRANSAKSI').forEach(function (t) { if (opStr_(t.archivedAt)) arsipTrx[opStr_(t.id)] = true; });
+  return sgRowsChecked_('06_ALOKASI').some(function (a) {
+    if (opStr_(a.archivedAt) || arsipTrx[opStr_(a.transaksiId)] || !(Number(a.nominal) > 0)) return false;
+    return (opStr_(a.tagihanId) !== '' && opStr_(a.tagihanId) === id) || rgKwKunci_(a) === k;
+  });
+}
+function rgKewajibanBeku_(ctx, op, cur, next) {
+  if (op === 'archive') return rgKwBeku_(cur) && rgKwTerbayar_(cur) ? rgFail_('KEWAJIBAN_BEKU_TERKUNCI', 'Kewajiban beku yang sudah dibayar tidak dapat diarsip lewat batch biasa (' + rgKwKunci_(cur) + ')') : null;
+  if (rgKwBeku_(cur)) {
+    var ubah = RG_KW_TERKUNCI_.filter(function (f) { return Object.prototype.hasOwnProperty.call(next, f) && opStr_(next[f]) !== opStr_(cur[f]); });
+    return ubah.length ? rgFail_('KEWAJIBAN_BEKU_TERKUNCI', 'Kewajiban beku tidak dapat diubah lewat batch biasa (' + ubah.join(', ') + '); koreksi butuh jalur khusus beralasan') : null;
+  }
+  if (!rgKwBeku_(next)) return null;
+  var kan = 'kw_' + oblHash_(rgKwKunci_(next));
+  if (opStr_(next.id) !== kan || opStr_(next.tagihanId) !== kan) return rgFail_('ID_KEWAJIBAN_TIDAK_KANONIS', 'Kewajiban beku wajib ber-id kanonis ' + kan + ' (id dan tagihanId) untuk kunci ' + rgKwKunci_(next));
+  var ic = ctx.col('id'), tc = ctx.col('tagihanId'), ac = ctx.col('archivedAt'), sc = ctx.col('siswaId'), kc = ctx.col('komponenId'), pc = ctx.col('periode');
+  var lain = ctx.rows.filter(function (r) {
+    if (String(r[ic]) === String(next.id) || opStr_(r[tc]) === '' || (ac !== -1 && opStr_(r[ac]) !== '')) return false;
+    return [opStr_(r[sc]), opStr_(r[kc]), opStr_(r[pc])].join('|') === rgKwKunci_(next);
+  });
+  return lain.length ? rgFail_('DUPLIKAT_KEWAJIBAN_BEKU', 'Sudah ada kewajiban beku aktif untuk kunci ' + rgKwKunci_(next) + ' (' + lain.map(function (r) { return String(r[ic]); }).join(', ') + '); periksa lewat opKewajibanBekuAudit') : null;
+}
 function rgCheckOp_(ctx, op, cur, next) {
   var key = ctx.key;
+  if (key === 'kewajiban') { var kwf = rgKewajibanBeku_(ctx, op, cur, next); if (kwf) return kwf; } // [P1_23 D-1]
   if (op === 'archive') return null;
   var de = rgDateFieldError_(key, cur, next); if (de) return de; // [P0-T4]
   if (key === 'rekonsiliasi') {

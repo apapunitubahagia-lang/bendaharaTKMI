@@ -1,0 +1,7 @@
+tagihanSnapshotRow_ kanonis
+kewajibanSatuBaris cocok komponenId
+riwayat beku cocok komponenId
+ccFromRow_ komponenId
+ccToRow_ komponenId
+terbitkan tagihan cek komponenId
+komponen dipakai

@@ -48,14 +48,17 @@ const audits = (srv, re) => srv.sheets['13_AUDIT_LOG'].slice(1).filter(r => re.t
     rec('D1-06', 'CELAH: arsip kewajiban beku yang sudah dibayar (alasan opsional) -> kewajiban kembali TIDAK beku dan dihitung ulang dengan tarif BARU (250.000, sisa 50.000, CICILAN); snapshot ulang gagal karena id kw_ yang sama sudah diarsipkan (tidak dapat dibekukan lagi)', null,
       J({ arsip: ar.ok && ar.data.results[0].code, snapshot: sn.ok && sn.data, status: after })); }
   { // D1-07: tulis bersamaan (expect) dan retry
+    /* [P1_23 D-1, ekspektasi diubah atas kebijakan D-1 yang disetujui] Sebelumnya uji ini menulis netto kewajiban beku (UPDATED/CONFLICT/
+       UNCHANGED) dan D1-08 mencatat last-write-wins atas netto. Kini nilai kewajiban beku TERKUNCI dari batch biasa, sehingga semantik
+       expect/retry diuji pada field yang tetap boleh diubah (jatuhTempo), dan perubahan netto diuji harus ditolak. */
     const srv = frozen(); const id = kwS1(srv)[0];
-    const w1 = srv.sb.opRecordBatch('kewajiban', [{ op: 'upsert', id, row: { netto: 210000 }, expect: { netto: 200000 } }]);
-    const w2 = srv.sb.opRecordBatch('kewajiban', [{ op: 'upsert', id, row: { netto: 220000 }, expect: { netto: 200000 } }]);
-    const w3 = srv.sb.opRecordBatch('kewajiban', [{ op: 'upsert', id, row: { netto: 210000 }, expect: { netto: 200000 } }]);
+    const w1 = srv.sb.opRecordBatch('kewajiban', [{ op: 'upsert', id, row: { jatuhTempo: '2026-09-10' }, expect: { jatuhTempo: '' } }]);
+    const w2 = srv.sb.opRecordBatch('kewajiban', [{ op: 'upsert', id, row: { jatuhTempo: '2026-09-15' }, expect: { jatuhTempo: '' } }]);
+    const w3 = srv.sb.opRecordBatch('kewajiban', [{ op: 'upsert', id, row: { jatuhTempo: '2026-09-10' }, expect: { jatuhTempo: '' } }]);
     const w4 = srv.sb.opRecordBatch('kewajiban', [{ op: 'upsert', id, row: { netto: 230000 } }]);
     const r = x => x.ok && x.data.results[0].code;
-    rec('D1-07', 'tulis bersamaan dengan expect: penulis kedua (nilai server sudah berubah) -> CONFLICT; retry penulis pertama dengan nilai sama -> UNCHANGED (tidak ganda)', r(w1) === 'UPDATED' && r(w2) === 'CONFLICT' && r(w3) === 'UNCHANGED', [r(w1), r(w2), r(w3)].join(' '));
-    rec('D1-08', 'CELAH: tanpa expect, penulis terakhir menang (last-write-wins) pada kewajiban beku', null, 'tanpa expect -> ' + r(w4) + ', netto akhir ' + kwS1(srv)[kwCol(srv, 'netto')]); }
+    rec('D1-07', 'tulis bersamaan dengan expect (field jatuhTempo): penulis kedua -> CONFLICT; retry penulis pertama dengan nilai sama -> UNCHANGED (tidak ganda)', r(w1) === 'UPDATED' && r(w2) === 'CONFLICT' && r(w3) === 'UNCHANGED', [r(w1), r(w2), r(w3)].join(' '));
+    rec('D1-08', '[P1_23] celah last-write-wins atas NILAI kewajiban beku tertutup: netto tanpa expect -> KEWAJIBAN_BEKU_TERKUNCI, netto tetap 200.000', null, 'tanpa expect -> ' + r(w4) + ', netto akhir ' + kwS1(srv)[kwCol(srv, 'netto')]); }
   { // D1-09: definisi beku tidak konsisten antara jalur klien & server
     const srv = frozen();
     const w = srv.sb.opRecordBatch('kewajiban', [{ op: 'upsert', id: 'tagihan_klien_1', row: { siswaId: 's1', komponenId: 'kmp_spp', periode: P, bruto: 175000, potongan: '[]', netto: 175000, tagihanId: 'tagihan_klien_1', computedAt: '2026-10-01T00:00:00.000Z' } }]);

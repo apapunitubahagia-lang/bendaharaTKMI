@@ -93,7 +93,9 @@ function kewajibanSatuBaris(siswa, komponen, periode){
   const {potongan, perluReview} = keringananPotonganFor(siswa.id, komponen.id, bruto);
   const totalPotongan = potongan.reduce((s,p)=>s+p.nominal,0);
   const nettoComputed = Math.max(0, bruto-totalPotongan);
-  const snap = Store.loadTagihan().find(t=>t.siswaId===siswa.id && t.komponen===komponen.nama && t.periode===periode);
+  // [P1_23 D-1] cocok lewat komponenId (nama hanya untuk baris lama tanpa komponenId); duplikat historis -> pilihan deterministik
+  const snaps = Store.loadTagihan().filter(t=>t.siswaId===siswa.id && (t.komponenId ? t.komponenId===komponen.id : t.komponen===komponen.nama) && t.periode===periode);
+  const snap = snaps.length > 1 ? snaps.slice().sort((a,b)=>((String(a.id||'').indexOf('kw_')===0 ? 0 : 1) - (String(b.id||'').indexOf('kw_')===0 ? 0 : 1)) || (String(a.id) < String(b.id) ? -1 : String(a.id) > String(b.id) ? 1 : 0))[0] : snaps[0];
   return {
     key: siswa.id+'|'+komponen.id+'|'+periode, siswaId:siswa.id, komponenId:komponen.id, komponenNama:komponen.nama, periode,
     bruto: snap? Number(snap.tagihanBruto!=null?snap.tagihanBruto:bruto) : bruto,
@@ -132,7 +134,7 @@ function kewajibanForSiswa(siswaId, periodeFilter){
      tetap ditampilkan apa adanya, supaya pembayaran historis tidak menjadi yatim. */
   const komps = MasterAPI.components();
   Store.loadTagihan().filter(t=>t.siswaId===siswaId).forEach(t=>{
-    const k = komps.find(c=>c.nama===t.komponen);
+    const k = t.komponenId ? komps.find(c=>c.id===t.komponenId) : komps.find(c=>c.nama===t.komponen); // [P1_23 D-1]
     if(!k || seen.has(siswaId+'|'+k.id+'|'+t.periode)) return;
     push(kewajibanSatuBaris(siswa, k, t.periode));
   });
@@ -200,7 +202,7 @@ function oblLoadContext_() {
   var byKomp = {}; komponen.forEach(function (k) { byKomp[k.id] = k; });
   var tagihan = mk('04_KEWAJIBAN').filter(function (r) { return oblS_(r.tagihanId) !== ''; }).map(function (r) {
     var pot = oblS_(r.potongan); var potArr = pot.charAt(0) === '[' ? oblJson_(pot, []) : [];
-    return { id: oblS_(r.id), siswaId: oblS_(r.siswaId), komponen: (byKomp[oblS_(r.komponenId)] || {}).nama || oblS_(r.komponenId), periode: oblS_(r.periode), tagihanBruto: oblN_(r.bruto), potongan: potArr, tagihanNetto: oblN_(r.netto), jatuhTempo: oblS_(r.jatuhTempo), tahunAjaran: oblS_(r.tahunAjaran), kelas: oblS_(r.kelas), unit: oblS_(r.unit), tarifId: oblS_(r.tarifId), tarifSatuan: oblS_(r.tarifSatuan) === '' ? null : oblN_(r.tarifSatuan), jumlahHari: oblS_(r.jumlahHari) === '' ? null : oblN_(r.jumlahHari) };
+    return { id: oblS_(r.id), siswaId: oblS_(r.siswaId), komponenId: oblS_(r.komponenId), komponen: (byKomp[oblS_(r.komponenId)] || {}).nama || oblS_(r.komponenId), periode: oblS_(r.periode), tagihanBruto: oblN_(r.bruto), potongan: potArr, tagihanNetto: oblN_(r.netto), jatuhTempo: oblS_(r.jatuhTempo), tahunAjaran: oblS_(r.tahunAjaran), kelas: oblS_(r.kelas), unit: oblS_(r.unit), tarifId: oblS_(r.tarifId), tarifSatuan: oblS_(r.tarifSatuan) === '' ? null : oblN_(r.tarifSatuan), jumlahHari: oblS_(r.jumlahHari) === '' ? null : oblN_(r.jumlahHari) };
   });
   return {
     settings: settings,

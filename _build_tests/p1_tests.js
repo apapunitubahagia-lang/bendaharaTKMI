@@ -273,10 +273,12 @@ const sync = async c => { await c.sb.centralRunSync(true); await tick(10); await
       J({ juli: [a.code, fa], okt: b.code, generik: g.code, status: st.data && st.data.closed, reopen: ro.code, setelahReopen: c.code, dataAsli: raw && raw[1] })); }
   { // GAP-015 (direvisi): kewajiban (tagihan beku) pada periode bertanda tetap dapat ditulis; ditandai di audit
     const srv = makeServer(); setClosed(srv, ['September 2026']);
-    const r = safe(() => srv.sb.opRecordBatch('kewajiban', [{ op: 'upsert', id: 'kw_uji_1', row: { siswaId: 's1', komponenId: 'kmp_spp', periode: 'September 2026', bruto: 200000, potongan: '[]', netto: 200000, tagihanId: 'kw_uji_1' } },
-      { op: 'upsert', id: 'kw_uji_2', row: { siswaId: 's1', komponenId: 'kmp_spp', periode: 'Oktober 2026', bruto: 200000, potongan: '[]', netto: 200000, tagihanId: 'kw_uji_2' } }]));
+    // [P1_23 D-1, fixture saja] id kewajiban beku kini wajib kanonis kw_<hash kunci>; kontrol yang diuji (penanda periode) & asersi tidak berubah
+    const K1 = 'kw_' + srv.sb.oblHash_('s1|kmp_spp|September 2026'), K2 = 'kw_' + srv.sb.oblHash_('s1|kmp_spp|Oktober 2026');
+    const r = safe(() => srv.sb.opRecordBatch('kewajiban', [{ op: 'upsert', id: K1, row: { siswaId: 's1', komponenId: 'kmp_spp', periode: 'September 2026', bruto: 200000, potongan: '[]', netto: 200000, tagihanId: K1 } },
+      { op: 'upsert', id: K2, row: { siswaId: 's1', komponenId: 'kmp_spp', periode: 'Oktober 2026', bruto: 200000, potongan: '[]', netto: 200000, tagihanId: K2 } }]));
     const res = r.ok ? r.data.results.map(x => x.code) : [r.code];
-    rec('P1L-14', 'GAP-015 (direvisi)', res[0] === 'CREATED' && res[1] === 'CREATED' && cnt(srv, '04_KEWAJIBAN') === 2 && marks(srv, 'kw_uji_1').length === 1 && marks(srv, 'kw_uji_2').length === 0, J(res)); }
+    rec('P1L-14', 'GAP-015 (direvisi)', res[0] === 'CREATED' && res[1] === 'CREATED' && cnt(srv, '04_KEWAJIBAN') === 2 && marks(srv, K1).length === 1 && marks(srv, K2).length === 0, J(res)); }
   { // TC-CRUD-04 / GAP-014: rekonsiliasi dengan akunId tak dikenal -> VALIDATION_ERROR (generik maupun API khusus)
     const srv = makeServer();
     const r = safe(() => srv.sb.opRecordUpsert('rekonsiliasi', { id: 'rk_x', akunId: 'tidak_ada', periode: 'Oktober 2026', saldoAktual: 1 }));
