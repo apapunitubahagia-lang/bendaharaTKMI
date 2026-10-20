@@ -6900,7 +6900,7 @@ function importWizardProceedToPreview(){
   openModal(importWizardHtml(), true);
 }
 /* [P1_21 D-4] jalur impor lama 4 modul Impor V2 (penerimaan, pengeluaran, rab, lpj) dinonaktifkan pada fungsi (bukan hanya tombol). */
-function impLamaNonaktif_(type){ return !!IMPORT_V2_MODUL_[type] && type !== 'siswa'; } // siswa: belum (lihat catatan di atas)
+function impLamaNonaktif_(type){ return !!IMPORT_V2_MODUL_[type]; } // [P1_23 D-4] siswa ikut dinonaktifkan (Impor V2 siswa kini lengkap, termasuk status)
 function impLamaTolak_(type){ auditTrailPush('IMPOR_LAMA_DITOLAK', null, {type:type}, 'import-wizard'); toast('Wizard impor lama untuk modul ini dinonaktifkan. Gunakan Impor V2 (validasi & simpan oleh server).'); return {ok:false, code:'JALUR_IMPOR_LAMA_DINONAKTIFKAN', message:'Wizard impor lama untuk modul ini dinonaktifkan. Gunakan Impor V2 (validasi & simpan oleh server).'}; }
 function importWizardConfirm(){
   const s = State.importSession;
@@ -6930,6 +6930,7 @@ function importWizardConfirm(){
 }
 function importWizardConfirmSiswa(updateMode){
   const s = State.importSession;
+  if(impLamaNonaktif_('siswa')) return impLamaTolak_('siswa'); // [P1_23 D-4]
   let ditambah=0, diupdate=0, sudahAda=0, ditolak=0;
   const queue = Store.loadImportQueue();
   s.rows.forEach((row,i)=>{
@@ -6980,6 +6981,7 @@ function classifySiswaBatch(rows, headerMap){
   });
 }
 function commitSiswaRow(get, extra, res){
+  throw new Error('Wizard impor lama untuk modul ini dinonaktifkan. Gunakan Impor V2 (validasi & simpan oleh server).' + ' [JALUR_IMPOR_LAMA_DINONAKTIFKAN]'); // [P1_23 D-4] modul siswa
   if(!centralMasterWriteActive()){ toast('GAGAL: ' + centralNotReadyText_()); return; } // [P0-B] tanpa simpan lokal
   if(centralMasterWriteActive()){
     const s0 = Store.loadSettings(), id0 = uid('siswa');
@@ -7006,6 +7008,7 @@ function commitSiswaRow(get, extra, res){
    yang ADA nilainya di baris import yang menimpa - field kosong tidak
    menimpa data lama (supaya import parsial tidak mengosongkan data valid). */
 function updateSiswaRow(siswaId, get, extra, res){
+  throw new Error('Wizard impor lama untuk modul ini dinonaktifkan. Gunakan Impor V2 (validasi & simpan oleh server).' + ' [JALUR_IMPOR_LAMA_DINONAKTIFKAN]'); // [P1_23 D-4] modul siswa (perbarui)
   if(!centralMasterWriteActive()){ toast('GAGAL: ' + centralNotReadyText_()); return; } // [P0-B] tanpa simpan lokal
   if(centralMasterWriteActive()){
     const cur0 = MasterAPI.students().find(x=>x.id===siswaId); if(!cur0) return;

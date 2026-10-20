@@ -52,11 +52,13 @@ const S = srv => { const H = srv.sheets['01_SISWA'][0]; return srv.sheets['01_SI
     const ob = per => srv.sb.opObligations({ siswaId: 's2', periode: per }).data.rows.find(o => o.komponenId === 'kmp_spp');
     rec('SW-09', 'dampak perubahan kelas terhadap kewajiban (disetujui eksplisit): kewajiban beku September tetap 200.000; kewajiban belum beku (Agustus) mengikuti tarif kelas 1 = 350.000', ob('September 2026').netto === 200000 && ob('Agustus 2026').netto === 350000,
       J({ sep: ob('September 2026').netto, ags: ob('Agustus 2026').netto, hasil: r.hasil.map(h => h.status) })); }
-  { // wizard lama: perilaku saat ini (masih aktif)
+  { // [P1_23] keputusan: pengganti lengkap -> wizard lama siswa dinonaktifkan (sebelumnya SW-05: tetap aktif)
     const srv = makeServer(); const c = makeClient(srv); c.sb.initializeSeedData(); c.sb.bootstrapCentralAuth();
     await until(() => c.a.CentralMasterData.ready, 400); await tick(5);
-    const st = c.sb.impLamaNonaktif_('siswa');
-    rec('SW-05', 'wizard lama siswa masih aktif sampai penonaktifan (commit terpisah)', st === false, 'impLamaNonaktif_(siswa)=' + st); }
+    c.a.State.importSession = { type: 'siswa', step: 'map', headers: ['namaSiswa', 'unit', 'kelas'], rows: [{ namaSiswa: 'X', unit: 'MI', kelas: '1' }], headerMap: { namaSiswa: 'namaSiswa', unit: 'unit', kelas: 'kelas' }, results: null, batchId: 'b', rawFiles: [{ name: 'x.csv' }] };
+    c.sb.importWizardProceedToPreview(); const r = c.sb.importWizardConfirmSiswa(true); let u = ''; try { c.sb.updateSiswaRow('s1', () => 'x', {}, {}); } catch (e) { u = e.message; }
+    rec('SW-05', 'KEPUTUSAN [P1_23]: Impor V2 siswa lengkap (SW-01..04, 07..09) -> wizard lama siswa DINONAKTIFKAN: importWizardConfirmSiswa & updateSiswaRow menolak, 0 antrean master', c.sb.impLamaNonaktif_('siswa') === true && r && r.code === 'JALUR_IMPOR_LAMA_DINONAKTIFKAN' && /JALUR_IMPOR_LAMA_DINONAKTIFKAN/.test(u) && Object.keys(c.sb.ccMasterPend_('siswa')).length === 0,
+      J({ konfirmasi: r && r.code, update: u.slice(0, 40) })); }
   { // perbedaan lain (bukan penghalang): TA default diam-diam di jalur lama
     const srv = fresh(); const r = importAll(srv, [{ nama: 'Tanpa TA', unit: 'MI', kelas: '1-A' }]);
     rec('SW-06', 'perbedaan perilaku (bukan penghalang): wizard lama mengisi tahun ajaran aktif diam-diam; Impor V2 meminta keputusan eksplisit (PERLU_KEPUTUSAN TAHUN_AJARAN_KOSONG); namaAyah/namaIbu dipetakan manual ke namaWali di Impor V2', null,

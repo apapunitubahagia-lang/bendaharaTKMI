@@ -74,9 +74,12 @@ const kpiShape = k => ({ periode: k.periode, overall: k.overall, overallStatus: 
     srv.sheets['01_SISWA'][1][H.indexOf('tanggalMasuk')] = '01/07/2020'; // data historis tidak sah
     const e = up({ id: 's1', kontakWali: '0812' });
     rec('T4B-14', 'F7 data historis tidak sah tidak memblokir perubahan field lain (tidak diperiksa ulang/dikoreksi)', e.ok && srv.sheets['01_SISWA'][1][H.indexOf('tanggalMasuk')] === '01/07/2020', e.code); }
-  { const srv = makeServer(); const c = await boot(srv);
-    c.a.State.importSession = { type: 'siswa', step: 'map', headers: ['namaSiswa', 'unit', 'kelas', 'tanggalMasuk', 'jenisKelamin'], rows: [{ namaSiswa: 'Siswa F7', unit: 'MI', kelas: '1', tanggalMasuk: '2026-09-05', jenisKelamin: 'P' }], headerMap: { namaSiswa: 'namaSiswa', unit: 'unit', kelas: 'kelas', tanggalMasuk: 'tanggalMasuk', jenisKelamin: 'jenisKelamin' }, results: null, batchId: 'b_s', rawFiles: [{ name: 's.csv' }] };
-    c.sb.importWizardProceedToPreview(); c.sb.importWizardConfirmSiswa(false); for (let i = 0; i < 4; i++) { await c.sb.centralRunSync(true); await tick(10); }
+  { /* [P1_23 D-4, ekspektasi diubah atas keputusan D-4] Sebelumnya lewat importWizardConfirmSiswa (wizard lama, kini dinonaktifkan).
+       Kontrol yang sama (tanggalMasuk & jenisKelamin dari impor klien sampai ke 01_SISWA) kini lewat Impor V2 via ServerBridge. */
+    const srv = makeServer(); srv.sb.opSchemaApply('TAMBAH_KOLOM_ADITIF'); srv.sb.opImportSetup('BUAT_SHEET_IMPOR'); const c = await boot(srv);
+    const b = [{ nama: 'Siswa F7', unit: 'MI', kelas: '1', tahunAjaran: '2026/2027', tanggalMasuk: '2026-09-05', jenisKelamin: 'P' }], SUMB = { nama: 's.csv', jenis: 'csv' };
+    const pl = await c.sb.ServerBridge.opImportPlan({ modul: 'siswa', baris: b, sumber: SUMB });
+    if (pl.ok) await c.sb.ServerBridge.opImportCommit({ modul: 'siswa', baris: b, sumber: SUMB, planHash: pl.data.planHash, konfirmasi: 'IMPOR_DATA', mulai: 0 });
     const H = srv.sheets['01_SISWA'][0], r = srv.sheets['01_SISWA'].find(x => x[H.indexOf('nama')] === 'Siswa F7');
     rec('T4B-15', 'F7 klien: antrean master membawa tanggalMasuk & jenisKelamin', r && r[H.indexOf('tanggalMasuk')] === '2026-09-05' && r[H.indexOf('jenisKelamin')] === 'P', J(r)); }
   { // dampak kewajiban: tanggalMasuk menentukan bulan pertama kewajiban Bulanan

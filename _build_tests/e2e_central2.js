@@ -221,14 +221,20 @@ const sync = async (c) => { await c.sb.centralRunSync(true); await tick(5); };
     rec('V5 transaksi yang sudah diarsipkan tidak dihitung di FCC/posisi akun (cash tidak memuat 200000 itu)', true);
 
     // ===== MASS IMPORT =====
-    const nS0 = rows(srv, '01_SISWA').length; let rpcBefore = c.calls.filter(x => x === 'opMasterBatch').length;
-    for (let i = 0; i < 60; i++) {
-      const f = { namaSiswa: 'SISWA IMPOR ' + i, nis: 'N' + i, nisn: '99' + i, kelas: '2', unit: 'MI', tahunAjaran: '2026/2027', namaWali: 'W' + i, kontakWali: '08' + i, alamat: 'Jl ' + i, status: 'Aktif' };
-      try { c.sb.commitSiswaRow(k => f[k] || '', {}, {}); } catch (e) { rec('M0 commitSiswaRow ' + i, false, e.message); break; }
-    }
-    await sync(c);
+    /* [P1_23 D-4, ekspektasi diubah atas keputusan D-4 (wizard lama siswa dinonaktifkan setelah Impor V2 siswa lengkap)]
+       Sebelumnya M0/M1 memanggil commitSiswaRow (wizard lama) 60x. Kini: M0 = jalur lama ditolak tanpa antrean; M1 = kontrol yang
+       sama (60 siswa, <= 3 RPC tulis, alamat tertulis) lewat Impor V2 (ServerBridge opImportPlan/opImportCommit). */
+    const nS0 = rows(srv, '01_SISWA').length; let m0 = '';
+    try { c.sb.commitSiswaRow(k => ({ namaSiswa: 'LAMA', unit: 'MI', kelas: '2' })[k] || '', {}, {}); m0 = 'TIDAK DITOLAK'; } catch (e) { m0 = e.message; }
+    rec('M0 commitSiswaRow (wizard lama) ditolak JALUR_IMPOR_LAMA_DINONAKTIFKAN, tidak ada antrean master', /JALUR_IMPOR_LAMA_DINONAKTIFKAN/.test(m0) && Object.keys(c.sb.ccMasterPend_('siswa')).length === 0, m0.slice(0, 80));
+    srv.sb.opImportSetup('BUAT_SHEET_IMPOR');
+    const bm = Array.from({ length: 60 }, (_, i) => ({ nama: 'SISWA IMPOR ' + i, nis: 'N' + i, nisn: '99' + i, kelas: '2', unit: 'MI', tahunAjaran: '2026/2027', namaWali: 'W' + i, kontakWali: '08' + i, alamat: 'Jl ' + i, status: 'Aktif' }));
+    const SB = c.sb.ServerBridge, SUMB = { nama: 'siswa60.csv', jenis: 'csv' }; let rpcBefore = c.calls.filter(x => x === 'opImportCommit').length;
+    const pm = await SB.opImportPlan({ modul: 'siswa', baris: bm, sumber: SUMB }); let mulai = 0, guard = 0;
+    while (pm.ok && mulai !== null && guard++ < 10) { const cm = await SB.opImportCommit({ modul: 'siswa', baris: bm, sumber: SUMB, planHash: pm.data.planHash, konfirmasi: 'IMPOR_DATA', mulai }); if (!cm.ok) break; mulai = cm.data.berikut; }
+    await c.sb.loadCentralMasterData({ skipOperational: true }); // sama dengan UI Impor V2 setelah commit modul siswa
     const nS1 = rows(srv, '01_SISWA').length;
-    const rpcs = c.calls.filter(x => x === 'opMasterBatch').length - rpcBefore;
+    const rpcs = c.calls.filter(x => x === 'opImportCommit').length - rpcBefore;
     rec('M1 impor massal 60 siswa -> 01_SISWA +60 lewat batch (<=2-3 RPC), alamat tertulis', nS1 - nS0 === 60 && rpcs <= 3 && rows(srv, '01_SISWA').some(r => r[col(srv, '01_SISWA', 'alamat')] === 'Jl 7'), { added: nS1 - nS0, rpcs });
     await sync(c);
     rec('M2 sinkron ulang tidak menggandakan siswa (idempoten)', rows(srv, '01_SISWA').length === nS1);
