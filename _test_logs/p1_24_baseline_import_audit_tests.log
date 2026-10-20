@@ -1,0 +1,14 @@
+INFO IA-01 [RAB / T4 (TEMUAN)] pratinjau valid 1, baris server +0, gagal sinkron: [] -> wizard mengisi periode = tahun ajaran mentah; ditolak server sejak P0-T4 (sebelumnya tersimpan tetapi tidak pernah dihitung FCC/KPI)
+INFO IA-02 [RAB/LPJ header FINAL / GAP-016 (TEMUAN)] {"08_ANGGARAN":{"tersimpan":0,"galat":[]},"19_LPJ":{"tersimpan":0,"galat":[]}} -> impor RAB/LPJ menulis kolom yang tidak ada di header FINAL (perlu migrasi aditif)
+INFO IA-03 [Pengeluaran default diam-diam (TEMUAN)] tanpa kolom akun/kategori -> tersimpan akun=undefined, kategori=undefined (akunKasBankList[0] / kategoriPengeluaranList[0])
+INFO IA-04 [Pemasukan akun tidak dikenal (TEMUAN)] akun "Rekening Tidak Ada" -> tersimpan akun=undefined (jatuh ke akun pertama tanpa peringatan)
+PASS IA-05 [impor ulang berkas sama lewat wizard lama [P1_21 D-4: dinonaktifkan] -> pratinjau valid, kedua konfirmasi ditolak, 0 transaksi di server] pratinjau valid 1/1, transaksi di server 0
+INFO IA-06 [duplikat di dalam satu berkas (TEMUAN)] dua baris identik dalam satu berkas: valid 2, duplikat 0, tersimpan 0 (sidik jari hanya dibandingkan dengan data yang SUDAH ada)
+PASS IA-07 [LPJ tidak membuat transaksi] impor LPJ: transaksi baru 0
+INFO IA-08 [LPJ validasi klien vs server (TEMUAN)] pratinjau valid 2 (termasuk 2026-02-30), tersimpan 0, gagal sinkron [] -> pratinjau menyatakan valid, server menolak SETELAH konfirmasi
+INFO IA-09 [antrean DUPLIKAT/HOLD (TEMUAN)] antrean impor 0 baris () hanya di localStorage perangkat ini (Store.loadImportQueue), tidak di server
+INFO IA-10 [skala 10/50/100/500 (sandbox)] 10 baris: valid 10, tersimpan 0, RPC opCreateTxBatch 0 | 50 baris: valid 50, tersimpan 0, RPC opCreateTxBatch 0 | 100 baris: valid 100, tersimpan 0, RPC opCreateTxBatch 0 | 500 baris: valid 500, tersimpan 0, RPC opCreateTxBatch 0 (jumlah RPC = ceil(n/20); waktu Apps Script nyata BELUM diukur)
+INFO IA-11 [Siswa tanggalMasuk/jenisKelamin (TEMUAN)] siswa TIDAK tersimpan; tanggalMasuk "05/09/2026" -> undefined, jenisKelamin "L" -> undefined
+INFO IA-12 [periodeAktif format tanggal / GAP-008 (TEMUAN)] periodeAktif="2026-10-01", parsePeriodeLabel={"monthIdx":-1,"year":null}, KPI dihitung untuk periode "2026-10-01" -> overall null (bukan DATA TIDAK TERSEDIA; label tidak cocok dengan periode bulan mana pun)
+
+PASS=2 FAIL=0 INFO=10

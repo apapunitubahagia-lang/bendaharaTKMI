@@ -66,3 +66,10 @@ Tambahan P1_20 (2026-10-19): apply_v1_migrasi_client.js, apply_alloc_siswa_serve
   node snapshot_tarif_tests.js  # karakterisasi perubahan tarif & snapshot kewajiban (INFO; tanpa perubahan kebijakan)
   node legacy_import_tests.js   # jalur impor lama 5 modul V2: UI dialihkan, resolver ditolak, server tetap memvalidasi
   Hasil terakhir: node run_all_tests.js p1_20 -> 24 suite, 587 PASS, 0 FAIL, 50 INFO (sandbox; uji live BLOCKED).
+
+Tambahan P1_24 (2026-10-20): apply_um_ui_client.js (UI uang muka BACA-SAJA; setelah apply_lpj_bridge_client.js);
+  _live_tests/LiveReadiness.gs + ltIdentitasProbe/ltKewajibanBekuAudit/ltLpjSetupPreview/ltLpjSetupApply/ltLpjRollbackCek (khusus salinan uji).
+  node d1_audit_klasifikasi_tests.js # D-1: DUPLIKAT_PASTI vs PERLU_KEPUTUSAN_MANUAL + hubungan alokasi (baca-saja)
+  node lpj_setup_live_tests.js       # harness salinan + setup LPJ terjaga + lepas tautan lalu buat ulang
+  node um_ui_tests.js                # UI uang muka baca-saja: empat angka, peringatan arsip, dampak FCC (audit)
+  Hasil terakhir: node run_all_tests.js p1_24 -> 42 suite, 734 PASS, 0 FAIL, 65 INFO (sandbox; uji live BLOCKED).

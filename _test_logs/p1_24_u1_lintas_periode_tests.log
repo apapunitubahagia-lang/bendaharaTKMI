@@ -1,0 +1,6 @@
+PASS U1-01 [audit tanpa alokasi eksplisit -> total 0 (sheet 30 kosong / belum ada tidak dianggap galat)] {}
+INFO U1-02 [KARAKTERISASI: alokasi transaksi September ke RAB Oktober MASIH diterima (U-1 belum diaktifkan; tidak ada perubahan perilaku tulis)] ["CREATED","CREATED"]
+PASS U1-03 [audit baca-saja: September->September = SAMA_PERIODE; September->Oktober = PERIODE_BERBEDA (calon PERIOD_MISMATCH) per pasangan periode; 30_ALOKASI_PENGELUARAN tidak berubah] {"tulis":["CREATED","CREATED"],"ringkasan":{"SAMA_PERIODE":1,"PERIODE_BERBEDA":1},"pasangan":{"September 2026 -> Oktober 2026":1}}
+PASS U1-04 [AUDITOR dapat menjalankan audit (baca-saja)] SUCCESS
+
+PASS=3 FAIL=0 INFO=1
