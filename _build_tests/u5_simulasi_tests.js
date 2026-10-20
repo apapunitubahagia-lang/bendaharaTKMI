@@ -23,13 +23,19 @@ const realisasi = s => { const o = s.sb.opRabRealization(P); delete o.data.compu
   { const s = fresh(); setAng(s, 'ang_1', 'status', 'DISETUJUI'); // RAB lama tanpa metadata
     const r = sim(s).data.perPeriode[P];
     rec('US-04', 'RAB lama tanpa metadata (HISTORI_TIDAK_LENGKAP) -> TIDAK_DAPAT_DINILAI: rentang I03 min 0 / maks 1, tidak ada tanggal dikarang', r.tidakDapatDinilai === 1 && r.i03SimulasiMin === 0 && r.i03SimulasiMaks === 1, J(r)); }
-  { const s = fresh(); setAng(s, 'ang_1', 'status', 'DISETUJUI'); setAng(s, 'ang_1', 'disetujuiPada', '2026-09-20T03:00:00.000Z');
+  { const s = fresh(); setAng(s, 'ang_1', 'status', 'DISETUJUI'); setAng(s, 'ang_1', 'disetujuiPada', '2026-09-20T03:00:00.000Z'); setAng(s, 'ang_1', 'disetujuiOleh', 'kepala@x.id'); // [P1_23 fixture: metadata sah wajib memuat penyetuju]
     const hk = s.sheets['09_KOMITMEN'][0]; hk.push('transaksiId'); const kv = { id: 'kom_1', uraian: 'Pembelian ATK darurat', nominal: 50000, status: 'COMMITTED', tanggal: '2026-09-04', transaksiId: 'imp_trx_2' }; s.sheets['09_KOMITMEN'].push(hk.map(h => kv[h] === undefined ? '' : kv[h]));
     const r = sim(s).data.perPeriode[P];
     rec('US-05', 'transaksi tertaut komitmen: I03 tetap gagal di simulasi, I05 tetap lulus (persetujuan di luar RAB, sama dengan aturan klien)', r.i03SimulasiMaks === 0 && r.i05SimulasiMin === 1 && r.i05Sekarang === 1, J(r)); }
   { const s = fresh(); setAng(s, 'ang_1', 'status', 'DIAJUKAN');
     const r = sim(s).data.perPeriode[P];
     rec('US-06', 'RAB belum disetujui: I03 sekarang 0 = simulasi 0 (tidak terdampak)', r.i03Sekarang === 0 && r.i03SimulasiMaks === 0 && r.berubahGagal === 0, J(r)); }
+  { // [P1_23] klasifikasi RAB & alasan per transaksi
+    const s = fresh(); setAng(s, 'ang_1', 'status', 'DISETUJUI'); setAng(s, 'ang_1', 'disetujuiPada', '2026-09-20T03:00:00.000Z'); setAng(s, 'ang_1', 'disetujuiOleh', 'kepala@x.id');
+    const h = s.sheets['08_ANGGARAN'][0]; s.sheets['08_ANGGARAN'].push(h.map(k => ({ id: 'ang_lama', periode: 'September 2026', program: 'Lama', kategori: 'Konsumsi', unit: 'MI', nominal: 5, status: 'DISETUJUI', disetujuiPada: 'kemarin' })[k] || ''));
+    const o = sim(s).data, t = o.transaksiTerdampak[0], k = Object.fromEntries(o.rab.map(r => [r.anggaranId, r.status]));
+    rec('US-08', '[P1_23] RAB dibedakan: metadata sah (ISO + penyetuju) = METADATA_SAH; nilai tidak sah ("kemarin") = HISTORI_TIDAK_LENGKAP (tidak dikarang); transaksi terdampak membawa alasan tertulis', k.ang_1 === 'METADATA_SAH' && k.ang_lama === 'HISTORI_TIDAK_LENGKAP' && t.status === 'BERUBAH_GAGAL' && /sebelum persetujuan RAB 2026-09-20/.test(t.alasan),
+      J({ rab: o.rab.map(r => [r.anggaranId, r.status]), alasan: t.alasan })); }
   { const s = fresh(); const o = sim(s, { periode: 'Oktober 2026' });
     rec('US-07', 'filter periode tanpa transaksi -> perPeriode kosong', o.ok && Object.keys(o.data.perPeriode).length === 0, J(o.data.perPeriode)); }
 

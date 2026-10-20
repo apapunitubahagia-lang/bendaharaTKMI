@@ -85,7 +85,14 @@ function opRabTidakSurutSimulasi(opts) {
   opts = opts && typeof opts === 'object' ? opts : {};
   try {
     var per = opStr_(opts.periode), ang = sgRowsChecked_('08_ANGGARAN');
-    var pada = {}; ang.forEach(function (a) { if (rabApprovalStatus_(a.status) === 'DISETUJUI' && !opStr_(a.archivedAt)) pada[opStr_(a.id)] = opStr_(a.disetujuiPada).slice(0, 10); });
+    // [P1_23] metadata SAH = disetujuiPada tanggal-waktu ISO yang sah + disetujuiOleh terisi; selain itu HISTORI_TIDAK_LENGKAP (tidak dikarang)
+    var pada = {}, rabKelas = [];
+    ang.forEach(function (a) {
+      if (rabApprovalStatus_(a.status) !== 'DISETUJUI' || opStr_(a.archivedAt)) return;
+      var dp = opStr_(a.disetujuiPada), sah = /^\d{4}-\d{2}-\d{2}T/.test(dp) && !sgDateError_(dp.slice(0, 10)) && opStr_(a.disetujuiOleh) !== '';
+      if (sah) pada[opStr_(a.id)] = dp.slice(0, 10);
+      rabKelas.push({ anggaranId: opStr_(a.id), periode: opStr_(a.periode), kategori: opStr_(a.kategori), unit: opStr_(a.unit), status: sah ? 'METADATA_SAH' : 'HISTORI_TIDAK_LENGKAP', disetujuiPada: sah ? dp : '', disetujuiOleh: sah ? opStr_(a.disetujuiOleh) : '' });
+    });
     var D = { transaksi: sgRowsChecked_('05_TRANSAKSI'), anggaran: ang, lpj: [], kategoriPengeluaran: sgRowsChecked_('21_KATEGORI_PENGELUARAN'), alokasiPengeluaran: sgRowsChecked_('30_ALOKASI_PENGELUARAN') };
     var kom = {}; sgRowsChecked_('09_KOMITMEN').forEach(function (k) { if (opStr_(k.transaksiId) && !opStr_(k.archivedAt)) kom[opStr_(k.transaksiId)] = true; });
     var tgl = {}; D.transaksi.forEach(function (t) { tgl[opStr_(t.id)] = opStr_(t.tanggal).slice(0, 10); });
@@ -93,21 +100,21 @@ function opRabTidakSurutSimulasi(opts) {
     var P = function (p) { return perPeriode[p] = perPeriode[p] || { populasi: 0, i03Sekarang: 0, i03SimulasiMin: 0, i03SimulasiMaks: 0, i05Sekarang: 0, i05SimulasiMin: 0, i05SimulasiMaks: 0, berubahGagal: 0, tidakDapatDinilai: 0 }; };
     M.transaksi.forEach(function (r) {
       if (per && r.periode !== per) return;
-      var a = P(r.periode), komit = !!kom[r.transaksiId], i03 = !!r.disetujui, status = 'TIDAK_TERDAMPAK', simMin = i03, simMaks = i03, dasar = [];
+      var a = P(r.periode), komit = !!kom[r.transaksiId], i03 = !!r.disetujui, status = 'TIDAK_TERDAMPAK', simMin = i03, simMaks = i03, dasar = [], alasan = '';
       if (i03) {
         r.bagian.forEach(function (b) {
           if (b.anggaranId) dasar.push(opStr_(b.anggaranId));
           else { var L = M.lineByKey[b.lineKey]; (L && L.rabIdsDisetujui || []).forEach(function (x) { dasar.push(opStr_(x)); }); }
         });
         var tg = dasar.map(function (x) { return pada[x] || ''; });
-        if (!dasar.length || tg.some(function (x) { return !x; })) { status = 'TIDAK_DAPAT_DINILAI'; simMin = false; simMaks = true; a.tidakDapatDinilai++; }
-        else if (tgl[r.transaksiId] < tg.sort().pop()) { status = 'BERUBAH_GAGAL'; simMin = simMaks = false; a.berubahGagal++; }
+        if (!dasar.length || tg.some(function (x) { return !x; })) { status = 'TIDAK_DAPAT_DINILAI'; simMin = false; simMaks = true; a.tidakDapatDinilai++; alasan = 'RAB dasar ' + dasar.filter(function (x, i) { return !tg[i]; }).join(', ') + ' HISTORI_TIDAK_LENGKAP (tanpa metadata persetujuan sah)'; }
+        else if (tgl[r.transaksiId] < tg.slice().sort().pop()) { status = 'BERUBAH_GAGAL'; simMin = simMaks = false; a.berubahGagal++; alasan = 'tanggal transaksi ' + tgl[r.transaksiId] + ' sebelum persetujuan RAB ' + tg.slice().sort().pop() + (komit ? '; I05 tetap lulus karena tertaut komitmen' : ''); }
       }
       a.populasi++; if (i03) a.i03Sekarang++; if (simMin) a.i03SimulasiMin++; if (simMaks) a.i03SimulasiMaks++;
       if (i03 || komit) a.i05Sekarang++; if (simMin || komit) a.i05SimulasiMin++; if (simMaks || komit) a.i05SimulasiMaks++;
-      if (status !== 'TIDAK_TERDAMPAK' && baris.length < 300) baris.push({ transaksiId: r.transaksiId, periode: r.periode, tanggal: tgl[r.transaksiId], nominal: r.nominal, status: status, anggaranIds: dasar, disetujuiPada: dasar.map(function (x) { return pada[x] || null; }), punyaKomitmen: komit });
+      if (status !== 'TIDAK_TERDAMPAK' && baris.length < 300) baris.push({ transaksiId: r.transaksiId, periode: r.periode, tanggal: tgl[r.transaksiId], nominal: r.nominal, status: status, alasan: alasan, anggaranIds: dasar, disetujuiPada: dasar.map(function (x) { return pada[x] || null; }), punyaKomitmen: komit });
     });
-    return okResult_('Simulasi U-5 (read-only)', { periode: per || '*', perPeriode: perPeriode, transaksiTerdampak: baris,
+    return okResult_('Simulasi U-5 (read-only)', { periode: per || '*', rab: rabKelas, perPeriode: perPeriode, transaksiTerdampak: baris,
       dampak: { data: 'tidak ada baris yang ditulis', pencocokan: 'garis RAB tiap transaksi tidak berubah; hanya status "disetujui" yang disimulasikan', kpi: 'formula/bobot/ambang tidak diubah; angka = masukan populasi/lulus, bukan skor' },
       computedAt: new Date().toISOString() });
   } catch (e) { return sgErr_(e, 'COMPUTE_FAILED', 'Gagal mensimulasikan U-5'); }
