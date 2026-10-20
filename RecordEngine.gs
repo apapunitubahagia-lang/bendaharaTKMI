@@ -128,6 +128,7 @@ function opRecordBatchLocked_(g, cfg, key, ops, extraAudits, opts) {
       var row = o.row;
       if (!row || typeof row !== 'object' || Array.isArray(row)) { res.code = 'VALIDATION_ERROR'; res.message = 'row wajib objek'; cnt.failed++; return; }
       if (key === 'anggaran') row = rabApprovalStrip_(row); // [P1_21 U-5] metadata persetujuan hanya diisi server
+      if (key === 'lpj' && opts && opts.jalurPublik && typeof umLpjStripPublik_ === 'function') row = umLpjStripPublik_(row); // [P1_22 D-LPJ] status/verifikasi hanya lewat operasi khusus
       var keys = Object.keys(row).filter(function (k) { return k !== 'id'; });
       var unknown = keys.filter(function (k) { return live.indexOf(k) === -1; });
       if (unknown.length) { res.code = 'UNKNOWN_FIELD'; res.message = 'Kolom tidak ada di sheet: ' + unknown.join(','); res.fields = unknown; cnt.failed++; return; }
@@ -140,6 +141,7 @@ function opRecordBatchLocked_(g, cfg, key, ops, extraAudits, opts) {
           if (opStr_(next[c]) !== opStr_(nv)) changed = true;
           next[c] = nv;
         });
+        if (key === 'lpj' && opts && opts.jalurPublik && typeof umLpjPublikTolak_ === 'function') { var lk = umLpjPublikTolak_(live, cur, next, 'upsert'); if (lk) { res.code = lk.code; res.message = lk.message; cnt.failed++; return; } } // [P1_22 D-LPJ]
         var apv = key === 'anggaran' ? rabApprovalStamp_(live, cur, next, g.identity.email, new Date().toISOString()) : null; // [P1_21 U-5]
         if (!changed) { res.ok = true; res.code = 'UNCHANGED'; cnt.unchanged++; return; }
         if (aIdx[0] !== -1 && opStr_(cur[aIdx[0]]) !== '') { res.code = 'ARCHIVED'; res.message = 'Data sudah diarsipkan dan tidak dapat diubah'; cnt.failed++; return; } // [P1-F]
@@ -177,6 +179,7 @@ function opRecordBatchLocked_(g, cfg, key, ops, extraAudits, opts) {
       var ix = byId[id], rr = rows[ix];
       if (opStr_(rr[aIdx[0]]) !== '') { res.ok = true; res.code = 'UNCHANGED'; cnt.unchanged++; return; }
       var b2 = opRowObj_(live, rr), nx = rr.slice();
+      if (key === 'lpj' && opts && opts.jalurPublik && typeof umLpjPublikTolak_ === 'function') { var lk2 = umLpjPublikTolak_(live, rr, null, 'archive'); if (lk2) { res.code = lk2.code; res.message = lk2.message; cnt.failed++; return; } } // [P1_22 D-LPJ]
       if (guard(res, 'archive', b2, null)) return; // [P1-A] arsip pada periode tertutup ditolak
       nx[aIdx[0]] = new Date().toISOString();
       if (aIdx[1] !== -1) nx[aIdx[1]] = g.identity.email;
