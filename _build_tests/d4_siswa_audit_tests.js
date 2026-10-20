@@ -32,16 +32,31 @@ const S = srv => { const H = srv.sheets['01_SISWA'][0]; return srv.sheets['01_SI
     const srv = fresh(); const r = importAll(srv, [{ nama: 'ZAHRA', unit: 'MI', kelas: '3 Abdul', tahunAjaran: '2026/2027', kontakWali: '0899' }], { modeSiswa: 'TAMBAH_PERBARUI' });
     const z = S(srv).find(x => x.id === 's2');
     rec('SW-03', 'kesetaraan updateSiswaRow: mode "Tambah + Perbarui" memperbarui hanya field terisi, id siswa tetap, field kosong tidak menimpa', z.kontakWali === '0899' && z.namaWali === 'Wali B' && S(srv).length === 2, J({ kontak: z.kontakWali, wali: z.namaWali, status: r.hasil.map(h => h.status) })); }
-  { // kolom status
-    const srv = fresh(); const r = importAll(srv, [{ nama: 'ZAHRA', unit: 'MI', kelas: '3 Abdul', tahunAjaran: '2026/2027', status: 'Nonaktif' }], { modeSiswa: 'TAMBAH_PERBARUI' });
-    const z = S(srv).find(x => x.id === 's2');
-    rec('SW-04', 'DEPENDENSI BELUM TERGANTIKAN: Impor V2 siswa tidak memiliki kolom "status" - perubahan status massal (mis. Nonaktif/Lulus) lewat berkas hanya tersedia di wizard lama (commitSiswaRow/updateSiswaRow membaca kolom status)', null,
-      J({ statusSetelahImporV2: z.status, hasil: r.plan.data && r.plan.data.rows.map(x => x.kelas + ':' + x.kode.join(',')) })); }
+  { // [P1_23 D-4] kolom status di Impor V2 (sebelumnya SW-04 INFO: belum ada)
+    const srv = fresh(); const o0 = srv.sb.opObligations({}).data.rows.filter(o => o.siswaId === 's2').length;
+    const p1 = srv.sb.opImportPlan({ modul: 'siswa', baris: [{ nama: 'ZAHRA', unit: 'MI', kelas: '3 Abdul', tahunAjaran: '2026/2027', status: 'nonaktif' }], sumber: SUMBER, modeSiswa: 'TAMBAH_PERBARUI' });
+    const r = importAll(srv, [{ nama: 'ZAHRA', unit: 'MI', kelas: '3 Abdul', tahunAjaran: '2026/2027', status: 'nonaktif' }], { modeSiswa: 'TAMBAH_PERBARUI', keputusan: { 0: { terimaPerubahanKewajiban: true } } });
+    const z = S(srv).find(x => x.id === 's2'), o1 = srv.sb.opObligations({}).data.rows.filter(o => o.siswaId === 's2').length;
+    rec('SW-04', 'status di Impor V2: "nonaktif" dinormalkan ke enum master "Nonaktif" (normalisasi tercatat); perubahan status = UBAH_KEWAJIBAN (butuh persetujuan); setelah disetujui status tersimpan dan kewajiban s2 keluar dari daftar kewajiban aktif',
+      p1.data.rows[0].kelas === 'PERLU_KEPUTUSAN' && p1.data.rows[0].kode.includes('UBAH_KEWAJIBAN') && p1.data.rows[0].normalisasi.some(n => n.field === 'status' && n.ke === 'Nonaktif') && z.status === 'Nonaktif' && o0 > 0 && o1 === 0,
+      J({ rencana: p1.data.rows[0].kelas, status: z.status, kewajibanS2: [o0, o1], hasil: r.hasil.map(h => h.status) })); }
+  { const srv = fresh(); const before = J(S(srv));
+    const p = srv.sb.opImportPlan({ modul: 'siswa', baris: [{ nama: 'ZAHRA', unit: 'MI', kelas: '3 Abdul', tahunAjaran: '2026/2027', status: 'Lulus' }, { nama: 'Baru Pindahan', unit: 'MI', kelas: '1-A', tahunAjaran: '2026/2027', status: 'Pindah' }], sumber: SUMBER, modeSiswa: 'TAMBAH_PERBARUI' });
+    rec('SW-07', 'status di luar enum (Lulus, Pindah) -> TOLAK STATUS_TIDAK_VALID dengan alasan, tidak dipetakan diam-diam; master tidak berubah', p.data.rows.every(x => x.kelas === 'TOLAK' && x.kode.includes('STATUS_TIDAK_VALID')) && J(S(srv)) === before, J(p.data.rows.map(x => x.kelas + ':' + x.kode.join(',')))); }
+  { const srv = fresh(); importAll(srv, [{ nama: 'ZAHRA', unit: 'MI', kelas: '3 Abdul', tahunAjaran: '2026/2027', kontakWali: '0811' }], { modeSiswa: 'TAMBAH_PERBARUI' });
+    importAll(srv, [{ nama: 'Siswa Nonaktif Baru', unit: 'MI', kelas: '1-A', tahunAjaran: '2026/2027', status: 'Nonaktif' }]);
+    const z = S(srv).find(x => x.id === 's2'), b = S(srv).find(x => x.nama === 'Siswa Nonaktif Baru');
+    rec('SW-08', 'kolom status kosong: status siswa lama TIDAK berubah (tetap Aktif) dan field lain tetap diperbarui; siswa baru dengan status Nonaktif tersimpan Nonaktif', z.status === 'Aktif' && z.kontakWali === '0811' && b && b.status === 'Nonaktif', J({ z: [z.status, z.kontakWali], baru: b && b.status })); }
+  { const srv = fresh(); srv.sheets['03_TARIF'].push(['trf_k1', 'kmp_spp', 'MI', '1', '', 350000]); srv.sb.opObligationSnapshot('September 2026', { siswaIds: ['s2'] });
+    const r = importAll(srv, [{ nama: 'ZAHRA', unit: 'MI', kelas: '1-A', tahunAjaran: '2026/2027' }], { modeSiswa: 'TAMBAH_PERBARUI', keputusan: { 0: { siswaId: 's2', terimaPerubahanKewajiban: true } } });
+    const ob = per => srv.sb.opObligations({ siswaId: 's2', periode: per }).data.rows.find(o => o.komponenId === 'kmp_spp');
+    rec('SW-09', 'dampak perubahan kelas terhadap kewajiban (disetujui eksplisit): kewajiban beku September tetap 200.000; kewajiban belum beku (Agustus) mengikuti tarif kelas 1 = 350.000', ob('September 2026').netto === 200000 && ob('Agustus 2026').netto === 350000,
+      J({ sep: ob('September 2026').netto, ags: ob('Agustus 2026').netto, hasil: r.hasil.map(h => h.status) })); }
   { // wizard lama: perilaku saat ini (masih aktif)
     const srv = makeServer(); const c = makeClient(srv); c.sb.initializeSeedData(); c.sb.bootstrapCentralAuth();
     await until(() => c.a.CentralMasterData.ready, 400); await tick(5);
     const st = c.sb.impLamaNonaktif_('siswa');
-    rec('SW-05', 'KEPUTUSAN: wizard lama siswa TETAP AKTIF (impLamaNonaktif_("siswa") = false) karena SW-04; e2e_central2 M0/M1 dan t4b_tests T4B-15 tidak diubah', st === false, 'impLamaNonaktif_(siswa)=' + st); }
+    rec('SW-05', 'wizard lama siswa masih aktif sampai penonaktifan (commit terpisah)', st === false, 'impLamaNonaktif_(siswa)=' + st); }
   { // perbedaan lain (bukan penghalang): TA default diam-diam di jalur lama
     const srv = fresh(); const r = importAll(srv, [{ nama: 'Tanpa TA', unit: 'MI', kelas: '1-A' }]);
     rec('SW-06', 'perbedaan perilaku (bukan penghalang): wizard lama mengisi tahun ajaran aktif diam-diam; Impor V2 meminta keputusan eksplisit (PERLU_KEPUTUSAN TAHUN_AJARAN_KOSONG); namaAyah/namaIbu dipetakan manual ke namaWali di Impor V2', null,

@@ -7368,11 +7368,14 @@ var IMP_FIELDS_ = {
   pengeluaran: ['tanggal', 'unit', 'nominal', 'akun', 'metode', 'kategori', 'subkategori', 'penerima', 'uraian', 'qty', 'hargaSatuan', 'diskon'],
   rab: ['periode', 'jenis', 'unit', 'kategori', 'subkategori', 'program', 'nominal', 'volume', 'satuan', 'hargaSatuan', 'status'],
   lpj: ['tanggal', 'unit', 'kategori', 'subkategori', 'item', 'volume', 'satuan', 'hargaSatuan', 'diskon', 'nominal', 'transaksiId', 'lpjDokId'],
-  siswa: ['nama', 'unit', 'kelas', 'nis', 'nisn', 'tahunAjaran', 'tanggalMasuk', 'tanggalKeluar', 'jenisKelamin', 'namaWali', 'kontakWali', 'alamat']
+  siswa: ['nama', 'unit', 'kelas', 'nis', 'nisn', 'tahunAjaran', 'tanggalMasuk', 'tanggalKeluar', 'jenisKelamin', 'namaWali', 'kontakWali', 'alamat', 'status'] // [P1_23 D-4] status
 };
 var IMP_WAJIB_ = { pemasukan: ['tanggal', 'nominal'], pengeluaran: ['tanggal', 'nominal', 'penerima'], rab: ['program', 'nominal'], lpj: ['tanggal', 'item', 'nominal'], siswa: ['nama', 'kelas'] };
 var IMP_CHUNK_ = { pemasukan: 20, pengeluaran: 20, rab: 200, lpj: 200, siswa: 100 };
 var IMP_MAX_ROWS_ = 1000;
+/* [P1_23 D-4] Status siswa = enum master server (OP_MASTER_.siswa.enums.status). Hanya beda huruf/spasi/tanda hubung yang dinormalkan;
+   nilai lain (mis. Lulus, Pindah) DITOLAK dengan alasan, tidak dipetakan diam-diam. Kosong = tidak diubah (siswa lama) / bawaan server (baru). */
+var IMP_STATUS_SISWA_ = { 'aktif': 'Aktif', 'nonaktif': 'Nonaktif', 'non aktif': 'Nonaktif', 'non-aktif': 'Nonaktif' };
 
 function impS_(v) { return String(v === null || v === undefined ? '' : v).replace(/\s+/g, ' ').trim(); }
 function impN_(v) { return impS_(v).toLowerCase(); }
@@ -7783,7 +7786,11 @@ function impRowSiswa_(res, r, k, D, st, opts) {
   if (nisn && !/^\d{10}$/.test(nisn)) impWarn_(res, 'NISN_FORMAT', 'NISN bukan 10 digit (penanda saja; D-IMP-8)');
   if (nisn) { if (st.nisn[nisn] !== undefined) { res._dup = true; res.kode.push('DUPLIKAT_DALAM_BERKAS'); res.pesan.push('NISN ' + nisn + ' sudah ada di baris ' + st.nisn[nisn]); } else st.nisn[nisn] = res.baris; }
   ['alamat'].forEach(function (f) { if (impS_(r[f]) && cols.length && cols.indexOf(f) === -1) impWarn_(res, 'KOLOM_TIDAK_ADA', 'kolom ' + f + ' belum ada di 01_SISWA; nilai TIDAK disimpan (perlu migrasi skema aditif)'); });
+  var stRaw = impS_(r.status), status = stRaw ? IMP_STATUS_SISWA_[stRaw.toLowerCase()] || '' : ''; // [P1_23 D-4]
+  if (stRaw && !status) impTolak_(res, 'STATUS_TIDAK_VALID', 'status siswa wajib Aktif atau Nonaktif (enum master): "' + stRaw + '"');
+  else if (stRaw && status !== stRaw) impNorm_(res, 'status', stRaw, status);
   var rec = { nama: nama, unit: unit, kelas: kelas, nis: nis, nisn: nisn, tahunAjaran: ta, tanggalMasuk: masuk, tanggalKeluar: keluar, jenisKelamin: jk, namaWali: impS_(r.namaWali), kontakWali: impS_(r.kontakWali), alamat: impS_(r.alamat) };
+  if (status) rec.status = status; // [P1_23 D-4] kosong: kolom tidak dikirim (siswa lama tidak berubah; siswa baru = bawaan server Aktif)
   Object.keys(rec).forEach(function (f) { if (cols.length && cols.indexOf(f) === -1) delete rec[f]; });
   // pencocokan dengan master
   var target = null;
@@ -7795,11 +7802,11 @@ function impRowSiswa_(res, r, k, D, st, opts) {
       else if (mt.status === 'AMBIGU') impPutus_(res, 'siswaId', 'Mirip/cocok dengan ' + mt.kandidat.length + ' siswa terdaftar' + (mt.alasan ? ' (' + mt.alasan + ')' : '') + ' - pilih siswa yang diperbarui atau "Siswa baru"', impKandidatSiswa_(mt.kandidat).concat([{ value: '__baru__', label: 'Siswa baru' }]), null, 'SISWA_AMBIGU');
     }
   }
-  res.nilai = { nama: nama, unit: unit, kelas: kelas, nisn: nisn, tahunAjaran: ta, tanggalMasuk: masuk, tanggalKeluar: keluar, jenisKelamin: jk, aksi: target ? 'PERBARUI ' + target.id : 'BARU' };
+  res.nilai = { nama: nama, unit: unit, kelas: kelas, nisn: nisn, tahunAjaran: ta, tanggalMasuk: masuk, tanggalKeluar: keluar, jenisKelamin: jk, status: status || '(tidak diubah)', aksi: target ? 'PERBARUI ' + target.id : 'BARU' };
   if (target) {
     res._sudahAda = true; res.targetId = target.id;
     var upd = {}, ubahKewajiban = [];
-    Object.keys(rec).forEach(function (f) { if (rec[f] !== '' && impS_(target[f]) !== rec[f]) { upd[f] = rec[f]; if (['unit', 'kelas', 'tahunAjaran', 'tanggalMasuk', 'tanggalKeluar'].indexOf(f) !== -1) ubahKewajiban.push(f); } });
+    Object.keys(rec).forEach(function (f) { if (rec[f] !== '' && impS_(target[f]) !== rec[f]) { upd[f] = rec[f]; if (['unit', 'kelas', 'tahunAjaran', 'tanggalMasuk', 'tanggalKeluar', 'status'].indexOf(f) !== -1) ubahKewajiban.push(f); /* [P1_23 D-4] status mengubah enumerasi kewajiban */ } });
     if (!Object.keys(upd).length) { res.kode.push('SISWA_SAMA'); res.pesan.push('Sama dengan siswa terdaftar ' + target.id + ' (tidak ada perubahan)'); }
     else if (opts.modeSiswa !== 'TAMBAH_PERBARUI') { res.kode.push('SISWA_SUDAH_ADA'); res.pesan.push('Siswa sudah terdaftar (' + target.id + '); pilih mode "Tambah + Perbarui" untuk memperbarui ' + Object.keys(upd).join(', ')); }
     else if (ubahKewajiban.length && !k.terimaPerubahanKewajiban) impPutus_(res, 'terimaPerubahanKewajiban', 'Perubahan ' + ubahKewajiban.join(', ') + ' mengubah kewajiban siswa ' + target.nama, [{ value: true, label: 'Setujui perubahan' }], null, 'UBAH_KEWAJIBAN');
