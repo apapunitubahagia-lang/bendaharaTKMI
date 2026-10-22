@@ -219,3 +219,25 @@ function ltLpjRollbackCek() {
   out.catatan = out.kosong ? 'Skema LPJ belum dipakai: aman dihapus MANUAL (atau buang salinan).' : 'Skema LPJ SUDAH berisi data: jangan dihapus; rollback = buang salinan / revert kode (kolom tambahan tidak dibaca kode lama).';
   return ltLog_('ltLpjRollbackCek', out);
 }
+
+/* [P1_27] Baca-saja: sebaran nilai status (dan jenis) pada sheet keuangan - untuk memverifikasi asal angka "544 TEREKONSILIASI"
+   tanpa menebak. Nilai dihitung apa adanya (tanpa normalisasi huruf); juga dicatat total nilai yang memuat kata REKONSIL (huruf apa pun).
+   Ditambah diagnosis Script Property BUKTI_FOLDER_ID (format, tanpa mencetak isinya). Tidak menulis apa pun. */
+function ltStatusRingkasan() {
+  var ss = ltGuard_(), out = { sheet: {}, buktiFolderId: {} };
+  [['05_TRANSAKSI', ['status', 'jenis']], ['11_MUTASI_BANK', ['status']], ['16_REKONSILIASI', ['status']], ['19_LPJ', ['status']], ['06_ALOKASI', []]].forEach(function (x) {
+    var sh = ss.getSheetByName(x[0]); if (!sh) { out.sheet[x[0]] = null; return; }
+    var lr = sh.getLastRow(), lc = sh.getLastColumn(); var res = { baris: Math.max(0, lr - 1) };
+    if (lr >= 2 && lc > 0) {
+      var h = sh.getRange(1, 1, 1, lc).getValues()[0].map(function (v) { return String(v).trim(); }), vals = sh.getRange(2, 1, lr - 1, lc).getValues();
+      var ia = h.indexOf('archivedAt');
+      res.diarsip = ia === -1 ? null : vals.filter(function (r) { return String(r[ia]) !== ''; }).length;
+      x[1].forEach(function (k) { var i = h.indexOf(k); if (i === -1) { res[k] = 'KOLOM_TIDAK_ADA'; return; } var m = {}; vals.forEach(function (r) { var v = String(r[i]); m[v === '' ? '(kosong)' : v] = (m[v === '' ? '(kosong)' : v] || 0) + 1; }); res[k] = m;
+        res[k + '_memuatREKONSIL'] = vals.filter(function (r) { return /rekonsil/i.test(String(r[i])); }).length; });
+    }
+    out.sheet[x[0]] = res;
+  });
+  var fid = String(PropertiesService.getScriptProperties().getProperty('BUKTI_FOLDER_ID') || '');
+  out.buktiFolderId = { terisi: fid !== '', panjang: fid.length, tampakUrl: /^https?:|\//.test(fid), adaSpasi: /\s/.test(fid), cek: ltBuktiFolderCek_() };
+  return ltLog_('ltStatusRingkasan', out);
+}
