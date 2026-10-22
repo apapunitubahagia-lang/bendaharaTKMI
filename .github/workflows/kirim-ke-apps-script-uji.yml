@@ -1,0 +1,93 @@
+# [P1_27] Kirim kode Bendahara V2 ke proyek Apps Script UJI (salinan nonproduksi). TIDAK untuk produksi.
+# Dijalankan MANUAL: tab Actions -> "Kirim ke Apps Script UJI" -> Run workflow.
+# Prasyarat (Settings -> Secrets and variables -> Actions):
+#   Secret   CLASPRC_JSON        = isi ~/.clasprc.json hasil `clasp login` (clasp 2.4.2) akun institusi
+#   Variable TEST_SCRIPT_ID      = Script ID proyek Apps Script yang TERIKAT pada salinan uji
+#   Variable TEST_SPREADSHEET_ID = ID spreadsheet salinan uji (bukan produksi)
+# Urutan: uji sandbox -> build -> artefak deploy + pemeriksa D1..D6 -> pengaman tujuan (proyek harus terikat pada salinan uji,
+# bukan produksi) -> clasp push. Berhenti pada kegagalan pertama. Manifest appsscript.json milik proyek uji dipertahankan.
+name: Kirim ke Apps Script UJI
+
+on:
+  workflow_dispatch:
+    inputs:
+      konfirmasi:
+        description: 'Ketik KIRIM_KE_UJI untuk melanjutkan'
+        required: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: kirim-apps-script-uji
+  cancel-in-progress: false
+
+jobs:
+  kirim:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      TEST_SCRIPT_ID: ${{ vars.TEST_SCRIPT_ID }}
+      TEST_SPREADSHEET_ID: ${{ vars.TEST_SPREADSHEET_ID }}
+    steps:
+      - name: Konfirmasi
+        if: ${{ inputs.konfirmasi != 'KIRIM_KE_UJI' }}
+        run: |
+          echo "Konfirmasi tidak cocok (harus KIRIM_KE_UJI). Dibatalkan."
+          exit 1
+
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Uji sandbox (seluruh suite)
+        working-directory: _build_tests
+        run: node build_all.js && node run_all_tests.js ci
+
+      - name: Build artefak deploy + pemeriksa D1..D6
+        working-directory: _build_tests
+        run: node build_deploy.js && node check_deploy.js
+
+      - name: Pasang clasp 2.4.2 + kredensial
+        env:
+          CLASPRC_JSON: ${{ secrets.CLASPRC_JSON }}
+        run: |
+          if [ -z "$CLASPRC_JSON" ]; then echo "Secret CLASPRC_JSON belum diisi"; exit 1; fi
+          npm install -g @google/clasp@2.4.2
+          umask 077
+          printf '%s' "$CLASPRC_JSON" > "$HOME/.clasprc.json"
+
+      - name: Pengaman tujuan (bukan produksi, terikat salinan uji)
+        run: node _build_tests/guard_target.js
+
+      - name: Siapkan folder kirim (manifest proyek uji dipertahankan)
+        run: |
+          set -e
+          mkdir -p "$RUNNER_TEMP/tarik" "$RUNNER_TEMP/kirim"
+          cd "$RUNNER_TEMP/tarik"
+          printf '{"scriptId":"%s","rootDir":"."}' "$TEST_SCRIPT_ID" > .clasp.json
+          clasp pull
+          test -f appsscript.json || { echo "appsscript.json proyek uji tidak ditemukan"; exit 1; }
+          cd "$RUNNER_TEMP/kirim"
+          cp "$GITHUB_WORKSPACE"/_deploy_out/*.gs "$GITHUB_WORKSPACE"/_deploy_out/*.html .
+          cp "$GITHUB_WORKSPACE"/_live_tests/LiveReadiness.gs .
+          cp "$RUNNER_TEMP/tarik/appsscript.json" .
+          printf '{"scriptId":"%s","rootDir":"."}' "$TEST_SCRIPT_ID" > .clasp.json
+          echo "Berkas yang akan dikirim:"; ls -1
+
+      - name: clasp push ke proyek UJI
+        working-directory: ${{ runner.temp }}/kirim
+        run: clasp push --force
+
+      - name: Ringkasan
+        run: |
+          echo "### Terkirim ke proyek Apps Script UJI" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Commit: \`$GITHUB_SHA\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Script ID: \`$TEST_SCRIPT_ID\` (terikat salinan \`$TEST_SPREADSHEET_ID\`)" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Berikutnya: jalankan ltPreflight -> ltIdentitasProbe -> ltReadOnlyChecks -> ltRejectionChecks -> ltKewajibanBekuAudit -> ltPostflight di editor Apps Script uji." >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Hapus kredensial
+        if: always()
+        run: rm -f "$HOME/.clasprc.json"
