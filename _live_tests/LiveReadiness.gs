@@ -241,3 +241,59 @@ function ltStatusRingkasan() {
   out.buktiFolderId = { terisi: fid !== '', panjang: fid.length, tampakUrl: /^https?:|\//.test(fid), adaSpasi: /\s/.test(fid), cek: ltBuktiFolderCek_() };
   return ltLog_('ltStatusRingkasan', out);
 }
+
+/* [P1_28] BACA-SAJA: rincian transaksi PENERIMAAN yang belum teralokasi penuh, beserta ALASAN (dihitung dengan aturan yang sama
+   dengan engineAllocStatusFor_) dan tagihan terbuka siswa (dari ObligationEngine). Tidak menulis apa pun; tidak mengubah status.
+   Nama siswa/pengirim TIDAK dicetak (hanya siswaId). Alasan:
+   - TANPA_SISWA            : siswaId kosong dan belum ada alokasi (TERCATAT)
+   - SISWA_TIDAK_DIKENAL    : siswaId tidak ada di 01_SISWA
+   - BELUM_DIALOKASI        : siswa dikenal, alokasi 0
+   - SISA_ADA_TAGIHAN       : masih ada sisa dan siswa masih punya tagihan terbuka (dapat dialokasikan)
+   - SISA_TANPA_TAGIHAN     : masih ada sisa tetapi tagihan siswa sudah lunas/tidak ada (kelebihan bayar atau tagihan belum terbentuk)
+   - ALOKASI_MELEBIHI       : jumlah alokasi > nominal transaksi
+   Juga membandingkan status TERSIMPAN dengan status HITUNG untuk SELURUH penerimaan (selisih = data lama belum diperbarui). */
+function ltSisaAlokasi() {
+  ltGuard_();
+  var r2 = function (n) { return Math.round(Number(n || 0) * 100) / 100; };
+  var trx = sgRowsChecked_('05_TRANSAKSI').filter(function (t) { return t.jenis === 'PENERIMAAN' && !t.archivedAt; });
+  var alok = activeAllocationRows_(), perTrx = {};
+  alok.forEach(function (a) { (perTrx[a.transaksiId] = perTrx[a.transaksiId] || []).push(a); });
+  var prev = OBL_CTX_, ctxErr = '', tagihanSiswa = {}, siswaAda = {};
+  try {
+    try { if (typeof kgThrowIfBad_ === 'function') kgThrowIfBad_(); OBL_CTX_ = oblLoadContext_(); } catch (e) { ctxErr = String(e && e.message || e); OBL_CTX_ = null; }
+    if (OBL_CTX_) MasterAPI.students().forEach(function (s) { siswaAda[s.id] = true; });
+    var tagihanTerbuka = function (sid) {
+      if (!OBL_CTX_) return null;
+      if (tagihanSiswa[sid]) return tagihanSiswa[sid];
+      var ob = kewajibanForSiswa(sid).map(function (o) { return { k: o.komponenNama || o.komponenId, p: o.periode, s: sisaObligation(o), hb: !!o.hariBelumDiisi }; }).filter(function (o) { return o.s > 0.5 || o.hb; });
+      var per = {}; ob.forEach(function (o) { var x = per[o.k] = per[o.k] || { periode: 0, sisa: 0, hariBelumDiisi: 0 }; x.periode++; x.sisa = r2(x.sisa + o.s); if (o.hb) x.hariBelumDiisi++; });
+      return (tagihanSiswa[sid] = { total: r2(ob.reduce(function (s, o) { return s + o.s; }, 0)), perKomponen: per });
+    };
+    var hitungStatus = function (t, sudah, sisa, ids) {
+      if (!t.siswaId && !(perTrx[t.id] || []).length) return 'TERCATAT';
+      if (sudah <= 0.5) return 'TERIDENTIFIKASI';
+      if (sisa <= 0.5) return 'TERALOKASI';
+      if (!OBL_CTX_) return 'TIDAK_DAPAT_DIHITUNG';
+      return ids.some(function (sid) { var tb = tagihanTerbuka(sid); return tb && tb.total > 0.5; }) ? 'SEBAGIAN_TERALOKASI' : 'OVERPAYMENT_CREDIT';
+    };
+    var out = { bacaSaja: true, konteksKewajiban: ctxErr ? ('GAGAL: ' + ctxErr) : 'OK', penerimaan: trx.length, tersimpanVsHitung: {}, ringkasan: { perAlasan: {}, perBulan: {}, perUnit: {}, perKomponenHint: {} }, totalSisa: 0, baris: [] };
+    trx.forEach(function (t) {
+      var a = perTrx[t.id] || [], sudah = r2(a.reduce(function (s, x) { return s + Number(x.nominal || 0); }, 0)), nominal = r2(t.nominal), sisa = r2(nominal - sudah);
+      var ids = []; a.map(function (x) { return x.siswaId; }).concat(t.siswaId ? [t.siswaId] : []).forEach(function (sid) { if (sid && ids.indexOf(sid) === -1) ids.push(sid); });
+      var hit = hitungStatus(t, sudah, sisa, ids), simpan = String(t.status || '(kosong)'), key = simpan + ' -> ' + hit;
+      out.tersimpanVsHitung[key] = (out.tersimpanVsHitung[key] || 0) + 1;
+      if (sisa <= 0.5 && sisa >= -0.5) return;
+      var alasan = sisa < -0.5 ? 'ALOKASI_MELEBIHI' : !t.siswaId && !a.length ? 'TANPA_SISWA' : (OBL_CTX_ && ids.some(function (sid) { return !siswaAda[sid]; })) ? 'SISWA_TIDAK_DIKENAL'
+        : sudah <= 0.5 ? 'BELUM_DIALOKASI' : !OBL_CTX_ ? 'TIDAK_DAPAT_DIHITUNG' : hit === 'SEBAGIAN_TERALOKASI' ? 'SISA_ADA_TAGIHAN' : 'SISA_TANPA_TAGIHAN';
+      var bulan = String(t.tanggal || '').slice(0, 7) || '(kosong)', hint = String(t._komponenHint || '') || '(kosong)', R = out.ringkasan;
+      [[R.perAlasan, alasan], [R.perBulan, bulan], [R.perUnit, String(t.unit || '(kosong)')], [R.perKomponenHint, hint]].forEach(function (g) { var x = g[0][g[1]] = g[0][g[1]] || { n: 0, sisa: 0 }; x.n++; x.sisa = r2(x.sisa + sisa); });
+      out.totalSisa = r2(out.totalSisa + sisa);
+      out.baris.push({ id: t.id, tanggal: String(t.tanggal || '').slice(0, 10), unit: t.unit, nominal: nominal, teralokasi: r2(sudah), sisa: sisa, status: simpan, statusHitung: hit, alasan: alasan,
+        siswaId: t.siswaId || '', komponenHint: hint, sumber: t.sumber || '', komponenAlokasi: a.map(function (x) { return x.komponenId + '@' + x.periode; }).slice(0, 6),
+        tagihanTerbuka: ids.map(function (sid) { return { siswaId: sid, tagihan: siswaAda[sid] ? tagihanTerbuka(sid) : null }; }) });
+    });
+  } finally { OBL_CTX_ = prev; }
+  Logger.log('ltSisaAlokasi RINGKASAN: ' + JSON.stringify({ bacaSaja: out.bacaSaja, konteksKewajiban: out.konteksKewajiban, penerimaan: out.penerimaan, belumPenuh: out.baris.length, totalSisa: out.totalSisa, tersimpanVsHitung: out.tersimpanVsHitung, ringkasan: out.ringkasan }));
+  for (var i = 0; i < out.baris.length; i += 15) Logger.log('ltSisaAlokasi BARIS ' + (i + 1) + '-' + Math.min(i + 15, out.baris.length) + ': ' + JSON.stringify(out.baris.slice(i, i + 15)));
+  return out;
+}
