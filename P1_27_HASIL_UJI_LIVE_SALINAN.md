@@ -44,6 +44,22 @@ Ini adalah hasil pertama yang berasal dari **Apps Script sungguhan** (bukan sand
 | L-3 | `09_KOMITMEN` & `10_BUKTI` kekurangan kolom aditif | Migrasi Skema Aditif (Pusat Data) **di salinan** pada tahap berikutnya, setelah persetujuan |
 | L-4 | Identitas baru dibuktikan dari **editor** (pemilik). Belum dari **web app** | Uji *Test deployment* (*Execute as: Me*, *Only myself*) dan buka aplikasi di peramban |
 
+## 4a. Lanjutan: `ltStatusRingkasan` (22 Okt 2026, 21.19 WIB, commit `7d4066c`)
+
+| Sheet | Baris | Sebaran status (apa adanya) | Kolom `archivedAt` |
+|---|---|---|---|
+| `05_TRANSAKSI` | 843 (PENERIMAAN 643, PENGELUARAN 200) | SELESAI 200 · TERALOKASI 549 · TERCATAT 64 · SEBAGIAN_TERALOKASI 27 · TERIDENTIFIKASI 3 | tidak ada |
+| `11_MUTASI_BANK` | 346 | BELUM_DIPROSES 346 | tidak ada |
+| `16_REKONSILIASI` | 0 | — | — |
+| `19_LPJ` | 200 | REALIZATION 200 | tidak ada |
+| `06_ALOKASI` | 655 | — | tidak ada |
+
+Tidak ada nilai status yang memuat "REKONSIL" (huruf apa pun) di sheet mana pun.
+
+- **L-1 (diperbarui):** salinan **tidak memuat** status TEREKONSILIASI. Angka 544 tidak dapat ditemukan di data ini. Angka terdekat (549 TERALOKASI) adalah status berbeda dan **tidak** disamakan. Perlu verifikasi pada spreadsheet produksi secara baca-saja (*Data → Column stats* pada kolom status `11_MUTASI_BANK`), atau konfirmasi sumber angka 544 dari pemilik.
+- **L-2 selesai:** `BUKTI_FOLDER_ID` kini valid (folder `Bukti_UJI` dapat dibuka).
+- **L-3 (diperluas):** kolom `archivedAt` belum ada di 05/06/11/19, sehingga arsip/reversal akan ditolak `SCHEMA_ADDITIVE_REQUIRED` sampai Migrasi Skema Aditif dijalankan (di salinan, setelah persetujuan).
+
 ## 5. Yang **belum** diuji live
 Web app & UI peramban; operasi tulis (transaksi, alokasi, impor, uang muka, LPJ); kontensi LockService; unggah bukti ke Drive; setup skema LPJ; rencana tarif (katering harian); KPI server (`opKpiServer`) pada data salinan.
 
