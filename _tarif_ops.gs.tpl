@@ -72,6 +72,12 @@ function tpBatch_(key, records) {
 function opTarifApply(confirm) {
   var g = opGate_(OP_WRITE_ROLES_); if (!g.ok) return g;
   if (confirm !== TP_CONFIRM_) return errResult_('CONFIRM_REQUIRED', 'Konfirmasi eksplisit diperlukan (' + TP_CONFIRM_ + ')', 'confirm');
+  /* [P1_25 hardening] rencana dihitung dan seluruh langkah tulis (bekukan -> komponen -> tarif -> nonaktifkan -> audit) berjalan di SATU
+     kunci skrip (withLock_ reentran; operasi dalam memakai kunci yang sama). Sebelumnya rencana dihitung di luar kunci, tiap langkah
+     mengambil kunci sendiri, dan audit TARIF_PLAN_APPLIED ditulis TANPA kunci (append getLastRow()+1 dapat bertabrakan). */
+  return withLock_(function () { return tpApplyLocked_(g); });
+}
+function tpApplyLocked_(g) {
   try {
     var sch = tpSchemaStatus_();
     if (!sch.ok) return errResult_('SCHEMA_ADDITIVE_REQUIRED', 'Kolom belum ada: ' + sch.missing.join(', ') + ' - jalankan Migrasi Skema Aditif lebih dulu', 'schema');
