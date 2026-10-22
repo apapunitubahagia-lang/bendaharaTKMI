@@ -67,10 +67,12 @@ function checkDeploy(dir, opts) {
       arsip: B.opArchiveTransaction('imp_trx_2', 'uji artefak').code, kewajiban: B.opObligations({ siswaId: 's1', periode: 'September 2026' }).code, fcc: B.opFinancialControl('September 2026').code,
       umSetup: B.opUangMukaLpjSetup('BUAT_SKEMA_UANG_MUKA_LPJ').code, auditor: (s.state.email = 'auditor@x.id', B.opCreateExpense({ tanggal: '2026-09-11', unit: 'MI', nominal: 1, akunId: 'akun_kas1', metode: 'Tunai', kategori: 'ATK', penerima: 'T', clientRequestId: 'dp2' }).code),
       tanpaSesi: (s.state.email = '', B.opReadSheet('05_TRANSAKSI', {}).code), includeLain: (() => { try { B.include('Bendahara_V2'); return 'TIDAK_DITOLAK'; } catch (e) { return 'DITOLAK'; } })(),
+      kpiHanyaLewatGerbang: ['kpiIndukSummary', 'financialAktivitasFeed', 'allTransaksi', 'getKpiTarget', 'lsGet'].every(f => typeof B[f] === 'undefined') && typeof B.kpiIndukSummary_ === 'function', // [P1_26] salinan KPI diprivatkan
+      kpiServerBergerbang: (s.state.email = '', B.opKpiServer('September 2026').code),
       fungsiUjiTidakAda: ['testConcurrentWriteDoor_', 'TEST_BRIDGE_TEMPLATE', 'testBendaharaEvaluate', 'runFinancialSafetyTests_'].every(n => typeof B[n] === 'undefined') };
   } catch (e) { smoke = { galat: String(e && e.message || e) }; }
   rec('D6', smoke.identitas === 'SUCCESS' && smoke.skema && smoke.pengeluaran === 'SUCCESS' && smoke.arsip === 'SUCCESS' && smoke.kewajiban === 'SUCCESS' && smoke.fcc === 'SUCCESS' && smoke.umSetup === 'SUCCESS'
-    && smoke.auditor === 'ROLE_NOT_ALLOWED' && smoke.tanpaSesi === 'AUTH_REQUIRED' && smoke.includeLain === 'DITOLAK' && smoke.fungsiUjiTidakAda, smoke);
+    && smoke.auditor === 'ROLE_NOT_ALLOWED' && smoke.tanpaSesi === 'AUTH_REQUIRED' && smoke.includeLain === 'DITOLAK' && smoke.fungsiUjiTidakAda && smoke.kpiHanyaLewatGerbang && smoke.kpiServerBergerbang === 'AUTH_REQUIRED', smoke);
   return R;
 }
 module.exports = { checkDeploy, PUBLIC_ALLOWLIST, PURE_OBLIGATION };
