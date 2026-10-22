@@ -1,0 +1,11 @@
+PASS AS-01 [panggilan langsung opCreateAllocation: transaksi siswa A (s1) -> kewajiban siswa B (s2) ditolak, tidak ada baris alokasi] INVALID_ALLOCATION allocation.siswaId (s2) berbeda dengan transaksi.siswaId (s1): penerimaan siswa lain tidak
+PASS AS-02 [fungsi engine createAllocation_ dipanggil langsung (melewati op*): lintas siswa tetap ditolak] INVALID_ALLOCATION
+PASS AS-03 [pembayaran siswa A beralokasi ke siswa B (opCreateIncome & opCreateTxBatch) ditolak] INVALID_ALLOCATION / INVALID_ALLOCATION
+PASS AS-04 [alokasi kewajiban ke transaksi PENGELUARAN ditolak] INVALID_ALLOCATION Alokasi kewajiban hanya untuk transaksi PENERIMAAN (transaksi imp_trx_2 berjenis
+PASS AS-05 [siswa sama -> alokasi tersimpan; retry clientRequestId sama (respons hilang) -> replay, tidak ganda] SUCCESS | Request sudah pernah diproses (idempoten
+PASS AS-06 [regresi: melebihi sisa kewajiban / periode tanpa kewajiban / melebihi nominal transaksi -> ditolak] ALLOCATION_EXCEEDS_OBLIGATION,OBLIGATION_NOT_FOUND,ALLOCATION_EXCEEDS_OBLIGATION
+INFO AS-07 [AUDIT (kebijakan, tidak diubah): penerimaan TANPA siswaId boleh dialokasikan ke siswa mana pun (setara validateAllocationsForIncome_); dapat bercampur beberapa siswa] {"keS2":"SUCCESS","keS1":"SUCCESS"}
+PASS AS-08 [koreksi alokasi = arsip (tanpa hapus) + jejak audit; arsip ulang tidak menulis ganda; sisa kewajiban pulih] {"x1":"SUCCESS","x2":"Alokasi tidak ditemukan atau sudah diarsipkan","x3":"SUCCESS","audit":["ARCHIVE_ALLOCATION"],"alasan":"salah komponen"}
+PASS AS-09 [AUDITOR: buat & arsip alokasi ditolak ROLE_NOT_ALLOWED] ROLE_NOT_ALLOWED / ROLE_NOT_ALLOWED
+
+PASS=8 FAIL=0 INFO=1
