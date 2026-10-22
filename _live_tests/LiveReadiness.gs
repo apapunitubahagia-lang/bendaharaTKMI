@@ -252,7 +252,8 @@ function ltStatusRingkasan() {
    - SISA_TANPA_TAGIHAN     : masih ada sisa tetapi tagihan siswa sudah lunas/tidak ada (kelebihan bayar atau tagihan belum terbentuk)
    - ALOKASI_MELEBIHI       : jumlah alokasi > nominal transaksi
    Juga membandingkan status TERSIMPAN dengan status HITUNG untuk SELURUH penerimaan (selisih = data lama belum diperbarui). */
-function ltSisaAlokasi() {
+function ltSisaAlokasi() { return ltSisaAlokasiHitung_(true); }
+function ltSisaAlokasiHitung_(cetakLog) {
   ltGuard_();
   var r2 = function (n) { return Math.round(Number(n || 0) * 100) / 100; };
   var trx = sgRowsChecked_('05_TRANSAKSI').filter(function (t) { return t.jenis === 'PENERIMAAN' && !t.archivedAt; });
@@ -293,7 +294,95 @@ function ltSisaAlokasi() {
         tagihanTerbuka: ids.map(function (sid) { return { siswaId: sid, tagihan: siswaAda[sid] ? tagihanTerbuka(sid) : null }; }) });
     });
   } finally { OBL_CTX_ = prev; }
+  if (!cetakLog) return out;
   Logger.log('ltSisaAlokasi RINGKASAN: ' + JSON.stringify({ bacaSaja: out.bacaSaja, konteksKewajiban: out.konteksKewajiban, penerimaan: out.penerimaan, belumPenuh: out.baris.length, totalSisa: out.totalSisa, tersimpanVsHitung: out.tersimpanVsHitung, ringkasan: out.ringkasan }));
   for (var i = 0; i < out.baris.length; i += 15) Logger.log('ltSisaAlokasi BARIS ' + (i + 1) + '-' + Math.min(i + 15, out.baris.length) + ': ' + JSON.stringify(out.baris.slice(i, i + 15)));
   return out;
+}
+
+/* [P1_29] LEMBAR CEK SEMENTARA: menyusun SPREADSHEET BARU (terpisah) berisi masalah sisa alokasi untuk dicek satu per satu.
+   - Tidak menulis apa pun ke salinan data (05/06/15 dll. hanya dibaca). Spreadsheet baru = alat kerja, BUKAN sumber kebenaran;
+     keputusan tetap dimasukkan lewat aplikasi (alokasi/tautan siswa) setelah dicek. Boleh dihapus setelah selesai.
+   - Tab: 0_PETUNJUK, 1_TANPA_SISWA, 2_SEBAGIAN, 3_BELUM_DIALOKASI, 4_PERIODE_TANGGAL (baris 06_ALOKASI yang periodenya tersimpan
+     sebagai tanggal + periodeAktif 15_SETTINGS).
+   - Nama siswa/pengirim DITULIS ke spreadsheet baru (milik akun yang menjalankan, privat) agar dapat dicek, tetapi TIDAK dicetak ke log.
+   - "Kandidat siswa" = saran pencocokan nama sederhana (token nama), WAJIB dicek manusia; tidak pernah diterapkan otomatis.
+   - Semua sel ditulis sebagai teks biasa (format '@') supaya Sheets tidak mengubah "September 2026" menjadi tanggal. */
+var LT_BULAN_ = ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'];
+function ltTok_(s) { return String(s || '').toLowerCase().replace(/[^a-z0-9 ]+/g, ' ').split(/\s+/).filter(function (w) { return w.length >= 3 && ['bin', 'binti', 'ananda', 'spp', 'bayar', 'pembayaran', 'siswa'].indexOf(w) === -1; }); }
+function ltKandidat_(teks, unit, siswa) {
+  var tk = ltTok_(teks); if (!tk.length) return '';
+  return siswa.map(function (s) { var sk = ltTok_(s.nama), n = tk.filter(function (w) { return sk.indexOf(w) !== -1; }).length; return { s: s, skor: n / Math.max(tk.length, 1) + (unit && s.unit === unit ? 0.01 : 0), n: n }; })
+    .filter(function (x) { return x.n > 0; }).sort(function (a, b) { return b.skor - a.skor; }).slice(0, 3)
+    .map(function (x) { return x.s.id + ' (' + x.s.nama + ', ' + (x.s.unit || '-') + ' ' + (x.s.kelas || '') + ')'; }).join(' | ');
+}
+function ltTglTeks_(v, tz) { return Object.prototype.toString.call(v) === '[object Date]' ? Utilities.formatDate(v, tz, 'yyyy-MM-dd') : String(v == null ? '' : v); }
+function ltBulanLabel_(d, tz) { var ym = Utilities.formatDate(d, tz, 'yyyy-MM'), m = Number(ym.slice(5, 7)); return m >= 1 && m <= 12 ? LT_BULAN_[m - 1] + ' ' + ym.slice(0, 4) : ''; }
+function ltBuatLembarCek() {
+  var ss = ltGuard_(), tz = ss.getSpreadsheetTimeZone() || 'Asia/Jakarta';
+  var hasil = ltSisaAlokasiHitung_(false);
+  var trxById = {}; sgRowsChecked_('05_TRANSAKSI').forEach(function (t) { trxById[t.id] = t; });
+  var siswa = sgRowsChecked_('01_SISWA'), siswaById = {}; siswa.forEach(function (s) { siswaById[s.id] = s; });
+  var namaSiswa = function (sid) { var s = siswaById[sid]; return s ? s.nama + ' (' + (s.unit || '-') + ' ' + (s.kelas || '') + ')' : (sid ? 'TIDAK ADA DI 01_SISWA' : ''); };
+  var CEK = ['Sudah dicek', 'Siswa yang benar (siswaId)', 'Komponen & periode yang benar', 'Keputusan', 'Catatan pemeriksa'];
+  var tab1 = [], tab2 = [], tab3 = [];
+  hasil.baris.forEach(function (b) {
+    var t = trxById[b.id] || {}, dasar = [b.id, b.tanggal, b.unit, b.nominal, b.teralokasi, b.sisa, b.status, b.komponenHint, String(t.namaPengirim || ''), String(t._siswaNamaSnapshot || ''),
+      String(t.catatan || ''), String(t.resiNo || t.ftNumber || ''), String(t.metode || ''), b.sumber, String(t._sourceFile || '') + (t._sourceRow ? ' #' + t._sourceRow : '')];
+    var tagihan = b.tagihanTerbuka.map(function (x) { return x.siswaId + ': ' + (x.tagihan ? 'Rp' + x.tagihan.total + ' ' + JSON.stringify(x.tagihan.perKomponen) : 'belum dapat dihitung'); }).join(' | ');
+    if (b.alasan === 'TANPA_SISWA') tab1.push(dasar.concat([ltKandidat_(String(t._siswaNamaSnapshot || '') + ' ' + String(t.namaPengirim || '') + ' ' + String(t.catatan || ''), b.unit, siswa), false, '', '', '', '']));
+    else if (b.alasan === 'BELUM_DIALOKASI' || b.alasan === 'SISWA_TIDAK_DIKENAL') tab3.push(dasar.concat([b.siswaId, namaSiswa(b.siswaId), b.alasan, tagihan, false, '', '', '', '']));
+    else tab2.push(dasar.concat([b.siswaId, namaSiswa(b.siswaId), b.alasan, b.komponenAlokasi.join(', '), tagihan, false, '', '', '', '']));
+  });
+  /* 4: periode 06_ALOKASI yang tersimpan sebagai tanggal (dibaca mentah; sgRowsChecked_ dapat menyamarkan tipe) */
+  var tab4 = [], sh6 = ss.getSheetByName('06_ALOKASI');
+  if (sh6 && sh6.getLastRow() >= 2) {
+    var h6 = sh6.getRange(1, 1, 1, sh6.getLastColumn()).getValues()[0].map(function (x) { return String(x).trim(); }), v6 = sh6.getRange(2, 1, sh6.getLastRow() - 1, sh6.getLastColumn()).getValues();
+    var c = function (k) { return h6.indexOf(k); };
+    v6.forEach(function (r, i) {
+      var p = r[c('periode')]; if (Object.prototype.toString.call(p) !== '[object Date]') return;
+      var t = trxById[String(r[c('transaksiId')])] || {};
+      tab4.push(['06_ALOKASI', i + 2, String(r[c('id')]), String(r[c('transaksiId')]), String(t.tanggal || '').slice(0, 10), String(r[c('siswaId')]), namaSiswa(String(r[c('siswaId')])), String(r[c('komponenId')]),
+        ltTglTeks_(p, tz), ltBulanLabel_(p, tz), Number(r[c('nominal')] || 0), c('archivedAt') === -1 ? '' : ltTglTeks_(r[c('archivedAt')], tz), false, '', '', '']);
+    });
+  }
+  var sh15 = ss.getSheetByName('15_SETTINGS'), pa = null;
+  if (sh15 && sh15.getLastRow() >= 2) { var h15 = sh15.getRange(1, 1, 1, sh15.getLastColumn()).getValues()[0].map(function (x) { return String(x).trim(); });
+    sh15.getRange(2, 1, sh15.getLastRow() - 1, sh15.getLastColumn()).getValues().forEach(function (r, i) { if (String(r[h15.indexOf('key')]).trim() === 'periodeAktif') pa = { baris: i + 2, nilai: r[h15.indexOf('value')] }; }); }
+  if (pa && !/^(Januari|Februari|Maret|April|Mei|Juni|Juli|Agustus|September|Oktober|November|Desember) \d{4}$/.test(String(pa.nilai)))
+    tab4.unshift(['15_SETTINGS', pa.baris, 'periodeAktif', '', '', '', '', '', ltTglTeks_(pa.nilai, tz), Object.prototype.toString.call(pa.nilai) === '[object Date]' ? ltBulanLabel_(pa.nilai, tz) : '(tentukan)', '', '', false, '', 'Perbaiki lewat opPeriodeAktifPlan -> opPeriodeAktifApply (beraudit)', '']);
+  var D = ['transaksiId', 'tanggal', 'unit', 'nominal', 'teralokasi', 'sisa', 'status tersimpan', 'komponen (hint impor)', 'nama pengirim', 'nama siswa (snapshot impor)', 'catatan', 'resi/FT', 'metode', 'sumber', 'berkas sumber'];
+  var tabs = [
+    ['1_TANPA_SISWA', D.concat(['Kandidat siswa (SARAN, wajib dicek)']).concat(CEK), tab1],
+    ['2_SEBAGIAN', D.concat(['siswaId', 'siswa', 'alasan', 'alokasi sekarang (komponen@periode)', 'tagihan terbuka siswa']).concat(CEK), tab2],
+    ['3_BELUM_DIALOKASI', D.concat(['siswaId', 'siswa', 'alasan', 'tagihan terbuka siswa']).concat(CEK), tab3],
+    ['4_PERIODE_TANGGAL', ['sheet', 'baris', 'alokasiId', 'transaksiId', 'tanggal transaksi', 'siswaId', 'siswa', 'komponenId', 'periode tersimpan (tanggal)', 'usulan label', 'nominal', 'archivedAt', 'Sudah dicek', 'Label yang benar', 'Keputusan', 'Catatan pemeriksa'], tab4]
+  ];
+  var now = new Date(), nama = 'SEMENTARA_CEK_SISA_ALOKASI_' + Utilities.formatDate(now, tz, 'yyyyMMdd_HHmm');
+  var baru = SpreadsheetApp.create(nama);
+  if (baru.getId() === LT_PROD_ID_ || baru.getId() === ss.getId()) throw new Error('LEMBAR CEK DIBATALKAN: tujuan bukan spreadsheet baru');
+  var petunjuk = [['LEMBAR CEK SEMENTARA - bukan sumber kebenaran. Dibuat ' + Utilities.formatDate(now, tz, 'yyyy-MM-dd HH:mm') + ' dari salinan "' + ss.getName() + '" (' + ss.getId() + ').'],
+    ['Data asli TIDAK diubah. Keputusan yang dicatat di sini diterapkan lewat aplikasi (tautkan siswa / alokasi) atau perbaikan beraudit, setelah disetujui.'],
+    ['Konteks kewajiban: ' + hasil.konteksKewajiban], ['Total belum teralokasi penuh: ' + hasil.baris.length + ' transaksi, sisa Rp' + hasil.totalSisa],
+    ['1_TANPA_SISWA (' + tab1.length + '): pembayaran tanpa siswa. Isi siswaId yang benar. Kolom kandidat hanya saran pencocokan nama.'],
+    ['2_SEBAGIAN (' + tab2.length + '): sudah sebagian dialokasikan, masih ada sisa. Isi komponen/periode untuk sisa, atau tandai kelebihan bayar.'],
+    ['3_BELUM_DIALOKASI (' + tab3.length + '): siswa diketahui, belum ada alokasi.'],
+    ['4_PERIODE_TANGGAL (' + tab4.length + '): periode tersimpan sebagai tanggal (bukan "Bulan Tahun"); alokasi ini tidak cocok dengan tagihan sampai dinormalisasi.'],
+    ['Kolom "tagihan terbuka" baru terisi setelah periodeAktif dinormalisasi; jalankan ulang ltBuatLembarCek() setelah itu (membuat lembar baru).'],
+    ['Hapus spreadsheet ini setelah pengecekan selesai.']];
+  var s0 = baru.getSheets()[0]; s0.setName('0_PETUNJUK'); s0.getRange(1, 1, petunjuk.length, 1).setValues(petunjuk);
+  var ringkas = {};
+  tabs.forEach(function (tb) {
+    var sh = baru.insertSheet(tb[0]), data = [tb[1]].concat(tb[2]), nc = tb[1].length, ic = tb[1].indexOf('Sudah dicek');
+    data = data.map(function (r) { return r.map(function (v, j) { return j === ic && typeof v === 'boolean' ? v : (v === null || v === undefined ? '' : (typeof v === 'number' ? v : String(v))); }); });
+    sh.getRange(1, 1, Math.max(data.length, 2), nc).setNumberFormat('@');
+    if (tb[2].length) { var numCols = ['nominal', 'teralokasi', 'sisa', 'baris']; numCols.forEach(function (k) { var j = tb[1].indexOf(k); if (j !== -1) sh.getRange(2, j + 1, tb[2].length, 1).setNumberFormat('#,##0'); }); }
+    sh.getRange(1, 1, data.length, nc).setValues(data);
+    sh.getRange(1, 1, 1, nc).setFontWeight('bold').setBackground('#e8eaed');
+    if (tb[2].length) sh.getRange(2, ic + 1, tb[2].length, 1).insertCheckboxes();
+    sh.setFrozenRows(1);
+    ringkas[tb[0]] = tb[2].length;
+  });
+  try { var it = DriveApp.getFileById(ss.getId()).getParents(); if (it.hasNext()) DriveApp.getFileById(baru.getId()).moveTo(it.next()); } catch (e) { ringkas.catatanFolder = 'tetap di My Drive (folder salinan tidak dapat dibuka)'; }
+  return ltLog_('ltBuatLembarCek', { dataAsliDiubah: false, url: baru.getUrl(), nama: nama, baris: ringkas, konteksKewajiban: hasil.konteksKewajiban });
 }
