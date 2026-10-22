@@ -37,6 +37,8 @@ jobs:
           exit 1
 
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # riwayat lengkap: rab_tests, p0_hardening_tests, t4b_tests membandingkan dengan commit lama (git show)
 
       - uses: actions/setup-node@v4
         with:
