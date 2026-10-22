@@ -1,0 +1,26 @@
+PASS T4B-01 [F8 periodeAktif tanggal -> KPI DATA TIDAK TERSEDIA] periode "2026-10-01" -> overall null, status "DATA TIDAK TERSEDIA (periode aktif tidak valid (\"2026-10-01\"; wajib label bulan, mis. \"Okt"
+PASS T4B-02 [F8 kpiRow juga gagal tertutup] {"skor":null,"status":"DATA TIDAK TERSEDIA"}
+PASS T4B-03 [F8 periode kosong -> DATA TIDAK TERSEDIA] "DATA TIDAK TERSEDIA (periode aktif tidak valid (\"\"; wajib label bulan, mis. \
+PASS T4B-04 [F8 periode sah tetap dihitung] overall 47 (Perlu Perbaikan)
+PASS T4B-05 [KPI-DIFF build 25d258b vs sekarang (skor, bobot, target, capaian 31 indikator)] [{"per":"September 2026","sama":true,"overall":47,"nInd":31},{"per":"Oktober 2026","sama":true,"overall":0,"nInd":31},{"per":"Agustus 2026","sama":true,"overall":11.1,"nInd":31}]
+PASS T4B-06 [F8 pratinjau normalisasi read-only] {"key":"periodeAktif","nilaiSekarang":"2026-10-01","tipeSel":"string","sah":false,"usulan":"Oktober 2026","alasan":"","perluNormalisasi":true,"konfirmasi":"NORMALISASI_PERIODE_AKTIF"}
+PASS T4B-07 [F8 terapkan wajib konfirmasi, nilai yang dilihat sama, label sah] CONFIRM_REQUIRED,CONFLICT,VALIDATION_ERROR
+PASS T4B-08 [F8 terapkan beraudit, ulang = tidak berubah] {"sebelum":"2026-10-01","sesudah":"Oktober 2026"} / ulang {"nilai":"Oktober 2026","unchanged":true}
+PASS T4B-09 [F8 audit gagal -> nilai dipulihkan] AUDIT_FAILED
+PASS T4B-10 [F8 AUDITOR tidak dapat menerapkan] ROLE_NOT_ALLOWED
+PASS T4B-11 [F8 tidak ada migrasi otomatis saat boot] nilai tetap 2026-10-01 setelah boot ulang
+PASS T4B-12 [F7 server: tanggal siswa divalidasi (format, kalender, urutan)] VALIDATION_ERROR,VALIDATION_ERROR,VALIDATION_ERROR,SUCCESS
+PASS T4B-13 [F7 server: tanggalMasuk & jenisKelamin tersimpan] ["siswa_ujiD1","Uji D","","","1","MI","","L","","","","2026-09-05","","Aktif"]
+PASS T4B-14 [F7 data historis tidak sah tidak memblokir perubahan field lain (tidak diperiksa ulang/dikoreksi)] SUCCESS
+PASS T4B-15 [F7 klien: antrean master membawa tanggalMasuk & jenisKelamin] ["imp_sis_1db0752b9fbf511fa0db640dd4cf_1","Siswa F7","","","1","MI","2026/2027","P","","","","2026-09-05","","Aktif",""]
+PASS T4B-16 [F7 dampak kewajiban: tanggalMasuk 2026-09-05 -> SPP mulai September 2026] dengan tanggal ["September 2026"] | tanpa tanggal ["Juli 2026","Agustus 2026","September 2026"]
+PASS T4B-17 [Prioritas C: periodeAktif tidak valid -> opObligations mengembalikan PERIODE_AKTIF_TIDAK_VALID, bukan daftar kosong] PERIODE_AKTIF_TIDAK_VALID - Periode aktif tidak valid ("2026-10-01"); daftar kewajiban tidak dihitung. Normalisasi lewat opPeriodeAktifPlan/opPeriodeAktifApply.
+PASS T4B-18 [D-IMP-8 audit master siswa read-only (distribusi, tanpa normalisasi)] {"jk":{"L":1,"Perempuan":1},"nisn":"1/10digit","tm":{"kosong":1,"sah":0,"selDate":0,"tidakSah":1,"contohTidakSah":["s2"]},"kelas":{"MI":{"Madinah":1,"3 Abdul":1}}}
+PASS T4B-19 [kewajiban: periode valid & nol (LENGKAP, rows []) / sumber tidak tersedia / sumber tidak lengkap / periode tidak valid dibedakan (server)] ["LENGKAP:0","SUMBER_TIDAK_TERSEDIA","SCHEMA_MISMATCH/SUMBER_TIDAK_LENGKAP","PERIODE_AKTIF_TIDAK_VALID","snapshot PERIODE_AKTIF_TIDAK_VALID"]
+PASS T4B-20 [alokasi saat periode tidak valid: AllocationGuard -> PERIODE_AKTIF_TIDAK_VALID (bukan OBLIGATION_NOT_FOUND); hitung ulang status gagal tertutup] ["SEBAGIAN_TERALOKASI","PERIODE_AKTIF_TIDAK_VALID","arsip PERIODE_AKTIF_TIDAK_VALID"]
+PASS T4B-21 [impor pemasukan beralokasi saat periode tidak valid -> pratinjau gagal PERIODE_AKTIF_TIDAK_VALID; tanpa alokasi tetap dapat dipratinjau] PERIODE_AKTIF_TIDAK_VALID / SUCCESS
+PASS T4B-22 [klien: LENGKAP / SUMBER_TIDAK_LENGKAP / SUMBER_TIDAK_TERSEDIA / PERIODE_AKTIF_TIDAK_VALID; Beranda, posisi siswa, profil, laporan tagihan -> DATA TIDAK TERSEDIA (bukan nol)] ["LENGKAP","SUMBER_TIDAK_LENGKAP","SUMBER_TIDAK_TERSEDIA","PERIODE_AKTIF_TIDAK_VALID","periode aktif tidak valid (\"2026-10-01\"; wajib label bulan, "]
+PASS T4B-23 [P1_19 D: periode tidak valid -> ekspor tunggakan diblokir dari halaman mana pun, detail penerimaan/resi DATA TIDAK TERSEDIA, Alokasi Cepat & wizard Pembayaran bersiswa & laporan bulanan diblokir] ["Ekspor dibatalkan - DATA TIDAK TERSEDIA: periode a","Alokasi tidak dapat dibuat - DATA TIDAK ","Laporan bulanan tidak dibuat - DATA TIDA","DIBLOKIR - periode aktif tidak valid (\"2026-10-01\"; wajib la"]
+PASS T4B-24 [P1_19 D: Kontrol Keuangan (FCC) ikut gagal tertutup saat periode aktif tidak valid] {"ok":false,"alasan":["periode aktif tidak valid (\"2026-10-01\"; wajib label bulan, mis. \"Oktober 2026\") - normalisas
+
+PASS=24 FAIL=0 INFO=0

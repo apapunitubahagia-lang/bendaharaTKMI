@@ -1,0 +1,9 @@
+PASS IMP8-01 [audit baca-saja: 01_SISWA identik sebelum/sesudah; tidak ada normalisasi] OK
+PASS IMP8-02 [jenis kelamin: kanonis L/P = 2; variasi apa adanya (Laki-laki, perempuan, X) + saran kanonis hanya bila jelas (X tanpa saran); kosong dihitung] {"kanonis":2,"kosong":1,"variasi":{"Laki-laki":1,"perempuan":1,"X":1},"saranKanonis":{"Laki-laki":"L","perempuan":"P"}}
+PASS IMP8-03 [kelas {TINGKAT}-{ROMBEL}: 1-A, 2-B, A-1 sesuai; "kelas 3", "Madinah", "4-a" tidak sesuai (per unit, contoh id saja)] {"sesuai":3,"kosong":0,"tidakSesuaiPerUnit":{"MI":3},"contohTidakSesuai":["a3","a5","a6"]}
+PASS IMP8-04 [NISN: valid 10 digit = 3 (termasuk ganda); tidak valid (8 digit, 12AB) = 2; kosong = 1 (tidak direka); sel angka = 1; ganda di semua baris = 1] {"valid":3,"kosong":1,"tidakValid":2,"selAngka":1,"contohTidakValid":["a3","a5"],"gandaSemua":1,"contohGandaSemua":["a2"]}
+PASS IMP8-05 [tanggal masuk tidak sah (2026-02-30) terdeteksi; dampak kewajiban: siswa Aktif tanpa tingkat dihitung bila unit punya tarif per kelas (fixture: tarif tanpa kelas -> 0, unitBertarifKelas kosong)] {"aktifTanpaTingkat":0,"contohTanpaTingkat":[],"unitBertarifKelas":[],"aktifTanggalMasukTidakSah":1,"aktifTanggalKeluarTidakSah":0}
+PASS IMP8-06 [dampak kewajiban dengan tarif per kelas MI: siswa Aktif MI tanpa tingkat (Madinah, "kelas 3") ditandai - tarif per kelas tidak berlaku bagi mereka; menormalkan kelas akan MENGUBAH kewajiban] {"aktifTanpaTingkat":3,"contohTanpaTingkat":["a3","a5","s1"],"unitBertarifKelas":["MI"],"aktifTanggalMasukTidakSah":1,"aktifTanggalKeluarTidakSah":0}
+INFO IMP8-07 [STATUS: opSiswaMasterAudit belum dijalankan pada salinan data sah (tidak tersedia); tidak dijalankan pada produksi] BLOCKED - butuh salinan spreadsheet nonproduksi
+
+PASS=6 FAIL=0 INFO=1

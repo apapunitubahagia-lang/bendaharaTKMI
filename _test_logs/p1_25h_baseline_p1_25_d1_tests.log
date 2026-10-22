@@ -1,0 +1,6 @@
+PASS PA-01 [[P1_25 perbaikan] dua baris beku historis TANPA komponenId (mungkin komponen berbeda) -> bukan DUPLIKAT_BEKU (sebelumnya DUPLIKAT_PASTI palsu pada kunci "s2||periode"); dilaporkan KOMPONEN_ID_KOSONG x2, TIDAK_KONSISTEN; baca-saja; baris tsb tidak dipakai perhitungan (SPP s2 tetap dari tarif 200.000)] {"jenis":{"KOMPONEN_ID_KOSONG":2},"sppS2":[200000,null]}
+PASS PA-02 [KOMPONEN_ID_KOSONG menampilkan hubungan alokasi (alokasi yang menunjuk baris lewat tagihanId)] {"jenis":"KOMPONEN_ID_KOSONG","id":"tagihan_lama_x","siswaId":"s2","periode":"September 2026","netto":50000,"alokasiTagihanId":["alk_x"],"catatan":"tidak dipakai perhitungan (pencocokan lewat komponenId/nama gagal); perlu pemetaan komponen manual"}
+PASS PA-03 [audit tidak bergantung nama: dua komponen bernama sama ("SPP") dengan komponenId berbeda, masing-masing satu baris beku untuk siswa/periode sama -> BUKAN duplikat; hanya KOMPONEN_NAMA_GANDA] {"KOMPONEN_NAMA_GANDA":1,"ID_TIDAK_KANONIS":1}
+PASS PA-04 [audit D-1 tanpa jalur tulis: KewajibanBekuAudit.gs tidak memanggil setValues/insertSheet/deleteRow/append/audit/kunci; opKewajibanKoreksi TIDAK ada (ditahan)] {"tulis":[],"koreksi":"undefined"}
+
+PASS=4 FAIL=0 INFO=0
