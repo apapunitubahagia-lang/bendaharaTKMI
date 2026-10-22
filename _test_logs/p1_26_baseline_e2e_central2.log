@@ -1,0 +1,86 @@
+PASS S1 syntax inline JS
+PASS S2 "<?" hanya 2 scriptlet include
+PASS S3 tidak ada google.script.run/fetch( langsung di HTML
+PASS S4 tidak ada duplicate function
+PASS S5 tidak ada duplicate variable top-level
+PASS S6 tidak ada fungsi hilang vs sebelum sentralisasi
+PASS S7 semua fungsi central*/cc*/pd* yang dipanggil terdefinisi (132)
+PASS S8 init() masih memanggil migrateV1ToV2/initializeSeedData/renderShell/bootstrapCentralAuth
+PASS S9 include ServerBridge utuh, BridgeClient tetap dikomentari
+PASS S10 semua method ServerBridge.* yang dipakai HTML ada di ServerBridge.js
+PASS S11 setiap method ServerBridge punya fungsi server dengan nama sama
+PASS B1 bootstrap: auth + master + SEMUA sheet operasional termuat
+PASS B2 badge menunjukkan "Operasional server N/N" tanpa antrean (N=15)
+PASS B3 halaman utama render tanpa "Terjadi kesalahan render"
+PASS B4 Store lokal tidak tercemar data server (trx/alokasi/siswa kosong)
+PASS P1 sebelum migrasi aditif: anggaran dengan field "status" TIDAK hilang, tertahan (blocked) dengan pesan migrasi, sheet tidak berubah
+PASS P2 pdSchemaPlan menampilkan rencana kolom (NEEDS_ADD) tanpa mengubah sheet
+PASS P3 apply tanpa token konfirmasi ditolak (CONFIRM_REQUIRED)
+PASS P4 migrasi aditif: kolom ditambah DI UJUNG, kolom lama tidak berubah, data tidak berubah
+PASS P5 audit SCHEMA_ADD_COLUMNS tercatat
+PASS P6 setelah migrasi: sync memproses antrean, anggaran tertulis ke 08_ANGGARAN dengan field status, antrean kosong
+PASS P7 field tak dikenal ditolak server (UNKNOWN_FIELD) - tidak ada kolom dibuat otomatis
+PASS A1 edit anggaran -> UPDATED di sheet, nominal numerik
+PASS A2 hapus anggaran = ARSIP (baris tetap ada, archivedAt terisi), hilang dari UI, audit RECORD_ARCHIVE
+PASS A3 simpan ulang tanpa perubahan tidak menulis apa pun (tanpa antrean baru)
+PASS K1 komitmen baru -> 09_KOMITMEN (nominal numerik, rabId=ang_1)
+PASS K2 ubah status komitmen -> PAID di sheet
+PASS R1 rekonsiliasi (via server, saldo sistem dihitung server)/mutasi bank/LPJ/RKAT tertulis ke 16/11/19/18 (nilai numerik, null -> kosong)
+PASS R2 mutasi bank dibaca kembali dari server: nominal angka, transaksiId null (bukan "")
+PASS R3 setelah muat ulang dari server data tetap terbaca dari Sheets (rkat, lpj)
+PASS L1 laporan: snapshot objek disimpan sebagai JSON di 17_LAPORAN dan dibaca kembali sebagai objek
+PASS L2 snapshot KPI -> 14_KPI; ulang pada data sama TIDAK menambah baris (id deterministik)
+PASS T1 snapshot tagihan -> 04_KEWAJIBAN (siswa aktif; bruto/potongan/netto; jatuhTempo & tahunAjaran terisi)
+PASS T2 terbitkan ulang: tidak ada duplikat (sudah ada)
+PASS T3 tagihan dibaca kembali dalam bentuk lokal (siswaId, komponen nama, tagihanNetto)
+PASS D1 dokumen dengan data-URL diunggah ke Drive; 10_BUKTI menyimpan driveFileId & URL; file base64 TIDAK disimpan di sheet
+PASS D2 UI melihat dokumen dengan driveFileUrl ("Buka di Drive")
+PASS D3 server menolak MIME tak diizinkan; tidak ada file/baris tambahan
+PASS D4 hapus dokumen = ARSIP baris; file Drive TIDAK dihapus/di-trash
+PASS D5 jika penulisan baris 10_BUKTI gagal, file Drive yang baru dibuat di-trash (tidak yatim)
+PASS I1 antrean import review -> 12_DUP_REVIEW (type + payload JSON), dibaca kembali
+PASS I2 blob (keringanan assignment, penutupan periode) -> 15_SETTINGS sebagai kunci terpisah; terbaca kembali
+PASS I2b [P1-POLICY] periode CLOSED tidak memblokir pencatatan via UI; tanggal aktual dipertahankan; audit PERIODE_DITANDAI
+PASS I3 [P1-A] buka kembali periode (status administratif) lewat server (alasan wajib, audit REOPEN_PERIODE); status terbaca OPEN
+PASS S1b pengaturan: namaBendahara & periodeAktif tertulis ke 15_SETTINGS; kunci baru ditambahkan, kunci lama diperbarui (tanpa duplikat key)
+PASS S2b akunKasBankList (legacy) TIDAK ditulis ke 15_SETTINGS
+PASS AU1 auditTrailPush UI juga masuk 13_AUDIT_LOG (aksi UI_TES, aktor email)
+PASS AU2 sinkron ulang tidak menggandakan entri audit
+PASS V1 alokasi pada transaksi server tertulis (06_ALOKASI) dan mengurangi sisa kewajiban
+PASS V2 hapusAlokasi server = ARSIP (baris tetap, archivedAt) bukan hapus; tidak lagi dihitung
+PASS V3 alokasi ulang setelah reversal berhasil (alokasi aktif tidak melebihi nominal)
+PASS V4 archiveTransaksi server: baris tetap ada, archivedAt+reason, hilang dari allTransaksi, audit
+PASS V5 transaksi yang sudah diarsipkan tidak dihitung di FCC/posisi akun (cash tidak memuat 200000 itu)
+PASS M0 commitSiswaRow (wizard lama) ditolak JALUR_IMPOR_LAMA_DINONAKTIFKAN, tidak ada antrean master
+PASS M1 impor massal 60 siswa -> 01_SISWA +60 lewat batch (<=2-3 RPC), alamat tertulis
+PASS M2 sinkron ulang tidak menggandakan siswa (idempoten)
+PASS M3 45 transaksi -> 05_TRANSAKSI +45 lewat 3 RPC batch (20/RPC), tanpa duplikat
+PASS M4 sinkron ulang tidak menambah transaksi
+PASS M5 semua ID transaksi unik
+PASS U1 daftar pengguna dimuat dari 26_USER_ACCESS
+PASS U2 tambah pengguna: baris baru (id gas_usr_*), audit ACCESS_CREATE
+PASS U3 email duplikat ditolak (DUPLICATE), tidak ada baris baru
+PASS U4 tidak boleh menonaktifkan akun sendiri (SELF_LOCKOUT)
+PASS U5 role KEPALA_SEKOLAH: tulis ditolak (user & transaksi), baca diizinkan
+PASS U6 email tidak terdaftar ditolak untuk baca
+PASS O1 verifikasi kewajiban klien vs server: COCOK (0 perbedaan)
+PASS O2 snapshot kewajiban server idempoten (ulang tidak menambah baris)
+PASS F1 Financial Control Center render: ACTUAL/COMMITTED/PLANNED/MISSING + Kelengkapan; tanpa klaim "surplus" sebagai hasil
+PASS F2 FCC klien = FCC server
+PASS G0 [P0-B] tanpa server: postTransaksi ditolak eksplisit, tidak ada baris lokal baru
+PASS G1 scan data lokal lama: terdeteksi 2 transaksi lama (1 kandidat duplikat), 1 anggaran lokal; data tidak diubah
+PASS G2 migrasi lokal->server: transaksi lama baru terkirim (1), kandidat duplikat DILEWATI, anggaran lama ikut (id sama), salinan lokal tidak dihapus
+PASS G3 migrasi dijalankan ulang: tidak ada duplikat (tetap sama)
+PASS G4 pemeriksaan cutover berjalan dan menolak jika backup belum diunduh
+PASS G5 setelah backup + data tersinkron: semua pemeriksaan cutover lolos kecuali bila ada sisa lokal
+PASS G6 bersihkan salinan lokal: hanya yang sudah ada di server
+PASS G7 cutover aktif: UI hanya memakai server; restore backup / reset migrasi diblokir
+PASS G8 resetMigrationData diblokir pada mode pusat
+PASS G9 rollback cutover mengembalikan tampilan lama (tanpa menghapus data)
+PASS X1 server mati: data tetap tampil lokal (antre), tidak hilang, tidak tertulis
+PASS X2 server pulih: sinkron manual menulis data, antrean kosong
+PASS X3 respons hilang setelah server menulis: retry tidak menggandakan baris
+PASS Z1 [P0-B] mode lokal (tanpa server): transaksi/anggaran/dokumen DITOLAK eksplisit; tidak ada baris lokal; nol panggilan server
+PASS Z2 kill switch (write* = false): hanya baca; tidak ada tulisan ke Sheets; [P0-B] penulisan DITOLAK eksplisit (tidak disimpan lokal)
+
+PASS=84 FAIL=0

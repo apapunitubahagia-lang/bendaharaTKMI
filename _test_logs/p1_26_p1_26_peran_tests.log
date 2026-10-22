@@ -1,0 +1,12 @@
+PASS PR-01 [BENDAHARA membuat akun BENDAHARA baru yang aktif -> ROLE_GRANT_REQUIRES_INDEPENDENT_AUTH; tidak ada baris & audit baru] ROLE_GRANT_REQUIRES_INDEPENDENT_AUTH
+PASS PR-02 [mengubah peran AUDITOR menjadi BENDAHARA -> ROLE_GRANT_REQUIRES_INDEPENDENT_AUTH; peran tetap AUDITOR] ROLE_GRANT_REQUIRES_INDEPENDENT_AUTH
+PASS PR-03 [aktivasi ulang baris BENDAHARA nonaktif -> ROLE_GRANT_REQUIRES_INDEPENDENT_AUTH; tetap INACTIVE] ROLE_GRANT_REQUIRES_INDEPENDENT_AUTH
+PASS PR-04 [memindahkan baris BENDAHARA aktif lain ke email baru -> ROLE_GRANT_REQUIRES_INDEPENDENT_AUTH; email tetap] ROLE_GRANT_REQUIRES_INDEPENDENT_AUTH
+PASS PR-05 [tetap boleh (tidak menambah hak BENDAHARA): ubah nama/unit baris BENDAHARA aktif (email sama), menonaktifkan BENDAHARA lain, mengelola AUDITOR] {"ubahNamaSendiri":"OK","ubahUnitLain":"OK","nonaktifkanLain":"OK","auditorBaru":"OK"}
+PASS PR-06 [menaikkan peran SENDIRI: AUDITOR / KEPALA_SEKOLAH / YAYASAN memanggil opUserUpsert untuk dirinya -> ROLE_NOT_ALLOWED; peran tidak berubah] {"auditor@x.id":"ROLE_NOT_ALLOWED","kepala@x.id":"ROLE_NOT_ALLOWED","yayasan@x.id":"ROLE_NOT_ALLOWED"}
+PASS PR-07 [klaim otorisasi/peran dari payload klien (actorRole, identity, otorisasiIndependen) DIABAIKAN -> tetap ROLE_GRANT_REQUIRES_INDEPENDENT_AUTH] ROLE_GRANT_REQUIRES_INDEPENDENT_AUTH
+PASS PR-08 [aktor audit dari sesi server: entri audit klien yang mengklaim aksi server/aktor lain -> aksi diberi awalan UI_, sumber = sesi (google:bendahara@x.id)] ["UI_ACCESS_CREATE","google:bendahara@x.id"]
+INFO PR-09 [KETERBATASAN (INFO) model satu akun institusi: dua tindakan oleh dua orang berbeda yang memakai akun yang sama tercatat dengan sumber IDENTIK; audit hanya membuktikan AKUN, bukan individu. Tidak ada identitas individu yang dikarang] ["google:bendahara@x.id"]
+PASS PR-10 [pencabutan di luar aplikasi (status INACTIVE oleh pemilik) berlaku pada panggilan berikutnya (identitas dihitung ulang per panggilan)] ["OK","USER_INACTIVE"]
+
+PASS=9 FAIL=0 INFO=1

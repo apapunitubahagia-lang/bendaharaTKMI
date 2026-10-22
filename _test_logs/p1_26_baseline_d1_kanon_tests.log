@@ -1,0 +1,15 @@
+PASS KN-01 [id kanonis klien (kwIdKanon_) identik dengan server (kw_ + oblHash_) untuk 3.000 kunci (termasuk karakter non-ASCII)] selisih 0
+PASS KN-02 [pembekuan klien kini memakai id kanonis + komponenId (bukan uid acak); server menerima] {"n":2,"ids":["kw_959b68a017f9d2ec","kw_d12aacd2e6e349cd"]}
+PASS KN-03 [snapshot basi: server sudah membekukan, klien (cache lama) membekukan lagi -> id kanonis SAMA, nilai sama -> UNCHANGED; tetap 1 baris beku per kunci, tidak ada antrean gagal] {"s1":1,"s2":1,"blocked":0}
+PASS KN-04 [pembekuan ulang dengan nilai berbeda (tarif berubah) -> KEWAJIBAN_BEKU_TERKUNCI; nilai beku asli (200.000) tidak ditimpa] ["KEWAJIBAN_BEKU_TERKUNCI"]
+PASS KN-05 [pembekuan berulang & dua permintaan bersamaan (id kanonis sama dalam satu batch / dua snapshot): CREATED lalu UNCHANGED; snapshot kedua 0 dibuat; tepat 1 baris per kunci] {"snap2":{"dihitung":0,"dibuat":0,"diperbarui":0,"gagal":0,"tidakBerubah":0,"periode":"September 2026"},"batch":["CREATED","UNCHANGED"]}
+PASS KN-06 [server: id acak / tagihanId != id -> ID_KEWAJIBAN_TIDAK_KANONIS; baris kanonis untuk kunci yang sudah punya baris beku historis (id acak) -> DUPLIKAT_KEWAJIBAN_BEKU; baris historis tidak diubah/dihapus] {"r":["ID_KEWAJIBAN_TIDAK_KANONIS","ID_KEWAJIBAN_TIDAK_KANONIS"],"d":["DUPLIKAT_KEWAJIBAN_BEKU"]}
+PASS KN-07 [dua baris beku dengan kunci kanonis sama (historis): pilihan deterministik = baris kanonis kw_ apa pun urutan sheet; audit melaporkan DUPLIKAT_BEKU] {"depan":["kw_959b68a017f9d2ec",200000],"belakang":["kw_959b68a017f9d2ec",200000]}
+PASS KN-08 [dua komponen bernama sama ("SPP") dengan id berbeda: pembekuan kmp_spp TIDAK menempel pada kmp_spp_mi (cocok lewat komponenId); kmp_spp_mi tetap dihitung dari tarifnya sendiri] {"kmp_spp":["kw_d12aacd2e6e349cd",200000],"kmp_spp_mi":[null,90000]}
+PASS KN-09 [kewajiban beku & sudah dibayar (s1): ubah netto / komponen -> KEWAJIBAN_BEKU_TERKUNCI; ubah jatuhTempo boleh; arsip -> KEWAJIBAN_BEKU_TERKUNCI; kewajiban beku BELUM dibayar (s2) tetap dapat diarsip beralasan] {"r":["KEWAJIBAN_BEKU_TERKUNCI","KEWAJIBAN_BEKU_TERKUNCI","UPDATED"],"ar":["KEWAJIBAN_BEKU_TERKUNCI"],"ar2":["ARCHIVED"]}
+PASS KN-10 [kewajiban beku lalu dibayar dengan alokasi bertagihanId kanonis: relasi alokasi konsisten (audit KONSISTEN, tanpa ALOKASI_TAGIHAN_TIDAK_DIKENAL/MULTI_BEKU), status LUNAS, nilai kini terkunci] {"audit":"KONSISTEN","perJenis":{},"status":"LUNAS","ubah":"KEWAJIBAN_BEKU_TERKUNCI"}
+PASS KN-11 [retry setelah kegagalan tulis: snapshot pertama gagal tanpa baris parsial; retry membuat tepat 1 baris kanonis per kunci] {"a":"WRITE_FAILED","n1":0,"b":{"dihitung":2,"dibuat":2,"diperbarui":0,"gagal":0,"tidakBerubah":0,"periode":"September 2026"}}
+PASS KN-12 [perubahan tarif setelah pembekuan: kewajiban beku (s1 lunas, s2 belum) tetap 200.000; kewajiban belum beku (s2 Agustus) mengikuti tarif baru 250.000 (perilaku lama, tidak diubah)] [200000,200000,250000]
+PASS KN-13 [diferensial klien vs server setelah pembekuan kanonis: verifikasi kewajiban COCOK (0 perbedaan)]  Periode  September 2026 + semua non-bulanan : server 2 baris, klien 2 baris.  COCOK  
+
+PASS=13 FAIL=0 INFO=0

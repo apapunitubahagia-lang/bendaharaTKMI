@@ -1,0 +1,5 @@
+PASS LH-01 [[P1_25 hardening] opTarifApply: rencana + bekukan + komponen + tarif + nonaktifkan + audit TARIF_PLAN_APPLIED semuanya di dalam satu kunci (0 penulisan tanpa kunci; sebelumnya audit ditulis tanpa kunci)] {"code":"SUCCESS","tanpaKunci":[],"audit":1}
+PASS LH-02 [kunci tidak didapat -> LOCK_TIMEOUT tanpa menulis apa pun (seluruh sheet identik); setelah kunci tersedia penerapan berhasil dan penerapan ulang tidak berubah] LOCK_TIMEOUT
+PASS LH-03 [rangkaian 18 operasi tulis utama (transaksi, koreksi, kewajiban, settings, master, record batch, audit, bukti, uang muka, LPJ, arsip): 0 penulisan sheet di luar kunci] {"hasil":{"schemaApply":"OK","income":"OK","expense":"OK","update":"OK","snapshot":"OK","settings":"OK","master":"OK","recordBatch":"OK","auditAppend":"OK","uploadBukti":"OK","umSetup":"OK","umCair":"OK","umKembali":"OK","umBatal":"OK","lpjCreate":"OK","lpjUnlink":"OK","archiveTrx":"OK","archiveAlloc":"OK"},"tanpaKunci":[]}
+
+PASS=3 FAIL=0 INFO=0

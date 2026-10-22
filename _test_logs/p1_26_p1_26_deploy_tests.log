@@ -1,0 +1,9 @@
+PASS DP-01 [artefak dibangun: 29 .gs + 2 .html + MANIFEST; 8 fungsi uji/diagnostik dibuang; D1..D6 PASS (termasuk smoke runtime: identitas, transaksi, arsip, kewajiban, FCC, setup uang muka; AUDITOR ditolak; tanpa sesi AUTH_REQUIRED)] {"gagal":[],"dibuang":["testConcurrentWriteDoor_","createTransactionWithAllocations_ForTest_","runFinancialSafetyTests_","validateTransactionPayloadPublicWrapper_","regressionCheck_","testBendaharaEvaluate","TEST_BRIDGE_TEMPLATE","TEST_SERVERBRIDGE_SYNTAX"]}
+PASS DP-02 [negatif: fungsi uji publik (TEST_*) ditambahkan ke artefak -> D2 & D3 GAGAL] ["D2","D3"]
+PASS DP-03 [negatif: fungsi publik TANPA gerbang (nama tidak mengandung "test") membaca sheet -> D3 GAGAL (nama tidak dianggap aman otomatis)] ["OperationalAPI.gs:bacaSemuaTransaksi"]
+PASS DP-04 [negatif: penyala testMode (audit dialihkan dari 13_AUDIT_LOG) di fungsi privat bernama netral -> D2 GAGAL] ["TransactionEngine.gs:/testMode\\s*:\\s*true/"]
+PASS DP-05 [negatif: berkas harness salinan uji (LiveReadiness.gs) ikut -> D1 GAGAL] {"lebih":["LiveReadiness.gs"],"kurang":[],"shaBerbeda":[]}
+PASS DP-06 [negatif: fungsi yang dipanggil klien (ServerBridge) hilang dari artefak -> D4 GAGAL (dependensi runtime terdeteksi)] ["opUserList"]
+PASS DP-07 [sumber tidak dipangkas (pemangkasan hanya di artefak; sandbox tetap menguji sumber lengkap); include("ServerBridge") berfungsi, nama lain ditolak] DITOLAK
+
+PASS=7 FAIL=0 INFO=0
