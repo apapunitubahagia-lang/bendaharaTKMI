@@ -7,3 +7,5 @@ _build_tests/*.tmp
 *.pem
 *.key
 .env
+# artefak deploy lokal (build_deploy.js) - dibuat ulang, tidak di-commit
+_deploy_out*/

@@ -221,7 +221,11 @@ function doGet(e) {
     .setTitle('Bendahara Darul Arifin')
     .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.DEFAULT); // [P0-C] tidak lagi ALLOWALL (cegah embedding dari domain lain)
 }
+/* [P1_26] include() dapat dipanggil klien (google.script.run); dibatasi ke berkas HTML yang memang disisipkan template
+   (Bendahara_V2.html: include('ServerBridge')). Nama lain -> galat (tidak mengembalikan isi berkas proyek apa pun). */
+var INCLUDE_ALLOWLIST_ = ['ServerBridge'];
 function include(filename) {
+  if (INCLUDE_ALLOWLIST_.indexOf(String(filename)) === -1) throw new Error('include: berkas tidak diizinkan');
   return HtmlService
     .createHtmlOutputFromFile(filename)
     .getContent();
@@ -383,4 +387,4 @@ function TEST_SERVERBRIDGE_SYNTAX() {
     Logger.log('JAVASCRIPT SYNTAX = FAIL');
     Logger.log('ERROR = ' + e.message);
   }
-}
+}
