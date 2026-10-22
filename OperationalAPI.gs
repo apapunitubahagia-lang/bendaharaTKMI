@@ -113,7 +113,8 @@ function opEngineWrite_(action, payload, engineFn, requireClientRequestId, keepI
   if ((action === 'CREATE_INCOME' || action === 'CREATE_EXPENSE') && !opStr_(p.akunId)) { // [P1-IMP B] tidak ada akun bawaan di server
     return errResult_('VALIDATION_ERROR', 'akunId wajib dipilih eksplisit (akun Kas/Bank)', 'akunId');
   }
-  var guard = (typeof opAllocGuard_ === 'function') ? opAllocGuard_(action, p) : null;
+  var guard = (typeof umTrxGuard_ === 'function') ? umTrxGuard_(action, p) : null; // [P1_26] transaksi uang muka (pencairan/pengembalian)
+  if (!guard) guard = (typeof opAllocGuard_ === 'function') ? opAllocGuard_(action, p) : null;
   if (guard) return guard;
   var res, apiWritten = false;
   ENGINE_ACTOR_ = g.identity.email; // [P0-B] aktor masuk ke baris audit wajib engine (atomik dengan perubahan bisnis)

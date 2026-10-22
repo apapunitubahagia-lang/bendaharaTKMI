@@ -39,6 +39,9 @@ const modal = c => String(c.el('modalBody').innerHTML || '');
 const baris = (html, id) => { const i = html.indexOf('data-um="' + id + '"'); return i === -1 ? '' : html.slice(i, html.indexOf('</tr>', i)); };
 const rp = n => 'Rp ' + Number(n).toLocaleString('id-ID', { maximumFractionDigits: 0 });
 
+/* [P1_26] jalur umum kini MENOLAK arsip/koreksi transaksi uang muka (TRANSAKSI_UANG_MUKA_TERKUNCI); kondisi data yang diubah di luar server
+   (data historis / suntingan langsung sheet) disimulasikan dengan mengubah sel langsung agar deteksi peringatan tetap diuji. */
+const selLangsung = (s, id, kol, nilai) => { const h = s.sheets['05_TRANSAKSI'][0], r = s.sheets['05_TRANSAKSI'].find(x => x[0] === id); r[h.indexOf(kol)] = nilai; };
 (async () => {
   { const srv = makeServer(); const baca = ['opUangMukaLaporan', 'opUangMukaDampakFcc'], tulis = ['opUangMukaCair', 'opUangMukaKembali', 'opUangMukaBatal', 'opLpjAjukan', 'opLpjTerima', 'opLpjVerifikasi'];
     rec('UI-01', 'kontrak bridge: hanya opUangMukaLaporan & opUangMukaDampakFcc (baca) yang ditambahkan; operasi tulis uang muka & verifikasi TIDAK diekspos',
@@ -61,8 +64,8 @@ const rp = n => 'Rp ' + Number(n).toLocaleString('id-ID', { maximumFractionDigit
         && rows(s, '33_UANG_MUKA_KEMBALI')[0][1] === ids.b && rows(s, '33_UANG_MUKA_KEMBALI')[0][2] === ids.kembaliTrx,
       J({ cair: cair.length, kembali: kembali.length, nota: viaNota.length, total: L.total })); }
   { const s = srvBaru(true); const ids = skenario(s);
-    s.sb.opArchiveTransaction(ids.kembaliTrx, 'salah akun, dicatat ulang');
-    const tcA = s.sb.opUangMukaLaporan({}).data.uangMuka.find(x => x.id === ids.a).transaksiCairId; s.sb.opArchiveTransaction(tcA, 'uji arsip pencairan');
+    selLangsung(s, ids.kembaliTrx, 'archivedAt', '2026-10-01T00:00:00.000Z'); // [P1_26] sebelumnya opArchiveTransaction
+    const tcA = s.sb.opUangMukaLaporan({}).data.uangMuka.find(x => x.id === ids.a).transaksiCairId; selLangsung(s, tcA, 'archivedAt', '2026-10-01T00:00:00.000Z'); // [P1_26] sebelumnya opArchiveTransaction
     const L = s.sb.opUangMukaLaporan({}).data, A = L.uangMuka.find(x => x.id === ids.a), B = L.uangMuka.find(x => x.id === ids.b);
     const c = await boot(s); await c.sb.pdUangMuka(); const h = modal(c);
     rec('UI-05', '[P1_24] konsistensi dengan transaksi kas: pengembalian yang transaksinya diarsip tidak dihitung (B saldo kembali 500.000, PENGEMBALIAN_DIARSIP); pencairan diarsip -> arus kas keluar 0 + PENCAIRAN_DIARSIP_ATAU_HILANG; peringatan tampil di UI',

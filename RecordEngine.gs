@@ -251,6 +251,7 @@ function opArchiveTransaction(id, reason) {
       if (!t) return errResult_('SCHEMA_MISMATCH', 'Sheet transaksi tidak ditemukan', null);
       var exists = t.rows.some(function (r) { return String(r[t.live.indexOf('id')]) === id; });
       if (!exists) return errResult_('NOT_FOUND', 'Transaksi tidak ditemukan', 'id', id);
+      var ug = typeof umTrxGuard_ === 'function' ? umTrxGuard_('ARCHIVE_TRANSACTION', { id: id }) : null; if (ug) return ug; // [P1_26] pencairan/pengembalian uang muka
       var tRaw = getTransactionRaw_(id); // [P1-POLICY] periode bertanda tidak menolak reversal; ditandai di audit
       var flT = plFlags_([tRaw && tRaw.tanggal]);
       var r1 = opArchiveRowsLocked_(g, SHT_TRANSAKSI, function (o) { return String(o.id) === id; }, reason, 'ARCHIVE_TRANSACTION', id);

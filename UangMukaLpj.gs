@@ -486,3 +486,32 @@ function opUangMukaDampakFcc(opts) {
       catatan: 'Audit saja. FCC/BDS03 & 31 KPI tidak diubah; posisi kas tidak berubah pada kedua basis (arus kas tetap sama).', computedAt: new Date().toISOString() });
   } catch (e) { return sgErr_(e, 'COMPUTE_FAILED', 'Gagal menghitung dampak FCC'); }
 }
+
+/* ---------- [P1_26] pengaman transaksi uang muka pada JALUR UMUM (server, bukan UI) ---------- */
+/* Transaksi kas yang dibuat opUangMukaCair (32.transaksiCairId) dan opUangMukaKembali (33.transaksiId) menentukan saldo uang muka.
+   Lewat jalur umum ditolak (TRANSAKSI_UANG_MUKA_TERKUNCI):
+     - ARCHIVE_TRANSACTION  : arsip transaksi aktif (status uang muka apa pun; jalur koreksi khusus belum ada);
+     - UPDATE_TRANSACTION   : perubahan nilai field yang menentukan saldo/FCC/identitas (UM_TRX_FIELD_TERKUNCI_); field deskriptif
+                              (catatan, penerima, kategori, status, dst.) tetap boleh;
+     - CREATE_ALLOCATION    : alokasi pengembalian/pencairan ke kewajiban siswa (hitung ganda: saldo uang muka DAN kewajiban siswa).
+   Koreksi yang tersedia: opUangMukaBatal + opUangMukaKembali (tercatat & tervalidasi). Tidak ada koreksi otomatis.
+   Tidak aktif sebelum skema uang muka disiapkan (tanpa sheet 32 -> null), sehingga data historis tidak terdampak.
+   Transaksi yang sudah diarsip: dibiarkan ke jalur umum (arsip ulang = no-op; koreksi = TRANSACTION_ARCHIVED). */
+var UM_TRX_FIELD_TERKUNCI_ = ['jenis', 'tanggal', 'unit', 'nominal', 'akunId', 'siswaId', 'sumber'];
+function umTrxPeran_(trxId) {
+  var id = umS_(trxId); if (!id || !ss_().getSheetByName('32_UANG_MUKA')) return null;
+  var c = umCairTrxIds_(); if (c[id]) return { peran: 'PENCAIRAN', uangMukaId: c[id] };
+  var k = umKembaliTrxIds_(); if (k[id]) return { peran: 'PENGEMBALIAN', uangMukaId: k[id] };
+  return null;
+}
+function umTrxGuard_(action, p) {
+  p = p && typeof p === 'object' ? p : {};
+  if (['ARCHIVE_TRANSACTION', 'UPDATE_TRANSACTION', 'CREATE_ALLOCATION'].indexOf(action) === -1) return null;
+  var id = umS_(action === 'CREATE_ALLOCATION' ? p.transaksiId : p.id), r = umTrxPeran_(id); if (!r) return null;
+  var u = umFind_('32_UANG_MUKA', r.uangMukaId), lbl = 'Transaksi ' + id + ' adalah ' + r.peran + ' uang muka ' + r.uangMukaId + ' (status ' + (u ? umS_(u.o.status) : 'tidak ditemukan') + ')';
+  if (action === 'CREATE_ALLOCATION') return errResult_('TRANSAKSI_UANG_MUKA_TERKUNCI', lbl + '; tidak dapat dialokasikan ke kewajiban siswa (hitung ganda)', 'transaksiId', id);
+  var t = getTransactionRaw_(id); if (!t || t.archivedAt) return null;
+  if (action === 'ARCHIVE_TRANSACTION') return errResult_('TRANSAKSI_UANG_MUKA_TERKUNCI', lbl + '; tidak dapat diarsip lewat jalur umum. Gunakan pembatalan uang muka + pengembalian; jalur koreksi khusus belum tersedia', 'id', id);
+  var ubah = UM_TRX_FIELD_TERKUNCI_.filter(function (f) { return Object.prototype.hasOwnProperty.call(p, f) && umS_(p[f]) !== umS_(t[f]); });
+  return ubah.length ? errResult_('TRANSAKSI_UANG_MUKA_TERKUNCI', lbl + '; field ' + ubah.join(', ') + ' tidak dapat diubah lewat koreksi umum (menentukan saldo uang muka/FCC)', ubah[0], id) : null;
+}
