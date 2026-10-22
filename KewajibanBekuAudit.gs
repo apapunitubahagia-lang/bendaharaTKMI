@@ -15,7 +15,8 @@
  *   ARSIP_BERPEMBAYARAN           : kunci yang punya pembayaran, baris bekunya diarsip dan tidak ada baris beku aktif
  *                                   (kewajiban kembali dihitung ulang dari tarif saat ini);
  *   ALOKASI_TAGIHAN_TIDAK_DIKENAL : alokasi aktif ber-tagihanId yang tidak menunjuk baris 04 aktif mana pun;
- *   ALOKASI_MULTI_BEKU            : alokasi aktif cocok dengan >1 baris beku aktif.
+ *   ALOKASI_MULTI_BEKU            : alokasi aktif cocok dengan >1 baris beku aktif;
+ *   KOMPONEN_ID_KOSONG            : [P1_25] baris beku aktif tanpa komponenId (tidak dikelompokkan sebagai duplikat).
  * Ringkasan: jumlah beku, beku berpembayaran (yang dilindungi kebijakan D-1), dan putusan konsistensiData.
  * DEPENDENSI: OperationalAPI.gs (opGate_, opStr_, OP_READ_ROLES_), SchemaGuard.gs (sgRowsChecked_, sgErr_),
  *             ObligationEngine.gs (oblHash_), TransactionEngine.gs (okResult_).
@@ -35,7 +36,10 @@ function opKewajibanBekuAudit() {
     Object.keys(kompNama).forEach(function (n) { if (kompNama[n].length > 1) add('KOMPONEN_NAMA_GANDA', { nama: n, komponenIds: kompNama[n] }); });
     var aktif = kw.filter(function (r) { return S(r.tagihanId) !== '' && !S(r.archivedAt); }), arsip = kw.filter(function (r) { return S(r.tagihanId) !== '' && S(r.archivedAt); });
     var byKey = {}, ids = {}; kw.filter(function (r) { return !S(r.archivedAt); }).forEach(function (r) { ids[S(r.id)] = true; });
-    aktif.forEach(function (r) { (byKey[key(r)] = byKey[key(r)] || []).push(r); });
+    /* [P1_25] baris beku tanpa komponenId TIDAK dikelompokkan (kunci siswa||periode akan mencampur komponen berbeda dan
+       menghasilkan DUPLIKAT_PASTI palsu); dilaporkan terpisah sebagai KOMPONEN_ID_KOSONG untuk pemetaan manual. */
+    var tanpaKomp = aktif.filter(function (r) { return !S(r.komponenId); });
+    aktif.filter(function (r) { return !!S(r.komponenId); }).forEach(function (r) { (byKey[key(r)] = byKey[key(r)] || []).push(r); });
     var bayarKunci = {}, cocok = {}, alokKunci = {};
     alok.forEach(function (a) {
       var k = key(a); bayarKunci[k] = (bayarKunci[k] || 0) + (Number(a.nominal) || 0);
@@ -63,9 +67,13 @@ function opKewajibanBekuAudit() {
         if (!kompIds[S(r.komponenId)]) add('KOMPONEN_TIDAK_ADA', { id: S(r.id), komponenId: S(r.komponenId) });
       });
     });
+    tanpaKomp.forEach(function (r) {
+      var al = alok.filter(function (a) { return S(a.tagihanId) === S(r.id); }).map(function (a) { return S(a.id); });
+      add('KOMPONEN_ID_KOSONG', { id: S(r.id), siswaId: S(r.siswaId), periode: S(r.periode), netto: Number(r.netto) || 0, alokasiTagihanId: al, catatan: 'tidak dipakai perhitungan (pencocokan lewat komponenId/nama gagal); perlu pemetaan komponen manual' });
+    });
     var arsipKunci = {}; arsip.forEach(function (r) { (arsipKunci[key(r)] = arsipKunci[key(r)] || []).push(S(r.id)); });
     Object.keys(arsipKunci).forEach(function (k) { if (!byKey[k] && (bayarKunci[k] || 0) > 0) add('ARSIP_BERPEMBAYARAN', { kunci: k, idsArsip: arsipKunci[k], terbayar: bayarKunci[k] }); });
-    var struktural = ['DUPLIKAT_BEKU', 'TAGIHAN_ID_BEDA', 'KOMPONEN_TIDAK_ADA', 'KOMPONEN_NAMA_GANDA', 'ARSIP_BERPEMBAYARAN', 'ALOKASI_TAGIHAN_TIDAK_DIKENAL', 'ALOKASI_MULTI_BEKU'];
+    var struktural = ['DUPLIKAT_BEKU', 'KOMPONEN_ID_KOSONG', 'TAGIHAN_ID_BEDA', 'KOMPONEN_TIDAK_ADA', 'KOMPONEN_NAMA_GANDA', 'ARSIP_BERPEMBAYARAN', 'ALOKASI_TAGIHAN_TIDAK_DIKENAL', 'ALOKASI_MULTI_BEKU'];
     out.konsistensiData = struktural.some(function (j) { return out.jumlahPerJenis[j]; }) ? 'TIDAK_KONSISTEN' : 'KONSISTEN';
     out.catatan = 'Baca-saja. Tidak ada baris yang diubah, diarsip, digabung, atau dihapus. ID_TIDAK_KANONIS bersifat info (id klien acak). Klasifikasi DUPLIKAT_BEKU (DUPLIKAT_PASTI / PERLU_KEPUTUSAN_MANUAL) hanya bahan tinjauan; tidak ada tindakan otomatis; jalur koreksi D-1 ditahan sampai hasil audit data ditinjau.';
     out.computedAt = new Date().toISOString();
