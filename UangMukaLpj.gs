@@ -331,6 +331,9 @@ function opCreateExpenseFromLpj(p) {
       var h = umLpjAktif_(p.lpjId); if (!h) return umErr_('NOT_FOUND', 'LPJ tidak ditemukan / diarsipkan: ' + p.lpjId, 'lpjId');
       var gen = umLpjCrid_(umS_(h.o.id)), crid = gen.crid, cur = umS_(h.o.transaksiId);
       if (cur) {
+        /* [P1_25] transaksi tertaut sudah diarsip: jangan laporkan replay sukses; keputusan eksplisit = opUnlinkLpj lalu buat ulang */
+        var tCur = getTransactionRaw_(cur);
+        if (!tCur || tCur.archivedAt) return umErr_('LPJ_BERTAUT_TRANSAKSI_ARSIP', 'LPJ masih bertaut transaksi ' + cur + ' yang sudah diarsip/tidak ada; lepas tautan (beralasan) dulu sebelum membuat transaksi baru', 'lpjId');
         var idem = checkIdempotency_(crid);
         if (idem.status === 'found' && idem.record.resultRefId === cur) return okResult_('Request sudah pernah diproses (idempotent replay)', { lpjId: umS_(h.o.id), transaksiId: cur, replay: true });
         return umErr_('LPJ_SUDAH_BERTAUT', 'LPJ sudah bertaut transaksi ' + cur, 'lpjId');
@@ -422,8 +425,11 @@ function umLpjPublikTolak_(live, cur, next, op) {
 /* [P1_23 D-LPJ] Satu jalur efektif: setelah skema tautan disiapkan (34_LPJ_TAUTAN ada), tautan LPJ -> transaksi TIDAK lagi dapat diubah
    lewat opRecordBatch('lpj') publik (jalur P0-T1 lama + heuristik 62 hari); hanya opLinkLpj / opCreateExpenseFromLpj / opUnlinkLpj.
    Sebelum skema disiapkan, jalur lama tetap satu-satunya yang berfungsi (operasi baru menjawab SCHEMA_ADDITIVE_REQUIRED). */
+/* [P1_25] Penutupan jalur lama hanya bila skema LENGKAP (3 sheet + 9 kolom 19_LPJ, = syarat umReady_ operasi baru). Sebelumnya cukup
+   34_LPJ_TAUTAN ada: setup parsial (kolom gagal ditambah) menutup jalur lama sementara operasi baru masih SCHEMA_ADDITIVE_REQUIRED. */
 function umLpjTautanLewatOperasi_(live, cur, next) {
-  if (!ss_().getSheetByName('34_LPJ_TAUTAN')) return null;
+  var lengkap = Object.keys(UM_SHEETS_).every(function (s) { return !!ss_().getSheetByName(s); }) && UM_LPJ_COLS_.every(function (c) { return live.indexOf(c) !== -1; });
+  if (!lengkap) return null;
   var ti = live.indexOf('transaksiId'); if (ti === -1 || !next) return null;
   var lama = cur ? opStr_(cur[ti]) : '';
   return opStr_(next[ti]) !== lama ? { code: 'GUNAKAN_OPERASI_TAUTAN', message: 'Tautan LPJ ke transaksi hanya lewat opLinkLpj / opCreateExpenseFromLpj / opUnlinkLpj (skema tautan aktif)' } : null;
