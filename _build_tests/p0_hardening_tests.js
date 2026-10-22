@@ -184,7 +184,9 @@ const renameCol = (srv, n, h) => { srv.sheets[n][0][col(srv, n, h)] = 'rusak_' +
   { const s = makeServer();
     const res = { auditorBaru: code(s.sb.opUserUpsert({ email: 'aud2@x.id', nama: 'A2', role: 'AUDITOR', unit: '', status: 'ACTIVE' })), bendaharaBaru: code(s.sb.opUserUpsert({ email: 'ben2@x.id', nama: 'B2', role: 'BENDAHARA', unit: 'TK', status: 'ACTIVE' })),
       nonaktifAuditor: code(s.sb.opUserUpsert({ id: 'U2', email: 'auditor@x.id', nama: 'Auditor', role: 'AUDITOR', unit: '', status: 'INACTIVE' })) };
-    rec('HD-T7-05', 'T7 operasi yang tetap diizinkan', Object.values(res).every(x => x === 'OK'), J(res) + ' (BENDAHARA -> BENDAHARA/AUDITOR; keputusan D-T7 apakah BENDAHARA boleh menambah BENDAHARA lain)'); }
+    // [P1_26 keputusan 4 pemilik] "BENDAHARA boleh menambah BENDAHARA lain" (dulu menunggu keputusan D-T7) kini DIPUTUSKAN TIDAK tanpa otorisasi independen:
+    // ekspektasi bendaharaBaru berubah OK -> ROLE_GRANT_REQUIRES_INDEPENDENT_AUTH; dua operasi lain tetap harus OK.
+    rec('HD-T7-05', 'T7 operasi yang tetap diizinkan', res.auditorBaru === 'OK' && res.nonaktifAuditor === 'OK' && res.bendaharaBaru === 'ROLE_GRANT_REQUIRES_INDEPENDENT_AUTH', J(res) + ' (BENDAHARA -> AUDITOR tetap boleh; BENDAHARA -> BENDAHARA ditolak sejak P1_26 keputusan 4)'); }
   { const s = makeServer();
     const spoof = code(s.sb.opUserUpsert({ email: 'ks3@x.id', nama: 'X', role: 'KEPALA_SEKOLAH', unit: '', status: 'ACTIVE', actorRole: 'YAYASAN', identity: { role: 'YAYASAN' }, createdBy: 'yayasan@x.id' }));
     const idDeps = s.sb.getCurrentUserIdentity({ getEmail: 'yayasan@x.id', lookupUserAccess: 'x' }); // objek JSON dari klien: bukan fungsi

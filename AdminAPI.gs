@@ -17,7 +17,7 @@ var OP_EMAIL_RE_ = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
    Pemberian peran istimewa saat ini hanya di luar aplikasi (pemilik spreadsheet) sampai peran admin terpisah diputuskan
    (keputusan D-T7, P1_14). */
 var OP_PRIVILEGED_ROLES_ = ['KEPALA_SEKOLAH', 'YAYASAN'];
-var OP_ROLE_ASSIGNABLE_BY_ = { BENDAHARA: ['BENDAHARA', 'AUDITOR'] };
+var OP_ROLE_ASSIGNABLE_BY_ = { BENDAHARA: ['BENDAHARA', 'AUDITOR'] }; // [P1_26] BENDAHARA -> BENDAHARA dibatasi lebih lanjut di opUserUpsert (keputusan 4)
 
 function opUserList() {
   var g = opGate_(OP_WRITE_ROLES_); if (!g.ok) return g;
@@ -58,6 +58,13 @@ function opUserUpsert(record) {
       if (opNorm_(g.identity.email) === email && (status !== 'ACTIVE' || role !== 'BENDAHARA')) return errResult_('SELF_LOCKOUT', 'Tidak boleh menonaktifkan atau menurunkan akun sendiri', 'status');
       if (!after.some(function (u) { return u.role === 'BENDAHARA' && u.status === 'ACTIVE'; })) return errResult_('SELF_LOCKOUT', 'Harus tersisa minimal satu BENDAHARA aktif', 'role');
       if (idx >= 0 && curEmail === actorEmail && email !== actorEmail) return errResult_('SELF_ROLE_CHANGE_DENIED', 'Tidak boleh memindahkan akun sendiri ke email lain', 'email'); // [P0-T7]
+      /* [P1_26 keputusan 4] hak BENDAHARA tidak dapat DITAMBAH oleh BENDAHARA lewat aplikasi tanpa otorisasi independen: akun BENDAHARA baru yang
+         aktif, perubahan peran menjadi BENDAHARA, aktivasi ulang baris BENDAHARA, atau pemindahan baris BENDAHARA aktif ke email lain.
+         Tetap boleh: ubah nama/unit baris BENDAHARA yang sudah aktif (email sama), menonaktifkan BENDAHARA lain, mengelola AUDITOR. */
+      var curStatus = idx >= 0 ? opStr_(m.rows[idx][c('status')]) : '';
+      if (role === 'BENDAHARA' && status === 'ACTIVE' && (idx === -1 || curRole !== 'BENDAHARA' || curStatus !== 'ACTIVE' || curEmail !== email)) {
+        return errResult_('ROLE_GRANT_REQUIRES_INDEPENDENT_AUTH', 'Hak BENDAHARA (akun baru, perubahan peran, aktivasi ulang, atau pindah email) tidak dapat diberikan oleh BENDAHARA lewat aplikasi; butuh otorisasi independen di luar aplikasi', 'role');
+      }
       if (idx >= 0 && opNorm_(m.rows[idx][c('email')]) === email && opStr_(m.rows[idx][c('nama')]) === nama && opStr_(m.rows[idx][c('role')]) === role && opStr_(m.rows[idx][c('unit')]) === unit && opStr_(m.rows[idx][c('status')]) === status) {
         // [GAP-031] replay tanpa perubahan = satu efek: tidak menulis updatedAt dan tidak mengaudit ulang
         var same = okResult_('Akses pengguna tidak berubah (sudah sama)', opJsonSafe_(opRowObj_(m.live, m.rows[idx]))); same.data.unchanged = true; return same;
